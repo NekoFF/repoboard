@@ -9,35 +9,6 @@ import { ImportIssuesDialog } from "@/components/ImportIssuesDialog";
 import { RelativeTime, Spinner, useToast } from "@/components/ui";
 import { api, useResource } from "@/lib/client/api";
 
-function Stat({
-  value,
-  label,
-  loading,
-  tone,
-}: {
-  value: number | string;
-  label: string;
-  loading?: boolean;
-  tone?: "warn" | "ok";
-}) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-border bg-surface p-3 transition-colors hover:border-ink/15">
-      <span
-        className={`text-[18px] font-semibold tabular-nums ${
-          tone === "warn"
-            ? "text-warn-fg"
-            : tone === "ok"
-              ? "text-success-fg"
-              : "text-ink"
-        }`}
-      >
-        {loading ? <span className="rb-skeleton inline-block h-5 w-8" /> : value}
-      </span>
-      <span className="truncate text-[11px] text-muted">{label}</span>
-    </div>
-  );
-}
-
 export function BoardScreen({
   data,
   header,
@@ -85,19 +56,9 @@ export function BoardScreen({
     [data.tasks],
   );
 
-  const counts = useMemo(() => {
-    const byName = (name: string) => {
-      const column = data.columns.find((c) => c.name === name);
-      return column
-        ? data.tasks.filter((t) => t.columnId === column.id).length
-        : 0;
-    };
-    return {
-      todo: byName("Todo"),
-      inProgress: byName("In Progress"),
-      review: byName("Review"),
-      done: byName("Done"),
-    };
+  const doneCount = useMemo(() => {
+    const done = data.columns.find((c) => c.name === "Done");
+    return done ? data.tasks.filter((t) => t.columnId === done.id).length : 0;
   }, [data]);
 
   const openPrs = (pulls.data?.pulls ?? []).filter((p) => p.state === "open");
@@ -207,10 +168,39 @@ export function BoardScreen({
             <h1 className="text-[24px] font-semibold tracking-[-0.01em] text-ink">
               Project board
             </h1>
-            <p className="text-[12px] text-muted">
-              {data.markdownSource
-                ? `Cards stay linked to branches, commits, pull requests and ${data.markdownSource.path}.`
-                : "Cards stay linked to branches, commits, pull requests and issues."}
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+              <span>
+                {data.tasks.length} card{data.tasks.length === 1 ? "" : "s"} ·{" "}
+                {doneCount} done
+              </span>
+              {connected && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>
+                    {branches.loading
+                      ? "loading branches…"
+                      : `${branches.data?.branches.length ?? 0} branches`}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span>{openPrs.length} open PRs</span>
+                  {staleBranches.length > 0 && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="text-warn-fg">
+                        {staleBranches.length} behind {header.defaultBranch}
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
+              {data.markdownSource && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="font-mono text-[11px]">
+                    {data.markdownSource.path}
+                  </span>
+                </>
+              )}
             </p>
           </div>
 
@@ -267,29 +257,6 @@ export function BoardScreen({
               </button>
             )}
           </div>
-        </div>
-
-        <div className="flex w-full flex-wrap gap-2.5">
-          <Stat value={counts.todo + counts.inProgress + counts.review} label="Open cards" />
-          <Stat value={counts.inProgress} label="In progress" />
-          <Stat value={counts.review} label="In review" />
-          <Stat value={counts.done} label="Done" tone={counts.done ? "ok" : undefined} />
-          <Stat
-            value={openPrs.length}
-            label="Open pull requests"
-            loading={pulls.loading}
-          />
-          <Stat
-            value={branches.data?.branches.length ?? 0}
-            label="Branches"
-            loading={branches.loading}
-          />
-          <Stat
-            value={staleBranches.length}
-            label="Behind default"
-            loading={branches.loading}
-            tone={staleBranches.length ? "warn" : undefined}
-          />
         </div>
 
         {data.columns.length === 0 ? (

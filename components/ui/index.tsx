@@ -167,7 +167,24 @@ function formatRelative(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-/** Ticks on its own so "2m ago" never silently goes stale on screen. */
+/** A locale the server and the browser always agree on. */
+const STABLE_LOCALE = "en-GB";
+
+export function formatDate(
+  value: number,
+  options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" },
+): string {
+  return new Date(value).toLocaleDateString(STABLE_LOCALE, options);
+}
+
+/**
+ * Ticks on its own so "2m ago" never silently goes stale on screen.
+ *
+ * The first render must match what the server sent, or React throws away the
+ * whole tree: "now" differs between the two, and the browser's locale is not
+ * the server's. So the absolute date is rendered until mount, and only then
+ * does it become relative.
+ */
 export function RelativeTime({
   value,
   className = "",
@@ -180,8 +197,11 @@ export function RelativeTime({
     return typeof value === "string" ? Date.parse(value) : value;
   }, [value]);
 
+  const [mounted, setMounted] = useState(false);
   const [, force] = useState(0);
+
   useEffect(() => {
+    setMounted(true);
     if (timestamp == null) return;
     const id = setInterval(() => force((n) => n + 1), 15000);
     return () => clearInterval(id);
@@ -190,9 +210,15 @@ export function RelativeTime({
   if (timestamp == null || Number.isNaN(timestamp)) {
     return <span className={className}>—</span>;
   }
+
   return (
-    <span className={className} title={new Date(timestamp).toLocaleString()}>
-      {formatRelative(timestamp)}
+    <span
+      className={className}
+      title={new Date(timestamp).toLocaleString(STABLE_LOCALE)}
+    >
+      {mounted
+        ? formatRelative(timestamp)
+        : formatDate(timestamp, { day: "numeric", month: "short" })}
     </span>
   );
 }

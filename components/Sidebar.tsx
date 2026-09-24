@@ -1,30 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 
+/**
+ * One entry per destination. The repository screen owns its own tabs for
+ * branches, commits, pull requests and issues, so listing those here as well
+ * duplicated the same navigation in two places.
+ */
 const NAV = [
-  { href: "/", icon: "⌂", label: "Overview", tab: null },
-  { href: "/board", icon: "▦", label: "Board", tab: null },
-  { href: "/repository", icon: "⌘", label: "Repository", tab: null },
-  { href: "/repository?tab=branches", icon: "⑂", label: "Branches", tab: "branches" },
-  { href: "/repository?tab=pulls", icon: "↗", label: "Pull Requests", tab: "pulls" },
-  { href: "/repository?tab=commits", icon: "◆", label: "Commits", tab: "commits" },
-  { href: "/repository?tab=issues", icon: "○", label: "Issues", tab: "issues" },
-  { href: "/markdown-sync", icon: "M", label: "Markdown Sync", tab: null },
-  { href: "/activity", icon: "↺", label: "Activity", tab: null },
+  { href: "/", icon: "◎", label: "Overview" },
+  { href: "/board", icon: "▦", label: "Board" },
+  { href: "/repository", icon: "⌘", label: "Repository" },
+  { href: "/markdown-sync", icon: "≡", label: "Markdown" },
+  { href: "/activity", icon: "↺", label: "Activity" },
 ];
 
-export function Sidebar(props: { repo: string | null; connected: boolean }) {
-  return (
-    <Suspense fallback={<SidebarShell {...props} nav={<NavList active={null} />} />}>
-      <SidebarWithNav {...props} />
-    </Suspense>
-  );
-}
-
-function SidebarWithNav({
+export function Sidebar({
   repo,
   connected,
 }: {
@@ -32,95 +24,77 @@ function SidebarWithNav({
   connected: boolean;
 }) {
   const pathname = usePathname();
-  const tab = useSearchParams().get("tab");
-
-  // The repository screen backs five nav entries, so the active one is decided
-  // by path *and* tab — otherwise every repository entry lights up at once.
-  const active = NAV.findIndex((item) => {
-    const base = item.href.split("?")[0];
-    if (base === "/") return pathname === "/";
-    if (base !== pathname && !pathname.startsWith(`${base}/`)) return false;
-    if (base === "/repository") return (item.tab ?? null) === (tab ?? null);
-    return true;
-  });
 
   return (
-    <SidebarShell
-      repo={repo}
-      connected={connected}
-      nav={<NavList active={active} />}
-    />
-  );
-}
-
-function NavList({ active }: { active: number | null }) {
-  return (
-    <nav className="flex flex-col gap-[2px]">
-      {NAV.map((item, index) => {
-        const isActive = active === index;
-        return (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={`flex items-center gap-[10px] rounded-md px-[10px] py-2 ${
-              isActive ? "bg-active text-white" : "text-ink hover:bg-pill"
-            }`}
-          >
-            <span
-              className={`w-3 text-[12px] font-medium ${
-                isActive ? "text-white" : "text-muted"
-              }`}
-            >
-              {item.icon}
-            </span>
-            <span className="text-[13px]">{item.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
-function SidebarShell({
-  repo,
-  connected,
-  nav,
-}: {
-  repo: string | null;
-  connected: boolean;
-  nav: ReactNode;
-}) {
-  return (
-    <aside className="flex h-full w-[230px] shrink-0 flex-col gap-[14px] overflow-y-auto border-r border-border bg-surface p-[18px]">
-      <div className="flex items-center gap-[10px]">
-        <div className="flex size-7 items-center justify-center rounded-md bg-active text-[12px] font-semibold text-white">
+    <aside className="flex h-full w-[212px] shrink-0 flex-col gap-1 border-r border-border bg-surface px-3 py-4">
+      <div className="mb-1 flex items-center gap-2 px-2">
+        <div className="grid size-[26px] place-items-center rounded-md bg-active text-[11px] font-semibold text-white">
           R
         </div>
-        <span className="text-[16px] font-semibold text-ink">RepoBoard</span>
+        <span className="text-[14px] font-semibold tracking-[-0.01em] text-ink">
+          RepoBoard
+        </span>
       </div>
 
       <Link
         href="/settings"
-        className="flex flex-col gap-[2px] rounded-lg bg-pill p-[10px] transition-opacity hover:opacity-80"
+        className="group mb-2 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-pill"
       >
-        <span className="truncate text-[13px] font-semibold text-ink">
-          {repo ?? "No repository"}
-        </span>
-        <span className="text-[11px] text-muted">
-          {connected ? "GitHub connected" : "Not connected"}
+        <span
+          className={`size-1.5 shrink-0 rounded-full ${
+            connected ? "bg-success-fg" : "bg-warn-fg"
+          }`}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[12px] font-medium text-ink">
+            {repo?.split("/")[1] ?? "No repository"}
+          </span>
+          <span className="block truncate text-[10.5px] text-muted">
+            {repo?.split("/")[0] ?? "not connected"}
+          </span>
         </span>
       </Link>
 
-      {nav}
+      <nav className="flex flex-col gap-0.5">
+        {NAV.map((item) => {
+          const isActive =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-2.5 rounded-lg px-2 py-[7px] text-[13px] transition-colors ${
+                isActive
+                  ? "bg-pill font-medium text-ink"
+                  : "text-muted hover:bg-pill/60 hover:text-ink"
+              }`}
+            >
+              <span className="w-3.5 text-center text-[12px]" aria-hidden>
+                {item.icon}
+              </span>
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <div className="flex-1" />
 
       <Link
         href="/settings"
-        className="flex items-center gap-[10px] p-2 text-ink hover:opacity-70"
+        className={`flex items-center gap-2.5 rounded-lg px-2 py-[7px] text-[13px] transition-colors ${
+          pathname.startsWith("/settings")
+            ? "bg-pill font-medium text-ink"
+            : "text-muted hover:bg-pill/60 hover:text-ink"
+        }`}
       >
-        <span className="w-3 text-[12px] font-medium text-muted">⚙</span>
-        <span className="text-[13px]">Settings</span>
+        <span className="w-3.5 text-center text-[12px]" aria-hidden>
+          ⚙
+        </span>
+        Settings
       </Link>
     </aside>
   );

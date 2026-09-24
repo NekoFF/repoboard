@@ -3,22 +3,21 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { BoardTask } from "@/lib/board-service";
-
-function initials(name: string): string {
-  return name
-    .split(/[\s._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-}
+import { labelColor } from "@/components/labelColor";
+import { formatDate } from "@/components/ui";
 
 function ChecklistRing({ done, total }: { done: number; total: number }) {
   const ratio = total === 0 ? 0 : done / total;
   const circumference = 2 * Math.PI * 5;
+  const complete = done === total && total > 0;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted">
-      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] ${
+        complete ? "text-success-fg" : "text-muted"
+      }`}
+      title={`${done} of ${total} checklist items done`}
+    >
+      <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden>
         <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.25" />
         <circle
           cx="7"
@@ -39,117 +38,124 @@ function ChecklistRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function TaskCardBody({
-  task,
-  dragging,
-}: {
-  task: BoardTask;
-  dragging?: boolean;
-}) {
+export function TaskCardBody({ task }: { task: BoardTask }) {
   const doneItems = task.checklist.filter((c) => c.done).length;
+  const hasFooter =
+    Boolean(task.description) ||
+    task.checklist.length > 0 ||
+    task.branches.length > 0 ||
+    task.pullRequests.length > 0 ||
+    task.issues.length > 0 ||
+    Boolean(task.assignee) ||
+    Boolean(task.dueDate);
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-ink">
-          {task.title}
-        </p>
-        {task.assignee && (
-          <span
-            title={task.assignee}
-            className="grid size-5 shrink-0 place-items-center rounded-full bg-pill text-[9px] font-semibold text-muted"
-          >
-            {initials(task.assignee)}
-          </span>
-        )}
-      </div>
+      <p className="text-[13.5px] leading-snug text-ink">{task.title}</p>
 
       {task.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {task.labels.map((label) => (
-            <span key={label} className="rb-pill">
+            <span
+              key={label}
+              className="inline-flex items-center gap-1.5 rounded-full bg-pill px-2 py-[3px] text-[11px] font-medium text-ink"
+            >
+              <span
+                className="size-[6px] shrink-0 rounded-full"
+                style={{ backgroundColor: labelColor(label) }}
+                aria-hidden
+              />
               {label}
             </span>
           ))}
         </div>
       )}
 
-      {task.branches.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {task.branches.map((branch) => (
-            <div
-              key={branch}
-              className="flex items-center gap-1.5 text-[11px] text-muted"
-            >
-              <span aria-hidden>⑂</span>
-              <span className="truncate font-mono text-[10.5px]">{branch}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {hasFooter && (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted">
+          {task.description && <span title="Has a description">≡</span>}
 
-      {(task.checklist.length > 0 ||
-        task.pullRequests.length > 0 ||
-        task.issues.length > 0 ||
-        task.markdownTaskId ||
-        task.dueDate) && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {task.checklist.length > 0 && (
             <ChecklistRing done={doneItems} total={task.checklist.length} />
           )}
+
+          {task.branches.length > 0 && (
+            <span className="inline-flex min-w-0 items-center gap-1" title={task.branches[0]}>
+              <span aria-hidden>⑂</span>
+              <span className="max-w-[120px] truncate font-mono text-[10.5px]">
+                {task.branches[0]}
+              </span>
+            </span>
+          )}
+
           {task.pullRequests.map((pr) => (
-            <span key={`pr-${pr}`} className="rb-pill">
-              PR #{pr}
+            <span key={`pr-${pr}`} title={`Pull request #${pr}`}>
+              ↗ #{pr}
             </span>
           ))}
           {task.issues.map((issue) => (
-            <span key={`issue-${issue}`} className="rb-pill">
-              #{issue}
+            <span key={`issue-${issue}`} title={`Issue #${issue}`}>
+              ○ #{issue}
             </span>
           ))}
-          {task.markdownTaskId && (
-            <span
-              className="text-[11px] text-muted"
-              title="Linked to a task in the markdown source"
-            >
-              md
+
+          {task.dueDate && (
+            <span className={task.dueDate < Date.now() ? "text-danger-fg" : ""}>
+              {formatDate(task.dueDate)}
             </span>
           )}
-          {task.dueDate && (
+
+          <div className="flex-1" />
+
+          {task.assignee && (
             <span
-              className={`text-[11px] ${
-                task.dueDate < Date.now() ? "text-danger-fg" : "text-muted"
-              }`}
+              title={task.assignee}
+              className="grid size-[18px] place-items-center rounded-full bg-pill text-[9px] font-semibold text-muted"
             >
-              {new Date(task.dueDate).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
+              {task.assignee.slice(0, 2).toUpperCase()}
             </span>
           )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {dragging && <span className="sr-only">dragging</span>}
+/** Same card, no drag wiring — used for the first paint before mount. */
+export function StaticTaskCard({
+  task,
+  isDone,
+  onOpen,
+}: {
+  task: BoardTask;
+  isDone: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      className={`rb-task cursor-pointer pr-8 ${isDone ? "opacity-70" : ""}`}
+    >
+      <TaskCardBody task={task} />
     </div>
   );
 }
 
 export function SortableTaskCard({
   task,
+  isDone,
   onOpen,
+  onToggleDone,
 }: {
   task: BoardTask;
+  isDone: boolean;
   onOpen: () => void;
+  onToggleDone: () => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: task.id });
 
   return (
     <div
@@ -158,8 +164,27 @@ export function SortableTaskCard({
         transform: CSS.Transform.toString(transform),
         transition: transition ?? "transform 180ms cubic-bezier(0.22,1,0.36,1)",
       }}
-      className={isDragging ? "opacity-0" : ""}
+      className={`group/card relative ${isDragging ? "opacity-0" : ""}`}
     >
+      {/* The tick is the plain answer to "how do I mark this done?" — it moves
+          the card to the Done column, the same thing a drag there would do. */}
+      <button
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleDone();
+        }}
+        title={isDone ? "Move back to Todo" : "Mark as done"}
+        aria-label={isDone ? "Move back to Todo" : "Mark as done"}
+        className={`absolute right-2 top-2 z-10 grid size-[22px] place-items-center rounded-full border text-[11px] transition-all
+          ${
+            isDone
+              ? "border-success-fg/40 bg-success-bg text-success-fg opacity-100"
+              : "border-border bg-surface text-muted opacity-0 hover:border-success-fg/50 hover:text-success-fg group-hover/card:opacity-100"
+          }`}
+      >
+        ✓
+      </button>
+
       <div
         {...attributes}
         {...listeners}
@@ -167,13 +192,14 @@ export function SortableTaskCard({
         tabIndex={0}
         onClick={onOpen}
         onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
+          if (event.key === "Enter") {
             event.preventDefault();
             onOpen();
           }
         }}
-        className="group w-full cursor-pointer rounded-xl border border-border bg-surface p-3 text-left shadow-card transition-all duration-150
-          hover:-translate-y-px hover:border-ink/15 hover:shadow-lift active:cursor-grabbing"
+        className={`rb-task cursor-pointer pr-8 active:cursor-grabbing ${
+          isDone ? "opacity-70" : ""
+        }`}
       >
         <TaskCardBody task={task} />
       </div>

@@ -22,35 +22,45 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { BoardData, BoardTask } from "@/lib/board-service";
-import { SortableTaskCard, TaskCardBody } from "@/components/TaskCard";
+import {
+  SortableTaskCard,
+  StaticTaskCard,
+  TaskCardBody,
+} from "@/components/TaskCard";
 import { CardDetailPanel } from "@/components/CardDetailPanel";
 import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
 import { EmptyState, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
 
+const DONE_COLUMN = "Done";
+
 function Column({
   id,
   name,
   tasks,
+  doneColumnId,
+  interactive,
   onOpen,
+  onToggleDone,
   onAdd,
-  isEmptyBoard,
   composerOpen,
   setComposerOpen,
 }: {
   id: string;
   name: string;
   tasks: BoardTask[];
+  doneColumnId: string | null;
+  interactive: boolean;
   onOpen: (task: BoardTask) => void;
+  onToggleDone: (task: BoardTask) => void;
   onAdd: (columnId: string, title: string) => Promise<void>;
-  isEmptyBoard: boolean;
   composerOpen: string | null;
   setComposerOpen: (columnId: string | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [title, setTitle] = useState("");
   const adding = composerOpen === id;
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (adding) requestAnimationFrame(() => inputRef.current?.focus());
@@ -61,20 +71,26 @@ function Column({
     if (!value) return;
     setTitle("");
     await onAdd(id, value);
-    // Stay open: adding cards one after another is the common case.
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-      <div className="flex items-center gap-2 px-0.5">
+    <div
+      className={`rb-column w-[286px] shrink-0 transition-colors duration-150 ${
+        isOver ? "border-ink/25 bg-pill" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2 px-3 pb-2 pt-3">
         <span className="text-[13px] font-semibold text-ink">{name}</span>
-        <span className="rb-pill tabular-nums">{tasks.length}</span>
+        <span className="text-[12px] tabular-nums text-muted">
+          {tasks.length}
+        </span>
         <div className="flex-1" />
         <button
-          className="rb-btn-ghost opacity-0 transition-opacity focus-visible:opacity-100 group-hover/board:opacity-100"
+          className="grid size-6 place-items-center rounded-md text-[14px] text-muted transition-colors hover:bg-pill hover:text-ink"
           onClick={() => setComposerOpen(adding ? null : id)}
-          aria-label={`Add card to ${name}`}
+          title={`Add a card to ${name}`}
+          aria-label={`Add a card to ${name}`}
         >
           +
         </button>
@@ -82,41 +98,45 @@ function Column({
 
       <div
         ref={setNodeRef}
-        className={`flex min-h-[140px] flex-1 flex-col gap-2.5 rounded-xl border border-dashed p-1.5 transition-colors duration-150 ${
-          isOver
-            ? "border-ink/25 bg-pill/70"
-            : "border-transparent hover:border-border/60"
-        }`}
+        className="flex min-h-[80px] flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2"
       >
-        <SortableContext
-          items={tasks.map((t) => t.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {tasks.map((task) => (
-            <SortableTaskCard
+        {interactive ? (
+          <SortableContext
+            items={tasks.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {tasks.map((task) => (
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                isDone={task.columnId === doneColumnId}
+                onOpen={() => onOpen(task)}
+                onToggleDone={() => onToggleDone(task)}
+              />
+            ))}
+          </SortableContext>
+        ) : (
+          tasks.map((task) => (
+            <StaticTaskCard
               key={task.id}
               task={task}
+              isDone={task.columnId === doneColumnId}
               onOpen={() => onOpen(task)}
             />
-          ))}
-        </SortableContext>
-
-        {tasks.length === 0 && !adding && !isEmptyBoard && (
-          <p className="px-2 py-3 text-[11.5px] text-muted/70">
-            Drop a card here
-          </p>
+          ))
         )}
 
-        {adding ? (
-          <div className="rb-enter flex flex-col gap-2 rounded-xl border border-border bg-surface p-2.5 shadow-card">
-            <input
+        {adding && (
+          <div className="rb-enter rounded-[10px] border border-ink/20 bg-surface p-2.5 shadow-card">
+            <textarea
               ref={inputRef}
-              className="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-muted/70"
-              placeholder="What needs doing?"
+              rows={2}
+              className="w-full resize-none bg-transparent text-[13.5px] leading-snug text-ink outline-none placeholder:text-muted/70"
+              placeholder="Card title…"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
+                if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   submit();
                 } else if (event.key === "Escape") {
@@ -125,9 +145,9 @@ function Column({
                 }
               }}
             />
-            <div className="flex items-center gap-2">
-              <button className="rb-btn-primary" onClick={submit}>
-                Add
+            <div className="mt-1.5 flex items-center gap-2">
+              <button className="rb-btn-primary py-1" onClick={submit}>
+                Add card
               </button>
               <button
                 className="rb-btn-ghost"
@@ -140,13 +160,15 @@ function Column({
               </button>
               <div className="flex-1" />
               <span className="text-[10.5px] text-muted">
-                <span className="rb-kbd">↵</span> to add
+                <span className="rb-kbd">↵</span>
               </span>
             </div>
           </div>
-        ) : (
+        )}
+
+        {!adding && (
           <button
-            className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-[12px] text-muted transition-colors hover:bg-pill hover:text-ink"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12.5px] text-muted transition-colors hover:bg-pill hover:text-ink"
             onClick={() => setComposerOpen(id)}
           >
             <span aria-hidden>+</span> Add card
@@ -184,16 +206,23 @@ export function KanbanBoard({
     previousColumnId: string;
   } | null>(null);
 
-  // Server data wins whenever it changes underneath us (sync, refresh, etc).
   useEffect(() => setTasks(data.tasks), [data.tasks]);
 
-  // Deep link: /board?card=<id> opens the panel, so ⌘K results can land on a card.
+  // dnd-kit numbers its accessibility announcements as it renders, which the
+  // server and the browser do differently. Drag is a pointer feature anyway, so
+  // the first paint is the same board without it.
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => setInteractive(true), []);
+
   useEffect(() => {
     const card = searchParams.get("card");
     if (card) setOpenTaskId(card);
   }, [searchParams]);
 
-  // "n" opens the composer in the first column, the way a keyboard-first tool should.
+  const doneColumnId =
+    data.columns.find((c) => c.name === DONE_COLUMN)?.id ?? null;
+  const firstColumnId = data.columns[0]?.id ?? null;
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -203,13 +232,12 @@ export function KanbanBoard({
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       if (typing || event.metaKey || event.ctrlKey) return;
-      if (event.key.toLowerCase() === "n" && data.columns[0]) {
+      if (event.key.toLowerCase() === "n" && firstColumnId) {
         event.preventDefault();
-        setComposerOpen(data.columns[0].id);
+        setComposerOpen(firstColumnId);
       }
     };
-    const onRequest = () =>
-      data.columns[0] && setComposerOpen(data.columns[0].id);
+    const onRequest = () => firstColumnId && setComposerOpen(firstColumnId);
 
     window.addEventListener("keydown", onKey);
     window.addEventListener("rb:new-card", onRequest);
@@ -217,13 +245,11 @@ export function KanbanBoard({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("rb:new-card", onRequest);
     };
-  }, [data.columns]);
+  }, [firstColumnId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const visible = useMemo(() => {
@@ -256,7 +282,78 @@ export function KanbanBoard({
     return tasks.find((t) => t.id === id)?.columnId ?? null;
   };
 
-  /** Live cross-column preview while dragging, so the gap opens under the cursor. */
+  /**
+   * One path for every way a card changes column — drag, the tick button, the
+   * detail panel — so a markdown-backed card always goes through the preview.
+   */
+  const commitMove = async (
+    taskId: string,
+    targetColumnId: string,
+    orderedIds: string[],
+  ) => {
+    const original = data.tasks.find((t) => t.id === taskId);
+    if (!original) return;
+    const changedColumn = original.columnId !== targetColumnId;
+
+    try {
+      if (changedColumn) {
+        await api.boardAction({
+          action: "move",
+          taskId,
+          columnId: targetColumnId,
+          position: Math.max(orderedIds.indexOf(taskId), 0),
+        });
+      }
+      await api.boardAction({
+        action: "reorder",
+        columnId: targetColumnId,
+        orderedIds,
+      });
+
+      if (changedColumn) {
+        const heading = data.columns.find((c) => c.id === targetColumnId)?.name;
+        const from = data.columns.find((c) => c.id === original.columnId)?.name;
+
+        if (original.markdownTaskId && heading) {
+          setPendingWrite({
+            taskId,
+            targetHeading: heading,
+            previousColumnId: original.columnId,
+          });
+        } else {
+          toast.push({
+            kind: "success",
+            message: `Moved to ${heading}`,
+            detail: from ? `from ${from}` : undefined,
+          });
+        }
+      }
+      router.refresh();
+    } catch (error) {
+      setTasks(data.tasks);
+      toast.push({
+        kind: "error",
+        message: "Could not move the card",
+        detail: (error as Error).message,
+      });
+    }
+  };
+
+  const toggleDone = async (task: BoardTask) => {
+    if (!doneColumnId || !firstColumnId) return;
+    const target = task.columnId === doneColumnId ? firstColumnId : doneColumnId;
+    const ordered = [...byColumn(target).map((t) => t.id), task.id];
+
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id
+          ? { ...t, columnId: target, position: ordered.length }
+          : t,
+      ),
+    );
+    await commitMove(task.id, target, ordered);
+  };
+
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
@@ -283,9 +380,8 @@ export function KanbanBoard({
     if (!over) return;
 
     const taskId = String(active.id);
-    const original = data.tasks.find((t) => t.id === taskId);
     const current = tasks.find((t) => t.id === taskId);
-    if (!original || !current) return;
+    if (!current) return;
 
     const targetColumnId = columnOf(String(over.id)) ?? current.columnId;
     const columnTasks = byColumn(targetColumnId).map((t) => t.id);
@@ -307,74 +403,30 @@ export function KanbanBoard({
       ),
     );
 
-    const changedColumn = original.columnId !== targetColumnId;
-
-    try {
-      if (changedColumn) {
-        await api.boardAction({
-          action: "move",
-          taskId,
-          columnId: targetColumnId,
-          position: ordered.indexOf(taskId),
-        });
-      }
-      await api.boardAction({
-        action: "reorder",
-        columnId: targetColumnId,
-        orderedIds: ordered,
-      });
-
-      if (changedColumn) {
-        const heading = data.columns.find((c) => c.id === targetColumnId)?.name;
-        const fromName = data.columns.find(
-          (c) => c.id === original.columnId,
-        )?.name;
-
-        if (original.markdownTaskId && heading) {
-          // Markdown-backed cards need a GitHub write — always previewed first.
-          setPendingWrite({
-            taskId,
-            targetHeading: heading,
-            previousColumnId: original.columnId,
-          });
-        } else {
-          toast.push({
-            kind: "success",
-            message: `Moved to ${heading}`,
-            detail: fromName ? `from ${fromName}` : undefined,
-          });
-        }
-      }
-      router.refresh();
-    } catch (error) {
-      setTasks(data.tasks);
-      toast.push({
-        kind: "error",
-        message: "Could not move the card",
-        detail: (error as Error).message,
-      });
-    }
+    await commitMove(taskId, targetColumnId, ordered);
   };
 
   const addCard = async (columnId: string, title: string) => {
     const optimisticId = `optimistic-${Date.now()}`;
-    const optimistic: BoardTask = {
-      id: optimisticId,
-      columnId,
-      title,
-      description: null,
-      assignee: null,
-      dueDate: null,
-      position: tasks.filter((t) => t.columnId === columnId).length,
-      checklist: [],
-      markdownTaskId: null,
-      labels: [],
-      branches: [],
-      commits: [],
-      pullRequests: [],
-      issues: [],
-    };
-    setTasks((prev) => [...prev, optimistic]);
+    setTasks((prev) => [
+      ...prev,
+      {
+        id: optimisticId,
+        columnId,
+        title,
+        description: null,
+        assignee: null,
+        dueDate: null,
+        position: prev.filter((t) => t.columnId === columnId).length,
+        checklist: [],
+        markdownTaskId: null,
+        labels: [],
+        branches: [],
+        commits: [],
+        pullRequests: [],
+        issues: [],
+      },
+    ]);
 
     try {
       const { id } = (await api.boardAction({
@@ -408,6 +460,10 @@ export function KanbanBoard({
   return (
     <>
       <DndContext
+        // Without a fixed id, dnd-kit numbers its accessibility announcements
+        // differently on the server and in the browser, which React reports as
+        // a hydration mismatch.
+        id="repoboard-board"
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={(event: DragStartEvent) =>
@@ -420,61 +476,59 @@ export function KanbanBoard({
           setTasks(data.tasks);
         }}
       >
-        <div className="group/board flex w-full flex-1 gap-3 overflow-x-auto pb-2">
+        <div className="rb-board-canvas flex min-h-0 w-full flex-1 gap-3 overflow-x-auto rounded-xl border border-border p-3">
           {data.columns.map((column) => (
             <Column
               key={column.id}
               id={column.id}
               name={column.name}
               tasks={byColumn(column.id)}
+              doneColumnId={doneColumnId}
+              interactive={interactive}
               onOpen={(task) => setOpenTaskId(task.id)}
+              onToggleDone={toggleDone}
               onAdd={addCard}
-              isEmptyBoard={boardIsEmpty}
               composerOpen={composerOpen}
               setComposerOpen={setComposerOpen}
             />
           ))}
+
+          {boardIsEmpty && (
+            <div className="flex flex-1 items-center justify-center p-4">
+              <EmptyState
+                icon="▦"
+                title="No cards yet"
+                body="Import your GitHub issues, drive the board from a markdown file, or just add a card."
+                action={
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {onImportIssues && (
+                      <button className="rb-btn-primary" onClick={onImportIssues}>
+                        Import GitHub issues
+                      </button>
+                    )}
+                    <button
+                      className="rb-btn"
+                      onClick={() => router.push("/markdown-sync")}
+                    >
+                      Use a markdown file
+                    </button>
+                  </div>
+                }
+              />
+            </div>
+          )}
         </div>
 
-        <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.22,1,0.36,1)" }}>
+        <DragOverlay
+          dropAnimation={{ duration: 180, easing: "cubic-bezier(0.22,1,0.36,1)" }}
+        >
           {activeTask ? (
-            <div className="w-[260px] rotate-1 rounded-xl border border-ink/15 bg-surface p-3 shadow-lift">
-              <TaskCardBody task={activeTask} dragging />
+            <div className="w-[262px] rotate-2 rounded-[10px] border border-ink/15 bg-surface p-3 shadow-lift">
+              <TaskCardBody task={activeTask} />
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
-
-      {boardIsEmpty && (
-        <EmptyState
-          icon="▦"
-          title="This board has no cards yet"
-          body="Import your GitHub issues, pick a markdown file to sync, or just add a card. Everything you add stays linked to the repository."
-          action={
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {onImportIssues && (
-                <button className="rb-btn-primary" onClick={onImportIssues}>
-                  Import GitHub issues
-                </button>
-              )}
-              <button
-                className="rb-btn"
-                onClick={() => router.push("/markdown-sync")}
-              >
-                Set up markdown sync
-              </button>
-              <button
-                className="rb-btn"
-                onClick={() =>
-                  data.columns[0] && setComposerOpen(data.columns[0].id)
-                }
-              >
-                Add a card
-              </button>
-            </div>
-          }
-        />
-      )}
 
       {openTask && (
         <CardDetailPanel
@@ -500,8 +554,6 @@ export function KanbanBoard({
           taskId={pendingWrite.taskId}
           targetHeading={pendingWrite.targetHeading}
           onDiscard={() => {
-            // Discarding the write puts the card back where it came from, so the
-            // board never claims a state the markdown file does not have.
             setTasks((prev) =>
               prev.map((task) =>
                 task.id === pendingWrite.taskId
