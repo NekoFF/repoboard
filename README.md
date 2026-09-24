@@ -260,6 +260,14 @@ Any one of these fixes it:
 Node is not installed, or Windows was not restarted after installing it. Redo
 Step 1.
 
+**Anything at all: run the built-in check first**
+```bash
+npm run doctor
+```
+It prints your Node version, whether the pieces installed correctly, and what
+to do about it in plain words. Start here before reading the rest of this
+section.
+
 **`Could not locate the bindings file` / errors mentioning `node-gyp`, `MSBuild`, `Python` or `C++`**
 The database library needs a small binary matching your Node version. It
 normally downloads a ready-made one; if none matches, it tries to compile, and
@@ -407,6 +415,7 @@ npm run build        # production build (writes to .next-build)
 npm test             # 29 unit + integration tests
 npm run db:generate  # regenerate migrations after a schema change
 npm run db:migrate   # apply migrations by hand (normally automatic on boot)
+npm run doctor       # check Node, dependencies and the database engine
 ```
 
 ## Scope

@@ -8,7 +8,36 @@ import * as schema from "@/db/schema";
 
 const dbPath = databasePath();
 
-const sqlite = new Database(dbPath);
+function openDatabase(file: string): Database.Database {
+  try {
+    return new Database(file);
+  } catch (error) {
+    const message = (error as Error).message;
+    // The native binary is missing or built for a different Node version. The
+    // raw error is a wall of paths, so translate it into an instruction.
+    if (
+      /bindings file|NODE_MODULE_VERSION|was compiled against|MODULE_NOT_FOUND/i.test(
+        message,
+      )
+    ) {
+      throw new Error(
+        [
+          "RepoBoard could not load its database engine.",
+          `You are running Node ${process.version}.`,
+          "",
+          "Fix it with:   npm run doctor",
+          "which will tell you exactly what to do (usually: delete the",
+          "node_modules folder, then run npm install).",
+          "",
+          `Original error: ${message.split("\n")[0]}`,
+        ].join("\n"),
+      );
+    }
+    throw error;
+  }
+}
+
+const sqlite = openDatabase(dbPath);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
