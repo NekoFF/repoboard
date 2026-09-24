@@ -64,8 +64,11 @@ if (installedVersion) {
       );
     } else {
       problems.push(
-        "Delete the node_modules folder and run: npm install\n" +
-          "        If it still fails, install the LTS version of Node from https://nodejs.org and repeat.",
+        "Run: npm run fix\n" +
+          "        (Newer npm blocks packages from running their install scripts, so the\n" +
+          "        database binary never got downloaded. This fetches it. No reinstall needed.)\n" +
+          "        If that fails, install the LTS version of Node from https://nodejs.org,\n" +
+          "        delete node_modules and run npm install.",
       );
     }
   }

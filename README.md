@@ -264,6 +264,11 @@ Step 1.
 ```bash
 npm run doctor
 ```
+If it reports a problem with the database engine, this usually fixes it without
+reinstalling anything:
+```bash
+npm run fix
+```
 It prints your Node version, whether the pieces installed correctly, and what
 to do about it in plain words. Start here before reading the rest of this
 section.
