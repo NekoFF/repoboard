@@ -238,14 +238,20 @@ Any one of these fixes it:
 Node is not installed, or Windows was not restarted after installing it. Redo
 Step 1.
 
-**`npm install` fails with errors mentioning `node-gyp`, `gyp`, `MSBuild`, `Python` or `C++`**
-The database library could not find a ready-made file for your Node version and
-tried to build one. The simplest fix is to install the **LTS** version of Node
-from <https://nodejs.org> rather than the newest one, delete the `node_modules`
-folder, and run `npm install` again.
-If you want to keep your Node version: on Windows install "Desktop development
-with C++" in the Visual Studio Build Tools; on macOS run `xcode-select
---install`; on Linux install `build-essential` and `python3`.
+**`Could not locate the bindings file` / errors mentioning `node-gyp`, `MSBuild`, `Python` or `C++`**
+The database library needs a small binary matching your Node version. It
+normally downloads a ready-made one; if none matches, it tries to compile, and
+compiling needs developer tools you probably do not have.
+
+First make sure you are on the current version of this app — older versions did
+not have ready-made binaries for Node 24. Update (see above), delete the
+`node_modules` folder, and run `npm install` again.
+
+If it still happens, install the **LTS** version of Node from
+<https://nodejs.org>, delete `node_modules`, and install again. As a last
+resort you can install the build tools instead: on Windows, "Desktop
+development with C++" from the Visual Studio Build Tools; on macOS,
+`xcode-select --install`; on Linux, `build-essential` and `python3`.
 
 **`Error: listen EADDRINUSE: address already in use :::3000`**
 Something else already uses port 3000 — most likely RepoBoard is already
