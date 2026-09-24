@@ -1,14 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { databasePath } from "@/lib/paths";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as schema from "@/db/schema";
 
-const dbPath = (process.env.DATABASE_URL ?? "file:./repoboard.db").replace(
-  "file:",
-  "",
-);
+const dbPath = databasePath();
 
 const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");

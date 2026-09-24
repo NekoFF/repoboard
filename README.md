@@ -170,6 +170,49 @@ is saved in a file called `repoboard.db` inside the folder.
 
 To stop the app: click the terminal window and press **Ctrl+C**.
 
+## Updating to a newer version
+
+New versions are published on the repository page. Updating never touches your
+board: your data lives in a folder called `.repoboard` in your **home**
+directory, not inside the app folder, so replacing the app folder is safe.
+
+**If you downloaded a ZIP**
+1. Download the new ZIP the same way as in Step 2.
+2. Unpack it and delete the old app folder — your board and token are not in
+   there.
+3. Open a terminal in the new folder (Step 3) and run:
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+**If you used `git clone`**
+```bash
+git pull
+npm install
+npm run dev
+```
+
+`npm install` is needed because a new version may use new libraries. Any
+database changes apply themselves the first time the app starts — there is
+nothing else to run.
+
+*Installed before this data folder existed?* If you have a `repoboard.db` file
+sitting inside the app folder, that installation keeps using it, and deleting
+the folder would delete your board. To move to the safe location: stop the app,
+then move `repoboard.db` and the `.repoboard` folder from the app folder into
+your home directory (`~/.repoboard/`), creating it if needed.
+
+## Where your data is kept
+
+| What | Where |
+| ---- | ----- |
+| Your board, cards and history | `~/.repoboard/repoboard.db` |
+| Your GitHub token | `~/.repoboard/credentials.json` (readable only by you) |
+
+To back up everything, copy that one folder. To start completely fresh, delete
+it — the app will rebuild an empty board on the next start.
+
 ## Troubleshooting
 
 **`node` or `npm` is not recognised / command not found**
@@ -208,9 +251,9 @@ Settings → **Disconnect**, then connect the other one.
 
 ## Is this safe?
 
-- Your token is stored only on your computer, in `.repoboard/credentials.json`,
-  readable only by your user account. It is never sent anywhere except to
-  github.com.
+- Your token is stored only on your computer, in
+  `~/.repoboard/credentials.json`, readable only by your user account. It is
+  never sent anywhere except to github.com.
 - The app listens on `127.0.0.1` only, which means other devices on your
   network cannot reach it. It has no login of its own, so that restriction is
   what keeps the token yours. Do not run `npm run dev:lan` unless you

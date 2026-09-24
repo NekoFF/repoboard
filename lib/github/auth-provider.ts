@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { credentialsPath, dataDir } from "@/lib/paths";
 
 /**
  * Auth abstraction. The MVP ships a fine-grained PAT provider, but every
@@ -18,8 +19,8 @@ export interface StoredCredentials {
   savedAt: string;
 }
 
-const CREDENTIALS_DIR = path.join(process.cwd(), ".repoboard");
-const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, "credentials.json");
+const CREDENTIALS_DIR = dataDir();
+const CREDENTIALS_FILE = credentialsPath();
 
 /**
  * Token lives either in the environment (.env.local, gitignored) or in
