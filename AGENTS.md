@@ -114,6 +114,43 @@ Leave a line here instead of editing someone else's area. Delete it once done.
 
 - _(none)_
 
+## Ideas worth taking later (for whoever does the visual work)
+
+Borrowed in spirit from Linear and Kan, ranked by what this app would actually
+gain. Ideas only — write your own implementation.
+
+1. **Command palette does actions, not just navigation.** ⌘K already searches;
+   the win is running things from it: move a card, assign, add a label, open a
+   branch. Linear's whole speed story is that you never reach for the mouse.
+2. **Keyboard on the board.** Arrows move the selection between cards,
+   `Enter` opens, `E` edits the title inline, `X` marks done, `1–4` sends the
+   selected card to that column. Nothing here needs new backend work.
+3. **Optimistic everything with an undo toast.** Every destructive or
+   surprising action shows "Deleted · Undo" for a few seconds instead of a
+   confirmation dialog. Needs soft delete in the schema — ask before relying
+   on it.
+4. **Card peek.** Hovering or pressing space shows the card's detail in a
+   popover without leaving the board.
+5. **Filter as a first-class bar**, not two dropdowns: a single input that
+   accepts `label:bug assignee:me is:done`, with chips for what is active.
+6. **Empty states that do the next thing**, not that describe the problem —
+   the board's empty state already imports issues; apply the same idea to the
+   other screens.
+7. **One motion language.** Cards lift on grab, drop with a short spring,
+   panels slide from the edge they belong to. Durations stay under 200ms;
+   nothing loops.
+
+Do not add: avatars for people who do not exist, charts nobody reads,
+onboarding tours, or a second navigation layer.
+
+## MCP server
+
+`scripts/mcp-server.mjs` exposes the board to AI clients over stdio. It talks
+to SQLite directly — no HTTP, no running web app required. It deliberately has
+no tool that writes to GitHub: markdown commits go through the app's preview.
+
+If you add a tool, keep that boundary.
+
 ## Checks
 
 ```bash
