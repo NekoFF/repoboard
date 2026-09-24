@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { GitHubClient } from "@/lib/github/client";
 import {
   createTask,
   deleteTask,
   getBoardData,
+  importIssues,
+  reorderColumn,
   linkTask,
   logActivity,
   moveTaskLocally,
@@ -68,6 +71,18 @@ const deleteSchema = z.object({
   taskId: z.string(),
 });
 
+const reorderSchema = z.object({
+  action: z.literal("reorder"),
+  columnId: z.string(),
+  orderedIds: z.array(z.string()),
+});
+
+const importSchema = z.object({
+  action: z.literal("import-issues"),
+  numbers: z.array(z.number().int()),
+  columnId: z.string(),
+});
+
 const bodySchema = z.discriminatedUnion("action", [
   createSchema,
   moveSchema,
@@ -75,6 +90,8 @@ const bodySchema = z.discriminatedUnion("action", [
   linkSchema,
   unlinkSchema,
   deleteSchema,
+  reorderSchema,
+  importSchema,
 ]);
 
 export async function POST(request: Request) {
@@ -146,6 +163,26 @@ export async function POST(request: Request) {
     case "unlink": {
       unlinkTask(body);
       return NextResponse.json({ ok: true });
+    }
+    case "reorder": {
+      reorderColumn(body.columnId, body.orderedIds);
+      return NextResponse.json({ ok: true });
+    }
+    case "import-issues": {
+      const gh = await GitHubClient.create();
+      const all = await gh.listIssues();
+      const wanted = all.filter((issue) => body.numbers.includes(issue.number));
+      const result = importIssues({
+        boardId: data.boardId,
+        columnId: body.columnId,
+        repositoryId: data.repository.id,
+        issues: wanted.map((issue) => ({
+          number: issue.number,
+          title: issue.title,
+          labels: issue.labels,
+        })),
+      });
+      return NextResponse.json(result);
     }
     case "delete": {
       deleteTask(body.taskId);

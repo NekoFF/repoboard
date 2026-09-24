@@ -8,6 +8,7 @@ import {
   syncFromMarkdown,
 } from "@/lib/board-service";
 import { GitHubClient } from "@/lib/github/client";
+import { parseMarkdown } from "@/lib/markdown/parser";
 
 export const dynamic = "force-dynamic";
 
@@ -39,12 +40,24 @@ export async function GET() {
       ? current.sha !== data.markdownSource.lastKnownSha
       : false;
 
+  // The screen shows what the parser actually found, not a sample of what a
+  // roadmap might look like.
+  const parsed = current ? parseMarkdown(current.content) : null;
+
   return NextResponse.json({
     source: data.markdownSource,
     files,
     current,
     remoteDrift,
     columns: data.columns.map((c) => c.name),
+    tasks:
+      parsed?.tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        heading: task.heading,
+        done: task.done,
+      })) ?? [],
+    headings: parsed?.headings.map((h) => h.text) ?? [],
   });
 }
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { TopBar } from "@/components/TopBar";
+import { useToast } from "@/components/ui";
 
 export function SettingsScreen({
   data,
@@ -21,6 +22,7 @@ export function SettingsScreen({
   repoSlug: string;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [token, setToken] = useState("");
   const [repo, setRepo] = useState(repoSlug);
   const [busy, setBusy] = useState(false);
@@ -46,6 +48,11 @@ export function SettingsScreen({
       setResult(
         `Connected ${body.repo.owner}/${body.repo.name} · default branch ${body.repo.defaultBranch} · ${body.repo.visibility}`,
       );
+      toast.push({
+        kind: "success",
+        message: `Connected ${body.repo.owner}/${body.repo.name}`,
+        detail: "The board was created locally.",
+      });
       setToken("");
       router.refresh();
     } catch (err) {
@@ -68,7 +75,7 @@ export function SettingsScreen({
         owner={header.owner}
         repo={header.name}
         defaultBranch={header.defaultBranch}
-        lastSync={null}
+        lastSyncAt={header.lastSyncAt}
         connected={connected}
       />
 

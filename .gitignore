@@ -7,3 +7,4 @@ out
 .env.local
 npm-debug.log*
 .DS_Store
+tsconfig.tsbuildinfo

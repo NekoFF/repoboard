@@ -27,6 +27,22 @@ export default {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
+      boxShadow: {
+        card: "0 1px 2px rgba(18,18,19,0.04)",
+        lift: "0 8px 24px -6px rgba(18,18,19,0.18), 0 2px 6px rgba(18,18,19,0.06)",
+        panel: "-16px 0 48px -24px rgba(18,18,19,0.25)",
+        pop: "0 16px 48px -12px rgba(18,18,19,0.28)",
+      },
+      keyframes: {
+        "rb-pulse": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.45" },
+        },
+      },
+      animation: {
+        "rb-pulse": "rb-pulse 1.6s cubic-bezier(0.4,0,0.6,1) infinite",
       },
     },
   },

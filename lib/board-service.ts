@@ -426,6 +426,67 @@ export function moveTaskLocally(
   };
 }
 
+/** Reorders a column after a drag, keeping positions dense and stable. */
+export function reorderColumn(columnId: string, orderedIds: string[]): void {
+  orderedIds.forEach((taskId, index) => {
+    db.update(tasks)
+      .set({ columnId, position: index, updatedAt: now() })
+      .where(eq(tasks.id, taskId))
+      .run();
+  });
+}
+
+/**
+ * Turns GitHub issues into cards. Read-only against GitHub: the issue stays
+ * the source of truth and the card just links to it, so importing twice does
+ * not duplicate anything.
+ */
+export function importIssues(args: {
+  boardId: string;
+  columnId: string;
+  repositoryId: string;
+  issues: { number: number; title: string; labels: string[] }[];
+}): { created: number; skipped: number } {
+  const linked = new Set(
+    db
+      .select()
+      .from(taskIssueLinks)
+      .all()
+      .map((link) => link.issueNumber),
+  );
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const issue of args.issues) {
+    if (linked.has(issue.number)) {
+      skipped += 1;
+      continue;
+    }
+    const taskId = createTask({
+      boardId: args.boardId,
+      columnId: args.columnId,
+      title: issue.title,
+      labels: issue.labels,
+      repositoryId: args.repositoryId,
+    });
+    db.insert(taskIssueLinks)
+      .values({ id: randomUUID(), taskId, issueNumber: issue.number })
+      .run();
+    created += 1;
+  }
+
+  if (created) {
+    logActivity({
+      repositoryId: args.repositoryId,
+      type: "issue_linked",
+      message: `Imported ${created} GitHub issue(s) as cards`,
+    });
+  }
+
+  return { created, skipped };
+}
+
 export function setMarkdownSource(repositoryId: string, path: string): string {
   const existing = db
     .select()
@@ -581,6 +642,8 @@ export interface PendingChange {
   markdownTaskId: string;
   targetHeading: string;
   summary: string;
+  /** False when the move is a no-op, so the UI can disable the commit button. */
+  changedSomething: boolean;
   diff: DiffLine[];
   before: string;
   after: string;
@@ -626,6 +689,7 @@ export async function previewMarkdownMove(
     markdownTaskId: task.markdownTaskId,
     targetHeading,
     summary: moved.summary,
+    changedSomething: moved.changed,
     diff: buildDiff(file.content, moved.content),
     before: file.content,
     after: moved.content,
