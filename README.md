@@ -332,6 +332,12 @@ so multiple boards are a UI change rather than a migration.
 implements `PatAuthProvider`. Swapping in GitHub OAuth or a GitHub App means
 adding a class there — no caller changes, because nothing else reads the token.
 
+## License
+
+Source-available, not open source. You may read it, download it and run it for
+yourself; commercial use, redistribution and offering it as a service need
+written permission. See [LICENSE](LICENSE).
+
 ## Design
 
 The UI follows the RepoBoard Figma file: 230px sidebar, 68px top bar, dense
