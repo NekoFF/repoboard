@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply h-full;
+  }
+  body {
+    @apply bg-canvas text-ink antialiased;
+    font-family:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      system-ui,
+      sans-serif;
+  }
+  * {
+    @apply border-border;
+  }
+}
+
+@layer components {
+  .rb-pill {
+    @apply inline-flex items-center rounded-sm bg-pill px-2 py-1 text-[11px] font-medium text-ink;
+  }
+  .rb-card {
+    @apply rounded-xl border border-border bg-surface;
+  }
+  .rb-btn {
+    @apply inline-flex items-center rounded-md border border-border bg-surface px-3 py-2 text-[12px] font-medium text-ink transition-colors hover:bg-pill disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .rb-btn-primary {
+    @apply inline-flex items-center rounded-md bg-active px-[13px] py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .rb-input {
+    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none placeholder:text-muted focus:border-ink;
+  }
+}
