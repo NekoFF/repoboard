@@ -90,6 +90,12 @@ folder is the RepoBoard folder.
 (Windows) and press Enter. You should see `package.json` in the list. If you do
 not, you are in the wrong folder.
 
+**A tip that saves trouble on Windows:** before you start, rename the folder to
+something short with no spaces and no brackets — for example `repoboard` — and
+put it somewhere simple like `C:\repoboard`. Downloading the ZIP twice gives
+you names like `repoboard-main (1)`, and brackets and spaces break commands
+unless you quote them.
+
 ## Step 4 — Install and start
 
 Type these two commands, one at a time, pressing Enter after each:
@@ -219,6 +225,22 @@ To back up everything, copy that one folder. To start completely fresh, delete
 it — the app will rebuild an empty board on the next start.
 
 ## Troubleshooting
+
+**Windows: `A positional parameter cannot be found that accepts argument '1'`**
+Your folder name contains brackets or spaces — typically `repoboard-main (1)`
+because the ZIP was downloaded twice. Put the whole path in quotes:
+```powershell
+cd "C:\Users\you\Downloads\repoboard-main (1)\repoboard-main"
+```
+Better: rename the folder to `repoboard` so this cannot happen again.
+
+**Windows: I typed `cmd C:\some\path` and ended up in `C:\Windows\System32`**
+`cmd` followed by a path does not move into that folder. Either use the
+Explorer address-bar method in Step 3, or move there afterwards with:
+```
+cd /d "C:\Users\you\Downloads\repoboard-main\repoboard-main"
+```
+Check with `dir` that you see `package.json`.
 
 **Windows: `npm ... cannot be loaded because running scripts is disabled on this system`**
 You are in PowerShell, which blocks scripts by default, and npm is a script.
