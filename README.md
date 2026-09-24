@@ -68,8 +68,13 @@ folder is the RepoBoard folder.
 
 **Windows**
 - Open the folder in File Explorer.
-- Click the address bar at the top, type `powershell` and press Enter.
-- A blue window opens, already in the right folder.
+- Click the address bar at the top (where the folder path is), type `cmd` and
+  press Enter.
+- A black window opens, already in the right folder.
+
+  Use `cmd`, not PowerShell. PowerShell refuses to run npm out of the box on a
+  normal Windows installation — see "running scripts is disabled" in
+  Troubleshooting if you already hit that.
 
 **macOS**
 - Open the folder in Finder.
@@ -214,6 +219,20 @@ To back up everything, copy that one folder. To start completely fresh, delete
 it — the app will rebuild an empty board on the next start.
 
 ## Troubleshooting
+
+**Windows: `npm ... cannot be loaded because running scripts is disabled on this system`**
+You are in PowerShell, which blocks scripts by default, and npm is a script.
+Any one of these fixes it:
+- Easiest: close PowerShell and use **Command Prompt** instead — in the folder's
+  address bar type `cmd` instead of `powershell` (Step 3).
+- Or stay in PowerShell and add `.cmd` to the commands: `npm.cmd install`, then
+  `npm.cmd run dev`.
+- Or allow scripts for your own account, once, then use npm normally:
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+  Answer `Y` when it asks. This needs no administrator rights and only affects
+  your user.
 
 **`node` or `npm` is not recognised / command not found**
 Node is not installed, or Windows was not restarted after installing it. Redo
