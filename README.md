@@ -9,14 +9,16 @@ service, no account beyond your own GitHub token.
 
 ## Quick start
 
+Requires Node 20 or newer (`better-sqlite3` compiles a native module on install).
+
 ```bash
 npm install
-npm run db:migrate
 npm run dev
 ```
 
 Open <http://localhost:3000>, go to **Settings**, and connect a repository with
-a fine-grained personal access token.
+a fine-grained personal access token. The database is created and migrated on
+first boot — there is no separate setup step.
 
 Token permissions needed (repository-scoped):
 
@@ -37,6 +39,12 @@ GITHUB_REPO=owner/name
 The token is never written into source files. When entered through Settings it
 is stored in `.repoboard/credentials.json` with mode `0600`; both that directory
 and `.env.local` are gitignored.
+
+**Treat the running app as holding your token.** RepoBoard has no login of its
+own: anything that can reach `http://localhost:3000` can act on the repository
+through it. That is fine on your own machine, which is what it is built for —
+do not expose the port on a shared network, and if you deploy it somewhere, put
+real authentication in front of it first.
 
 ## How the Markdown sync works
 
@@ -132,6 +140,13 @@ npm test             # 29 unit + integration tests
 npm run db:generate  # regenerate migrations after a schema change
 npm run db:migrate   # apply migrations
 ```
+
+## Scope
+
+One repository per installation. The Settings screen connects a repository and
+creates the board; to point RepoBoard somewhere else, disconnect and connect
+the other repository. The schema already carries workspace and repository ids,
+so multiple boards are a UI change rather than a migration.
 
 ## Auth
 

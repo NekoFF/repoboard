@@ -1,11 +1,21 @@
 node_modules
+
+# Next.js: dev output and the separate production build directory
 .next
+.next-build
 out
+tsconfig.tsbuildinfo
+
+# Local SQLite database, including the WAL/shared-memory sidecar files
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
+
+# Anything holding a GitHub token
+.repoboard/
 .env
 .env.local
+
 npm-debug.log*
 .DS_Store
-tsconfig.tsbuildinfo
-.next-build

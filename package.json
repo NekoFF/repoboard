@@ -41,5 +41,10 @@
     "autoprefixer": "^10.4.19",
     "vitest": "^2.0.5",
     "tsx": "^4.16.5"
+  },
+  "description": "A local-first project board that keeps a GitHub repository as the source of truth.",
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "node": ">=20"
   }
 }
