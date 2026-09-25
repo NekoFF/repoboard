@@ -45,6 +45,16 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 /* ------------------------------------------------------------- resources -- */
 
 export const api = {
+  connection: () => request<{ connected: boolean; repo?: { owner: string; name: string } }>("/api/repo"),
+
+  connectRepository: (token: string, repo: string) =>
+    request<{ connected: boolean; repo: { owner: string; name: string; defaultBranch: string; visibility: string } }>("/api/repo", {
+      method: "POST",
+      body: JSON.stringify({ token, repo }),
+    }),
+
+  disconnectRepository: () => request<{ connected: boolean }>("/api/repo", { method: "DELETE" }),
+
   board: () => request<BoardData>("/api/board"),
 
   boardAction: (payload: Record<string, unknown>) =>

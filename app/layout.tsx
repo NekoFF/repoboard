@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
-import { getRepoHeader } from "@/lib/board-service";
-import { getAuthProvider } from "@/lib/github/auth-provider";
+import { getVerifiedRepository } from "@/lib/github/access";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "RepoBoard",
@@ -14,14 +15,13 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const header = getRepoHeader();
-  const token = await getAuthProvider().getToken();
-  const repo = header.name ? `${header.owner}/${header.name}` : null;
+  const verified = await getVerifiedRepository();
+  const repo = verified ? `${verified.owner}/${verified.name}` : null;
 
   return (
     <html lang="en">
       <body>
-        <AppShell repo={repo} connected={Boolean(token && repo)}>
+        <AppShell repo={repo} connected={Boolean(verified)}>
           {children}
         </AppShell>
       </body>

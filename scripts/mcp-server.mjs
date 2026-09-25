@@ -50,8 +50,29 @@ db.pragma("journal_mode = WAL");
 
 const now = () => Date.now();
 
+function configuredRepositoryId() {
+  let slug = process.env.GITHUB_REPO;
+  if (!slug) {
+    const localDir = path.join(process.cwd(), ".repoboard");
+    const credentials = path.join(
+      fs.existsSync(localDir) ? localDir : path.join(os.homedir(), ".repoboard"),
+      "credentials.json",
+    );
+    try {
+      slug = JSON.parse(fs.readFileSync(credentials, "utf8")).repo;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof slug !== "string" || !/^[^/\s]+\/[^/\s]+$/.test(slug)) return null;
+  return `repo_${slug.replace("/", "_")}`.toLowerCase();
+}
+
 function board() {
-  const repo = db.prepare("SELECT * FROM repositories LIMIT 1").get();
+  const repositoryId = configuredRepositoryId();
+  const repo = repositoryId
+    ? db.prepare("SELECT * FROM repositories WHERE id = ?").get(repositoryId)
+    : null;
   const b = repo
     ? db.prepare("SELECT * FROM boards WHERE repository_id = ?").get(repo.id)
     : null;
@@ -89,7 +110,8 @@ function resolveColumn(boardId, name) {
 }
 
 function cardOf(taskId) {
-  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
+  const { board: b } = requireBoard();
+  const task = db.prepare("SELECT * FROM tasks WHERE id = ? AND board_id = ?").get(taskId, b.id);
   if (!task) throw new Error(`No card with id ${taskId}`);
   return task;
 }

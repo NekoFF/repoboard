@@ -11,11 +11,15 @@ import {
   syncFromMarkdown,
 } from "@/lib/board-service";
 import { GitHubClient } from "@/lib/github/client";
+import { getVerifiedRepository } from "@/lib/github/access";
 import { parseMarkdown } from "@/lib/markdown/parser";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const data = getBoardData();
   if (!data.repository) {
     return NextResponse.json({ error: "Not connected" }, { status: 409 });
@@ -89,6 +93,9 @@ const bodySchema = z.discriminatedUnion("action", [
 ]);
 
 export async function POST(request: Request) {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const raw = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {

@@ -10,32 +10,26 @@ import {
   getAuthProvider,
   writeStoredCredentials,
 } from "@/lib/github/auth-provider";
-import { GitHubClient } from "@/lib/github/client";
+import { getVerifiedRepository, invalidateAccessCache } from "@/lib/github/access";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const identity = getRepoIdentity();
   const token = await getAuthProvider().getToken();
   const provider = getAuthProvider();
-
-  let live = null;
-  if (token && identity.configured) {
-    try {
-      const gh = await GitHubClient.create();
-      live = await gh.getRepo();
-    } catch (error) {
-      return NextResponse.json({
-        connected: false,
-        error: (error as Error).message,
-        authKind: provider.kind,
-        stored: identity.stored,
-      });
-    }
+  const live = await getVerifiedRepository();
+  if (!live) {
+    return NextResponse.json({
+      connected: false,
+      authKind: provider.kind,
+      authLabel: provider.label,
+      tokenSource: process.env.GITHUB_PAT ? "env" : token ? "file" : null,
+    });
   }
+  const identity = getRepoIdentity();
 
   return NextResponse.json({
-    connected: Boolean(token && identity.configured),
+    connected: true,
     authKind: provider.kind,
     authLabel: provider.label,
     tokenSource: process.env.GITHUB_PAT ? "env" : token ? "file" : null,
@@ -52,6 +46,9 @@ const connectSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (process.env.GITHUB_PAT || process.env.GITHUB_REPO) {
+    return NextResponse.json({ error: "This instance is configured through environment variables. Change those to switch repositories." }, { status: 409 });
+  }
   const body = await request.json().catch(() => null);
   const parsed = connectSchema.safeParse(body);
   if (!parsed.success) {
@@ -68,6 +65,7 @@ export async function POST(request: Request) {
       repo: parsed.data.repo,
       savedAt: new Date().toISOString(),
     });
+    invalidateAccessCache();
     return NextResponse.json({ connected: true, repo: summary });
   } catch (error) {
     return NextResponse.json(
@@ -78,6 +76,10 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
+  if (process.env.GITHUB_PAT || process.env.GITHUB_REPO) {
+    return NextResponse.json({ error: "This instance is configured through environment variables." }, { status: 409 });
+  }
   clearStoredCredentials();
+  invalidateAccessCache();
   return NextResponse.json({ connected: false });
 }

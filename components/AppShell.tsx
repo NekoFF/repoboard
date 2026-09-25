@@ -55,9 +55,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const [status, setStatus] = useState<ConnectionStatus>(connected ? "checking" : "disconnected");
+  const [status, setStatus] = useState<ConnectionStatus>(connected ? "connected" : "disconnected");
   const [check, setCheck] = useState(0);
-  const lastCheckAt = useRef(0);
+  const lastCheckAt = useRef(Date.now());
   const retry = useCallback(() => setCheck((value) => value + 1), []);
 
   useEffect(() => {
@@ -65,11 +65,15 @@ export function AppShell({
       setStatus("disconnected");
       return;
     }
+    if (check === 0) {
+      setStatus("connected");
+      return;
+    }
     let cancelled = false;
     // Keep the board mounted while refreshing an already verified connection.
     lastCheckAt.current = Date.now();
-    api.branches()
-      .then(() => { if (!cancelled) setStatus("connected"); })
+    api.connection()
+      .then((result) => { if (!cancelled) setStatus(result.connected ? "connected" : "error"); })
       .catch(() => { if (!cancelled) setStatus("error"); });
     return () => { cancelled = true; };
   }, [connected, check]);
@@ -77,7 +81,7 @@ export function AppShell({
   useEffect(() => {
     if (!connected) return;
     const recheckIfStale = () => {
-      if (document.visibilityState !== "visible" || Date.now() - lastCheckAt.current < 5 * 60_000) return;
+      if (document.visibilityState !== "visible" || Date.now() - lastCheckAt.current < 60_000) return;
       lastCheckAt.current = Date.now();
       retry();
     };

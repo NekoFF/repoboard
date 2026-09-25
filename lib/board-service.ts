@@ -17,7 +17,7 @@ import {
   tasks,
   workspaces,
 } from "@/db/schema";
-import { GitHubClient } from "@/lib/github/client";
+import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
@@ -42,6 +42,18 @@ import {
 } from "@/lib/markdown/sync";
 
 const WORKSPACE_ID = "ws_local";
+
+function configuredRepositoryId(): string | null {
+  const repo = getConfiguredRepo();
+  return repo ? `repo_${repo.owner}_${repo.name}`.toLowerCase() : null;
+}
+
+function activeRepository() {
+  const id = configuredRepositoryId();
+  return id
+    ? db.select().from(repositories).where(eq(repositories.id, id)).get()
+    : null;
+}
 
 /**
  * Minimal surface the sync pipeline needs from GitHub. Injecting it keeps the
@@ -194,7 +206,7 @@ export function ensureBootstrap(repo: {
 }
 
 export function getBoardData(): BoardData {
-  const repository = db.select().from(repositories).get();
+  const repository = activeRepository();
   if (!repository) {
     return {
       repository: null,
@@ -297,6 +309,16 @@ export function getBoardData(): BoardData {
         }
       : null,
   };
+}
+
+/** Used by route handlers for actions on cards that are not in the visible list (undo). */
+export function taskBelongsToBoard(taskId: string, boardId: string): boolean {
+  return Boolean(
+    db.select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.id, taskId), eq(tasks.boardId, boardId)))
+      .get(),
+  );
 }
 
 /** Next free number on this board; numbers are never reused. */
@@ -473,8 +495,10 @@ export function importIssues(args: {
 }): { created: number; skipped: number } {
   const linked = new Set(
     db
-      .select()
+      .select({ issueNumber: taskIssueLinks.issueNumber })
       .from(taskIssueLinks)
+      .innerJoin(tasks, eq(taskIssueLinks.taskId, tasks.id))
+      .where(eq(tasks.boardId, args.boardId))
       .all()
       .map((link) => link.issueNumber),
   );
@@ -991,6 +1015,14 @@ function writeCards(cards: BoardStateCard[]): void {
   if (!data.boardId) return;
   const columnByName = new Map(data.columns.map((c) => [c.name, c.id]));
 
+  // A remote board file must never reassign a card that belongs to another repo.
+  for (const card of cards) {
+    const existing = db.select({ boardId: tasks.boardId }).from(tasks).where(eq(tasks.id, card.id)).get();
+    if (existing && existing.boardId !== data.boardId) {
+      throw new Error("A card from another board has the same ID");
+    }
+  }
+
   for (const card of cards) {
     const columnId = columnByName.get(card.column) ?? data.columns[0]?.id;
     if (!columnId) continue;
@@ -1148,9 +1180,12 @@ export async function pushBoardState(
 }
 
 export function getActivity(limit = 50) {
+  const repositoryId = configuredRepositoryId();
+  if (!repositoryId) return [];
   return db
     .select()
     .from(activityEvents)
+    .where(eq(activityEvents.repositoryId, repositoryId))
     .orderBy(desc(activityEvents.createdAt))
     .limit(limit)
     .all()
@@ -1290,7 +1325,7 @@ export interface RepoHeader {
 }
 
 export function getRepoHeader(): RepoHeader {
-  const stored = db.select().from(repositories).get();
+  const stored = activeRepository();
   if (stored) {
     return {
       owner: stored.owner,
@@ -1313,12 +1348,17 @@ export function getRepoHeader(): RepoHeader {
  * was configured through the environment rather than the Settings form.
  * Safe to call on every request: it is a no-op once the row exists.
  */
-export async function ensureRepositoryRow(): Promise<void> {
-  if (db.select().from(repositories).get()) return;
-  if (!getConfiguredRepo()) return;
+export async function ensureRepositoryRow(
+  verified?: Pick<RepoSummary, "owner" | "name" | "defaultBranch" | "visibility">,
+): Promise<void> {
+  if (activeRepository()) return;
+  const configured = getConfiguredRepo();
+  if (!configured) return;
 
-  const gh = await GitHubClient.create();
-  const summary = await gh.getRepo();
+  const summary = verified ?? await (await GitHubClient.create()).getRepo();
+  if (summary.owner.toLowerCase() !== configured.owner.toLowerCase() || summary.name.toLowerCase() !== configured.name.toLowerCase()) {
+    throw new Error("The configured repository changed during verification");
+  }
   ensureBootstrap({
     owner: summary.owner,
     name: summary.name,
@@ -1329,7 +1369,7 @@ export async function ensureRepositoryRow(): Promise<void> {
 
 export function getRepoIdentity() {
   const configured = getConfiguredRepo();
-  const stored = db.select().from(repositories).get();
+  const stored = activeRepository();
   return {
     configured,
     stored: stored

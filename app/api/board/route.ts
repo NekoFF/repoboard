@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { GitHubClient } from "@/lib/github/client";
+import { getVerifiedRepository } from "@/lib/github/access";
 import {
   createTask,
   deleteTask,
@@ -8,6 +9,7 @@ import {
   importIssues,
   reorderColumn,
   restoreTask,
+  taskBelongsToBoard,
   boardStateStatus,
   pullBoardState,
   pushBoardState,
@@ -21,6 +23,9 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   return NextResponse.json(getBoardData());
 }
 
@@ -120,6 +125,9 @@ const bodySchema = z.discriminatedUnion("action", [
 ]);
 
 export async function POST(request: Request) {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const raw = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
@@ -138,6 +146,16 @@ export async function POST(request: Request) {
   }
 
   const body = parsed.data;
+  const columnIds = new Set(data.columns.map((column) => column.id));
+  const taskIds = new Set(data.tasks.map((task) => task.id));
+  const invalidTarget =
+    ((body.action === "create" || body.action === "import-issues" || body.action === "move" || body.action === "reorder") && !columnIds.has(body.columnId)) ||
+    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment") && !taskIds.has(body.taskId)) ||
+    (body.action === "restore" && !taskBelongsToBoard(body.taskId, data.boardId)) ||
+    (body.action === "reorder" && body.orderedIds.some((taskId) => !taskIds.has(taskId)));
+  if (invalidTarget) {
+    return NextResponse.json({ error: "Card or column not found" }, { status: 404 });
+  }
 
   switch (body.action) {
     case "create": {

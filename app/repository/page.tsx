@@ -1,6 +1,5 @@
 import { RepositoryScreen } from "@/components/RepositoryScreen";
-import { getBoardData, getRepoHeader } from "@/lib/board-service";
-import { getAuthProvider } from "@/lib/github/auth-provider";
+import { getPageContext } from "@/lib/page-context";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +11,7 @@ export default async function RepositoryPage({
 }: {
   searchParams: { tab?: string };
 }) {
-  const data = getBoardData();
-  const header = getRepoHeader();
-  const token = await getAuthProvider().getToken();
+  const { data, header, connected } = await getPageContext();
   const requested = searchParams.tab as Tab | undefined;
   const initialTab: Tab =
     requested && TABS.includes(requested) ? requested : "branches";
@@ -23,7 +20,7 @@ export default async function RepositoryPage({
     <RepositoryScreen
       data={data}
       header={header}
-      connected={Boolean(token && header.name)}
+      connected={connected}
       initialTab={initialTab}
     />
   );

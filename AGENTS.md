@@ -112,8 +112,7 @@ Rules while this table has two entries:
 
 Leave a line here instead of editing someone else's area. Delete it once done.
 
-- Backend: enforce a live, valid GitHub token for every non-Settings page and for `/api/board` (GET/POST), `/api/activity`, and `/api/markdown` (GET/POST); missing/revoked/expired tokens must return 401/403 without serializing cached board/repo data or allowing local mutations. The Settings page must pass only connection-form data while invalid, not `getBoardData()`. Hide cached repo/markdown metadata from `/api/repo` GET while invalid. `app/layout.tsx` must use that validated status instead of `Boolean(token && repo)`, with a short safe cache or fail-closed verification. Keep Settings connect/disconnect reachable. Expose connect/disconnect through `lib/client/api.ts` so `SettingsScreen` can stop calling `/api/repo` directly.
-- Backend: scope every SQLite board/header/identity/activity/sync read and write to the currently configured `owner/name`, never `db.select().from(repositories).get()` without a repository filter. The design database currently contains both `NekoFF/meridian-tv-browser` and `NekoFF/ESP32LN`, while credentials select ESP32LN; port 3001 incorrectly shows and edits the first repo's board. Preserve both repositories and their cards, and fail closed if the configured repo has no local row yet.
+- _(none)_
 
 ## Ideas worth taking later (for whoever does the visual work)
 

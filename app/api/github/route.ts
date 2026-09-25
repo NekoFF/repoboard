@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { GitHubClient, GitHubNotConfiguredError } from "@/lib/github/client";
+import { getVerifiedRepository } from "@/lib/github/access";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,9 @@ export const dynamic = "force-dynamic";
  * SQLite — GitHub stays the source of truth for git objects.
  */
 export async function GET(request: Request) {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const url = new URL(request.url);
   const resource = url.searchParams.get("resource") ?? "branches";
 

@@ -6,6 +6,7 @@ import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { TopBar } from "@/components/TopBar";
 import { useConnection } from "@/components/ConnectionState";
 import { useToast } from "@/components/ui";
+import { api } from "@/lib/client/api";
 
 export function SettingsScreen({
   data,
@@ -19,7 +20,6 @@ export function SettingsScreen({
   connected: boolean;
   authLabel: string;
   tokenSource: string | null;
-  repoSlug: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -37,16 +37,7 @@ export function SettingsScreen({
     setError(null);
     setResult(null);
     try {
-      const response = await fetch("/api/repo", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, repo }),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        setError(body.error ?? "Could not connect");
-        return;
-      }
+      const body = await api.connectRepository(token, repo);
       setResult(
         `Connected ${body.repo.owner}/${body.repo.name} · default branch ${body.repo.defaultBranch} · ${body.repo.visibility}`,
       );
@@ -67,9 +58,14 @@ export function SettingsScreen({
 
   const disconnect = async () => {
     setBusy(true);
-    await fetch("/api/repo", { method: "DELETE" });
-    setBusy(false);
-    router.refresh();
+    try {
+      await api.disconnectRepository();
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

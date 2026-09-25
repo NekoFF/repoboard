@@ -1,26 +1,23 @@
 import { SettingsScreen } from "@/components/SettingsScreen";
-import { getBoardData, getRepoHeader } from "@/lib/board-service";
-import { getAuthProvider, getConfiguredRepo } from "@/lib/github/auth-provider";
+import { getAuthProvider } from "@/lib/github/auth-provider";
+import { getPageContext } from "@/lib/page-context";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const data = getBoardData();
-  const header = getRepoHeader();
+  const { data, header, connected } = await getPageContext();
   const provider = getAuthProvider();
   const token = await provider.getToken();
-  const configured = getConfiguredRepo();
 
   return (
     <SettingsScreen
       data={data}
       header={header}
-      connected={Boolean(token && header.name)}
+      connected={connected}
       authLabel={provider.label}
       tokenSource={
         process.env.GITHUB_PAT ? "environment" : token ? "local file" : null
       }
-      repoSlug={configured ? `${configured.owner}/${configured.name}` : ""}
     />
   );
 }
