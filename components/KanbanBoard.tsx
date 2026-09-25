@@ -412,6 +412,7 @@ export function KanbanBoard({
       ...prev,
       {
         id: optimisticId,
+        number: null,
         columnId,
         title,
         description: null,

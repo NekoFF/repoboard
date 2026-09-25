@@ -49,6 +49,13 @@ export const tasks = sqliteTable("tasks", {
   // stable id embedded in markdown as <!-- rb:task_xxx -->, links a card
   // back to its Markdown line across syncs regardless of position/text edits
   markdownTaskId: text("markdown_task_id"),
+  // Short human reference (RB-12). Written in a commit message it lets the
+  // card find that commit — the one thing a board wired to git can do that a
+  // generic board cannot.
+  cardNumber: integer("card_number"),
+  // Deleting is reversible: the row stays so the undo toast has something to
+  // bring back, and the board filters these out.
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });

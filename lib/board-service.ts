@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -54,6 +54,8 @@ const defaultClientFactory: ClientFactory = () => GitHubClient.create();
 
 export interface BoardTask {
   id: string;
+  /** Short reference like 12, shown as RB-12 and usable in commit messages. */
+  number: number | null;
   columnId: string;
   title: string;
   description: string | null;
@@ -227,7 +229,7 @@ export function getBoardData(): BoardData {
   const rows = db
     .select()
     .from(tasks)
-    .where(eq(tasks.boardId, board.id))
+    .where(and(eq(tasks.boardId, board.id), isNull(tasks.deletedAt)))
     .orderBy(asc(tasks.position))
     .all();
 
@@ -260,6 +262,7 @@ export function getBoardData(): BoardData {
     })),
     tasks: rows.map((t) => ({
       id: t.id,
+      number: t.cardNumber,
       columnId: t.columnId,
       title: t.title,
       description: t.description,
@@ -285,6 +288,16 @@ export function getBoardData(): BoardData {
         }
       : null,
   };
+}
+
+/** Next free number on this board; numbers are never reused. */
+function nextCardNumber(boardId: string): number {
+  const row = db
+    .select({ max: sql<number>`coalesce(max(${tasks.cardNumber}), 0)` })
+    .from(tasks)
+    .where(eq(tasks.boardId, boardId))
+    .get();
+  return (row?.max ?? 0) + 1;
 }
 
 export function createTask(args: {
@@ -315,6 +328,7 @@ export function createTask(args: {
       dueDate: null,
       checklist: [],
       markdownTaskId: null,
+      cardNumber: nextCardNumber(args.boardId),
       createdAt: now(),
       updatedAt: now(),
     })
@@ -368,18 +382,19 @@ export function updateTask(
   }
 }
 
+/** Reversible by design — see restoreTask. Links and labels are kept. */
 export function deleteTask(taskId: string): void {
-  db.delete(taskLabels).where(eq(taskLabels.taskId, taskId)).run();
-  db.delete(taskBranchLinks).where(eq(taskBranchLinks.taskId, taskId)).run();
-  db.delete(taskCommitLinks).where(eq(taskCommitLinks.taskId, taskId)).run();
-  db.delete(taskPullRequestLinks)
-    .where(eq(taskPullRequestLinks.taskId, taskId))
+  db.update(tasks)
+    .set({ deletedAt: now(), updatedAt: now() })
+    .where(eq(tasks.id, taskId))
     .run();
-  db.delete(taskIssueLinks).where(eq(taskIssueLinks.taskId, taskId)).run();
-  db.delete(markdownTaskMappings)
-    .where(eq(markdownTaskMappings.taskId, taskId))
+}
+
+export function restoreTask(taskId: string): void {
+  db.update(tasks)
+    .set({ deletedAt: null, updatedAt: now() })
+    .where(eq(tasks.id, taskId))
     .run();
-  db.delete(tasks).where(eq(tasks.id, taskId)).run();
 }
 
 export function moveTaskLocally(
@@ -594,6 +609,7 @@ export async function syncFromMarkdown(
           dueDate: null,
           checklist: [],
           markdownTaskId: mdTask.id,
+          cardNumber: nextCardNumber(data.boardId!),
           createdAt: now(),
           updatedAt: now(),
         })

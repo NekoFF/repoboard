@@ -50,6 +50,7 @@ export function CardDetailPanel({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newItem, setNewItem] = useState("");
+  const [commentDraft, setCommentDraft] = useState("");
   const [labelDraft, setLabelDraft] = useState("");
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -161,8 +162,28 @@ export function CardDetailPanel({
 
   const remove = async () => {
     await api.boardAction({ action: "delete", taskId: task.id });
-    toast.push({ kind: "info", message: "Card deleted" });
+    // Deleting is reversible, so offer the way back instead of asking first.
+    toast.push({
+      kind: "info",
+      message: "Card deleted",
+      detail: draft.title,
+      action: {
+        label: "Undo",
+        run: async () => {
+          await api.boardAction({ action: "restore", taskId: task.id });
+          router.refresh();
+        },
+      },
+    });
     onDelete(task.id);
+  };
+
+  const comment = async () => {
+    const message = commentDraft.trim();
+    if (!message) return;
+    setCommentDraft("");
+    await api.boardAction({ action: "comment", taskId: task.id, message });
+    activity.reload();
   };
 
   const checklistDone = draft.checklist.filter((c) => c.done).length;
@@ -177,6 +198,14 @@ export function CardDetailPanel({
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface/95 px-5 py-3 backdrop-blur">
             <span className="rb-pill">{status}</span>
+          {draft.number !== null && (
+            <span
+              className="font-mono text-[11px] text-muted"
+              title="Mention this in a commit message to tie that commit to this card"
+            >
+              RB-{draft.number}
+            </span>
+          )}
             {draft.markdownTaskId && markdownPath && (
               <span className="rb-pill" title={`rb:${draft.markdownTaskId}`}>
                 {markdownPath}
@@ -587,27 +616,12 @@ export function CardDetailPanel({
             </Section>
 
             <div className="flex items-center gap-2 border-t border-border pt-4">
-              {confirmDelete ? (
-                <>
-                  <span className="text-[12px] text-ink">Delete this card?</span>
-                  <button className="rb-btn-primary" onClick={remove}>
-                    Delete
-                  </button>
-                  <button
-                    className="rb-btn"
-                    onClick={() => setConfirmDelete(false)}
-                  >
-                    Keep
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="rb-btn-ghost hover:text-danger-fg"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  Delete card
-                </button>
-              )}
+              <button
+                className="rb-btn-ghost hover:text-danger-fg"
+                onClick={remove}
+              >
+                Delete card
+              </button>
             </div>
           </div>
         </div>
@@ -616,6 +630,20 @@ export function CardDetailPanel({
           <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
             Activity
           </h3>
+
+          <textarea
+            rows={2}
+            className="rb-input resize-none text-[12px]"
+            placeholder="Leave a note…  (⌘↵ to post)"
+            value={commentDraft}
+            onChange={(event) => setCommentDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                comment();
+              }
+            }}
+          />
           {activity.loading && (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-8 w-full" />

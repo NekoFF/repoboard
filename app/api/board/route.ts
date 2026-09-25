@@ -7,6 +7,7 @@ import {
   getBoardData,
   importIssues,
   reorderColumn,
+  restoreTask,
   linkTask,
   logActivity,
   moveTaskLocally,
@@ -77,6 +78,17 @@ const reorderSchema = z.object({
   orderedIds: z.array(z.string()),
 });
 
+const restoreSchema = z.object({
+  action: z.literal("restore"),
+  taskId: z.string(),
+});
+
+const commentSchema = z.object({
+  action: z.literal("comment"),
+  taskId: z.string(),
+  message: z.string().min(1),
+});
+
 const importSchema = z.object({
   action: z.literal("import-issues"),
   numbers: z.array(z.number().int()),
@@ -92,6 +104,8 @@ const bodySchema = z.discriminatedUnion("action", [
   deleteSchema,
   reorderSchema,
   importSchema,
+  restoreSchema,
+  commentSchema,
 ]);
 
 export async function POST(request: Request) {
@@ -183,6 +197,25 @@ export async function POST(request: Request) {
         })),
       });
       return NextResponse.json(result);
+    }
+    case "restore": {
+      restoreTask(body.taskId);
+      logActivity({
+        repositoryId: data.repository.id,
+        taskId: body.taskId,
+        type: "card_restored",
+        message: "Card restored",
+      });
+      return NextResponse.json({ ok: true });
+    }
+    case "comment": {
+      logActivity({
+        repositoryId: data.repository.id,
+        taskId: body.taskId,
+        type: "comment",
+        message: body.message,
+      });
+      return NextResponse.json({ ok: true });
     }
     case "delete": {
       deleteTask(body.taskId);
