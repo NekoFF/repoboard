@@ -3,7 +3,8 @@
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
-import { Children, Fragment, isValidElement, useMemo, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, useMemo, useRef, useState, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
 import { resolveLink, type DocItem, type DocSection } from "@/lib/markdown/document";
 import type { ItemState } from "@/lib/markdown/format";
 import { DueLabel, Menu, MenuItem, PriorityIcon, ProgressBar, StatusIcon } from "@/components/ui";
@@ -38,6 +39,36 @@ function SmartLink({ href, children }: { href?: string; children?: ReactNode }) 
     <a href={href} target="_blank" rel="noreferrer noopener">
       {children}
     </a>
+  );
+}
+
+/** A code block with a copy button, so a command can go straight into a terminal. */
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const text = ref.current?.textContent?.replace(/\n$/, "") ?? "";
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* the browser refused; nothing to undo */
+    }
+  };
+  return (
+    <div className="group/code relative">
+      <pre ref={ref}>{children}</pre>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? "Copied" : "Copy"}
+        className="absolute right-2 top-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2 text-xs font-medium text-muted opacity-0 shadow-card transition-opacity duration-100 hover:text-ink focus-visible:opacity-100 group-hover/code:opacity-100 [@media(hover:none)]:opacity-100"
+      >
+        {copied ? <Check className="size-3.5 text-state-done" /> : <Copy className="size-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
   );
 }
 
@@ -213,6 +244,7 @@ export function Markdown({
         );
       },
       input: () => null,
+      pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
       table: ({ children }) => (
         <div className="overflow-x-auto">
           <table>{children}</table>
