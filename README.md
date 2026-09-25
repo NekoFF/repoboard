@@ -168,18 +168,28 @@ Done. Your branches, commits, pull requests and issues are now live in the app.
   board from a checklist in your repository.
 - Press **⌘K** (Mac) or **Ctrl+K** (Windows/Linux) to search everything.
 
-## Using it again later
+## Starting and stopping it
 
-The app only runs while that terminal window is open. To start it again:
+**The simplest way (macOS):** double-click **`RepoBoard — Start.command`** in
+the project folder. It starts the app and opens it in your browser. Closing
+that window stops it.
 
-1. Open a terminal in the RepoBoard folder (Step 3).
-2. Type `npm run dev`.
-3. Open <http://localhost:3000>.
+If it somehow keeps running in the background, double-click
+**`RepoBoard — Stop.command`**.
+
+**From a terminal:**
+
+```bash
+npm run dev     # start; Ctrl+C stops it
+npm run stop    # stop one that is still running in the background
+```
 
 You do not repeat `npm install`, and you do not create a new token. Your board
-is saved in a file called `repoboard.db` inside the folder.
+lives in `~/.repoboard/`, not in the app folder.
 
-To stop the app: click the terminal window and press **Ctrl+C**.
+**How to tell whether it is running:** open <http://localhost:3000>. A page
+means yes; "cannot connect" means no. The app only answers on your own
+computer — other devices on your network cannot reach it.
 
 ## Updating to a newer version
 
