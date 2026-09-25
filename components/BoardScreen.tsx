@@ -6,8 +6,9 @@ import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { TopBar } from "@/components/TopBar";
 import { ImportIssuesDialog } from "@/components/ImportIssuesDialog";
+import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
 import { Spinner, useToast } from "@/components/ui";
-import { api } from "@/lib/client/api";
+import { api, useResource } from "@/lib/client/api";
 
 const displayLabel = (label: string) => label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
 
@@ -31,6 +32,26 @@ export function BoardScreen({
   const filterRef = useRef<HTMLDivElement>(null);
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // What the board says that the markdown file does not say yet. Moves pile up
+  // here instead of committing one at a time.
+  const pending = useResource(api.pending, [], {
+    enabled: connected && Boolean(data.markdownSource),
+  });
+
+  // How far the board has drifted from the copy stored in the repository.
+  const boardState = useResource(api.boardStatus, [], { enabled: connected });
+
+  useEffect(() => {
+    const onChanged = () => {
+      pending.reload();
+      boardState.reload();
+    };
+    window.addEventListener("rb:pending-changed", onChanged);
+    return () => window.removeEventListener("rb:pending-changed", onChanged);
+  }, [pending, boardState]);
 
   const labels = useMemo(
     () =>
@@ -106,6 +127,8 @@ export function BoardScreen({
     }
     setSyncing(true);
     try {
+      // Take the repository's copy of the board first, then the roadmap file.
+      await api.boardPull().catch(() => null);
       const result = await api.markdownAction<{
         created: number;
         updated: number;
@@ -121,6 +144,7 @@ export function BoardScreen({
             ? ` · ${result.idsAssigned} task id(s) written back`
             : ""),
       });
+      boardState.reload();
       router.refresh();
     } catch (error) {
       toast.push({
@@ -156,6 +180,25 @@ export function BoardScreen({
           <button className="rb-btn" onClick={sync} disabled={syncing} title="Sync markdown (s)">
             {syncing && <Spinner />}{syncing ? "Syncing" : "Sync markdown"}
           </button>
+          {(boardState.data?.changes.length ?? 0) > 0 && (
+            <button className="rb-btn" disabled={saving} title="Commit board changes to GitHub" onClick={async () => {
+              setSaving(true);
+              try {
+                const result = await api.boardPush();
+                toast.push({ kind: "success", message: "Board saved to GitHub", detail: `${result.changes.length} changes committed` });
+                boardState.reload();
+              } catch (error) {
+                toast.push({ kind: "error", message: "Could not save the board", detail: (error as Error).message });
+              } finally {
+                setSaving(false);
+              }
+            }}>{saving && <Spinner />}Save board ({boardState.data!.changes.length})</button>
+          )}
+          {(pending.data?.moves.length ?? 0) > 0 && (
+            <button className="rb-btn border-warn-border bg-warn-bg text-warn-fg" onClick={() => setCommitting(true)} title="Review queued markdown moves">
+              {pending.data!.moves.length} to commit
+            </button>
+          )}
           <button className="rb-btn-primary" onClick={() => window.dispatchEvent(new CustomEvent("rb:new-card"))}>
             <span aria-hidden>+</span> New card
           </button>
@@ -227,6 +270,18 @@ export function BoardScreen({
           />
         )}
       </div>
+
+      {committing && (
+        <MarkdownWriteDialog
+          all
+          onDiscard={() => setCommitting(false)}
+          onDone={() => {
+            setCommitting(false);
+            pending.reload();
+            router.refresh();
+          }}
+        />
+      )}
 
       {importing && data.columns[0] && (
         <ImportIssuesDialog

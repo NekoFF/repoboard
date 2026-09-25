@@ -54,6 +54,15 @@ export function TaskCardBody({ task }: { task: BoardTask }) {
       {task.issues.length > 0 && <span className="text-[10.5px] font-medium text-muted">Issue #{task.issues[0]}</span>}
       <p className="text-[13px] font-medium leading-[1.4] text-ink">{task.title}</p>
 
+      {task.number !== null && (
+        <span
+          className="font-mono text-[10.5px] text-muted/70"
+          title="Write this in a commit message and the card will find that commit"
+        >
+          RB-{task.number}
+        </span>
+      )}
+
       {task.labels.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {task.labels.slice(0, 2).map((label) => (

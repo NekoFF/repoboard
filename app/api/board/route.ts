@@ -7,6 +7,10 @@ import {
   getBoardData,
   importIssues,
   reorderColumn,
+  restoreTask,
+  boardStateStatus,
+  pullBoardState,
+  pushBoardState,
   linkTask,
   logActivity,
   moveTaskLocally,
@@ -77,6 +81,22 @@ const reorderSchema = z.object({
   orderedIds: z.array(z.string()),
 });
 
+const restoreSchema = z.object({
+  action: z.literal("restore"),
+  taskId: z.string(),
+});
+
+const commentSchema = z.object({
+  action: z.literal("comment"),
+  taskId: z.string(),
+  message: z.string().min(1),
+});
+
+// Literal per option: a discriminated union needs a literal discriminator.
+const boardStatusSchema = z.object({ action: z.literal("board-status") });
+const boardPullSchema = z.object({ action: z.literal("board-pull") });
+const boardPushSchema = z.object({ action: z.literal("board-push") });
+
 const importSchema = z.object({
   action: z.literal("import-issues"),
   numbers: z.array(z.number().int()),
@@ -92,6 +112,11 @@ const bodySchema = z.discriminatedUnion("action", [
   deleteSchema,
   reorderSchema,
   importSchema,
+  restoreSchema,
+  commentSchema,
+  boardStatusSchema,
+  boardPullSchema,
+  boardPushSchema,
 ]);
 
 export async function POST(request: Request) {
@@ -183,6 +208,31 @@ export async function POST(request: Request) {
         })),
       });
       return NextResponse.json(result);
+    }
+    case "board-status":
+      return NextResponse.json(await boardStateStatus());
+    case "board-pull":
+      return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
+    case "board-push":
+      return NextResponse.json(await pushBoardState());
+    case "restore": {
+      restoreTask(body.taskId);
+      logActivity({
+        repositoryId: data.repository.id,
+        taskId: body.taskId,
+        type: "card_restored",
+        message: "Card restored",
+      });
+      return NextResponse.json({ ok: true });
+    }
+    case "comment": {
+      logActivity({
+        repositoryId: data.repository.id,
+        taskId: body.taskId,
+        type: "comment",
+        message: body.message,
+      });
+      return NextResponse.json({ ok: true });
     }
     case "delete": {
       deleteTask(body.taskId);

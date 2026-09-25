@@ -326,18 +326,18 @@ export function KanbanBoard({
         const heading = data.columns.find((c) => c.id === targetColumnId)?.name;
         const from = data.columns.find((c) => c.id === original.columnId)?.name;
 
-        if (original.markdownTaskId && heading) {
-          setPendingWrite({
-            taskId,
-            targetHeading: heading,
-            previousColumnId: original.columnId,
-          });
-        } else {
-          toast.push({
-            kind: "success",
-            message: `Moved to ${heading}`,
-            detail: from ? `from ${from}` : undefined,
-          });
+        toast.push({
+          kind: "success",
+          message: `Moved to ${heading}`,
+          detail: original.markdownTaskId
+            ? "Queued for the next commit to the markdown file"
+            : from
+              ? `from ${from}`
+              : undefined,
+        });
+        if (original.markdownTaskId) {
+          // Let the board header refresh its "changes not in the file" count.
+          window.dispatchEvent(new CustomEvent("rb:pending-changed"));
         }
       }
       router.refresh();
@@ -424,6 +424,7 @@ export function KanbanBoard({
       ...prev,
       {
         id: optimisticId,
+        number: null,
         columnId,
         title,
         description: null,

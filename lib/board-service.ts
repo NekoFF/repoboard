@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -26,6 +26,15 @@ import {
   parseMarkdown,
 } from "@/lib/markdown/parser";
 import {
+  BOARD_STATE_PATH,
+  describeChanges,
+  mergeBoardState,
+  parseBoardState,
+  serialiseBoardState,
+  type BoardState,
+  type BoardStateCard,
+} from "@/lib/board-state";
+import {
   buildDiff,
   checkWriteSafety,
   commitMessageForMove,
@@ -43,7 +52,7 @@ export interface MarkdownGitHub {
   putFile(args: {
     path: string;
     content: string;
-    expectedSha: string;
+    expectedSha?: string;
     message: string;
   }): Promise<{ commitSha: string; contentSha: string }>;
 }
@@ -54,6 +63,8 @@ const defaultClientFactory: ClientFactory = () => GitHubClient.create();
 
 export interface BoardTask {
   id: string;
+  /** Short reference like 12, shown as RB-12 and usable in commit messages. */
+  number: number | null;
   columnId: string;
   title: string;
   description: string | null;
@@ -227,7 +238,7 @@ export function getBoardData(): BoardData {
   const rows = db
     .select()
     .from(tasks)
-    .where(eq(tasks.boardId, board.id))
+    .where(and(eq(tasks.boardId, board.id), isNull(tasks.deletedAt)))
     .orderBy(asc(tasks.position))
     .all();
 
@@ -260,6 +271,7 @@ export function getBoardData(): BoardData {
     })),
     tasks: rows.map((t) => ({
       id: t.id,
+      number: t.cardNumber,
       columnId: t.columnId,
       title: t.title,
       description: t.description,
@@ -285,6 +297,16 @@ export function getBoardData(): BoardData {
         }
       : null,
   };
+}
+
+/** Next free number on this board; numbers are never reused. */
+function nextCardNumber(boardId: string): number {
+  const row = db
+    .select({ max: sql<number>`coalesce(max(${tasks.cardNumber}), 0)` })
+    .from(tasks)
+    .where(eq(tasks.boardId, boardId))
+    .get();
+  return (row?.max ?? 0) + 1;
 }
 
 export function createTask(args: {
@@ -315,6 +337,7 @@ export function createTask(args: {
       dueDate: null,
       checklist: [],
       markdownTaskId: null,
+      cardNumber: nextCardNumber(args.boardId),
       createdAt: now(),
       updatedAt: now(),
     })
@@ -368,18 +391,19 @@ export function updateTask(
   }
 }
 
+/** Reversible by design — see restoreTask. Links and labels are kept. */
 export function deleteTask(taskId: string): void {
-  db.delete(taskLabels).where(eq(taskLabels.taskId, taskId)).run();
-  db.delete(taskBranchLinks).where(eq(taskBranchLinks.taskId, taskId)).run();
-  db.delete(taskCommitLinks).where(eq(taskCommitLinks.taskId, taskId)).run();
-  db.delete(taskPullRequestLinks)
-    .where(eq(taskPullRequestLinks.taskId, taskId))
+  db.update(tasks)
+    .set({ deletedAt: now(), updatedAt: now() })
+    .where(eq(tasks.id, taskId))
     .run();
-  db.delete(taskIssueLinks).where(eq(taskIssueLinks.taskId, taskId)).run();
-  db.delete(markdownTaskMappings)
-    .where(eq(markdownTaskMappings.taskId, taskId))
+}
+
+export function restoreTask(taskId: string): void {
+  db.update(tasks)
+    .set({ deletedAt: null, updatedAt: now() })
+    .where(eq(tasks.id, taskId))
     .run();
-  db.delete(tasks).where(eq(tasks.id, taskId)).run();
 }
 
 export function moveTaskLocally(
@@ -594,6 +618,7 @@ export async function syncFromMarkdown(
           dueDate: null,
           checklist: [],
           markdownTaskId: mdTask.id,
+          cardNumber: nextCardNumber(data.boardId!),
           createdAt: now(),
           updatedAt: now(),
         })
@@ -653,6 +678,154 @@ export interface PendingChange {
     currentSha: string;
     remoteContent: string;
   };
+}
+
+export interface PendingMove {
+  taskId: string;
+  markdownTaskId: string;
+  title: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * Everything the board says that the markdown file does not say yet.
+ *
+ * Moves accumulate instead of committing one at a time: dragging five cards
+ * should be one commit a human reviewed once, not five interruptions and five
+ * lines of history.
+ */
+export async function pendingMarkdownMoves(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ moves: PendingMove[]; baseSha: string; conflict: boolean } | null> {
+  const data = getBoardData();
+  if (!data.repository || !data.markdownSource) return null;
+
+  const linked = data.tasks.filter((t) => t.markdownTaskId);
+  if (linked.length === 0) {
+    return { moves: [], baseSha: "", conflict: false };
+  }
+
+  const gh = await clientFactory();
+  const file = await gh.getFile(data.markdownSource.path);
+  const parsed = parseMarkdown(file.content);
+  const columnById = new Map(data.columns.map((c) => [c.id, c.name]));
+
+  const moves: PendingMove[] = [];
+  for (const task of linked) {
+    const inFile = parsed.tasks.find((t) => t.id === task.markdownTaskId);
+    if (!inFile) continue;
+    const boardColumn = columnById.get(task.columnId);
+    if (boardColumn && boardColumn !== inFile.heading) {
+      moves.push({
+        taskId: task.id,
+        markdownTaskId: task.markdownTaskId!,
+        title: task.title,
+        from: inFile.heading,
+        to: boardColumn,
+      });
+    }
+  }
+
+  const safety = checkWriteSafety(data.markdownSource.lastKnownSha, file.sha);
+  return { moves, baseSha: file.sha, conflict: !safety.ok };
+}
+
+/** One preview and one commit for every pending move at once. */
+export async function previewAllPending(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<PendingChange | null> {
+  const data = getBoardData();
+  if (!data.repository || !data.markdownSource) return null;
+
+  const pending = await pendingMarkdownMoves(clientFactory);
+  if (!pending || pending.moves.length === 0) return null;
+
+  const gh = await clientFactory();
+  const file = await gh.getFile(data.markdownSource.path);
+
+  let content = file.content;
+  const summaries: string[] = [];
+  for (const move of pending.moves) {
+    const result = moveTaskInMarkdown(content, move.markdownTaskId, move.to);
+    if (result.changed) {
+      content = result.content;
+      summaries.push(`${move.title} → ${move.to}`);
+    }
+  }
+
+  const summary =
+    pending.moves.length === 1
+      ? `Move "${pending.moves[0].title}" to ${pending.moves[0].to}`
+      : `Update ${data.markdownSource.path}: ${summaries.length} task(s) moved`;
+
+  return {
+    taskId: "",
+    markdownTaskId: "",
+    targetHeading: "",
+    summary,
+    changedSomething: summaries.length > 0,
+    diff: buildDiff(file.content, content),
+    before: file.content,
+    after: content,
+    baseSha: file.sha,
+    conflict: pending.conflict
+      ? {
+          expectedSha: data.markdownSource.lastKnownSha,
+          currentSha: file.sha,
+          remoteContent: file.content,
+        }
+      : null,
+  };
+}
+
+export async function commitAllPending(
+  args: { expectedSha: string; force?: boolean },
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; contentSha: string; summary: string }> {
+  const data = getBoardData();
+  if (!data.repository || !data.markdownSource) {
+    throw new Error("No markdown source configured");
+  }
+
+  const gh = await clientFactory();
+  const file = await gh.getFile(data.markdownSource.path);
+
+  if (!args.force && file.sha !== args.expectedSha) {
+    logActivity({
+      repositoryId: data.repository.id,
+      type: "conflict_detected",
+      message: `Remote ${data.markdownSource.path} changed (${args.expectedSha} → ${file.sha})`,
+    });
+    const error = new Error("Remote file changed since preview");
+    (error as Error & { code?: string }).code = "CONFLICT";
+    throw error;
+  }
+
+  const preview = await previewAllPending(clientFactory);
+  if (!preview || !preview.changedSomething) {
+    return { commitSha: "", contentSha: file.sha, summary: "Nothing to commit" };
+  }
+
+  const written = await gh.putFile({
+    path: data.markdownSource.path,
+    content: preview.after,
+    expectedSha: file.sha,
+    message: commitMessageForMove(preview.summary),
+  });
+
+  db.update(markdownSources)
+    .set({ lastKnownSha: written.contentSha })
+    .where(eq(markdownSources.id, data.markdownSource.id))
+    .run();
+
+  logActivity({
+    repositoryId: data.repository.id,
+    type: "markdown_changed",
+    message: commitMessageForMove(preview.summary),
+  });
+
+  return { ...written, summary: preview.summary };
 }
 
 /**
@@ -769,6 +942,209 @@ export async function commitMarkdownMove(
   });
 
   return { ...written, summary: moved.summary };
+}
+
+/* ------------------------------------------- the board as a repository file -- */
+
+function localBoardState(): BoardState {
+  const data = getBoardData();
+  const columnById = new Map(data.columns.map((c) => [c.id, c.name]));
+
+  // Deleted cards are included so the deletion travels; the board filters them.
+  const rows = db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.boardId, data.boardId ?? ""))
+    .all();
+
+  const labels = db.select().from(taskLabels).all();
+  const branches = db.select().from(taskBranchLinks).all();
+  const prs = db.select().from(taskPullRequestLinks).all();
+  const issues = db.select().from(taskIssueLinks).all();
+
+  return {
+    version: 1,
+    columns: data.columns.map((c) => c.name),
+    cards: rows.map((t) => ({
+      id: t.id,
+      number: t.cardNumber,
+      column: columnById.get(t.columnId) ?? data.columns[0]?.name ?? "Todo",
+      position: t.position,
+      title: t.title,
+      description: t.description,
+      assignee: t.assignee,
+      dueDate: t.dueDate?.getTime() ?? null,
+      checklist: t.checklist ?? [],
+      labels: labels.filter((l) => l.taskId === t.id).map((l) => l.label),
+      branches: branches.filter((b) => b.taskId === t.id).map((b) => b.branchName),
+      pullRequests: prs.filter((p) => p.taskId === t.id).map((p) => p.prNumber),
+      issues: issues.filter((i) => i.taskId === t.id).map((i) => i.issueNumber),
+      markdownTaskId: t.markdownTaskId,
+      updatedAt: t.updatedAt.getTime(),
+      deletedAt: t.deletedAt?.getTime() ?? null,
+    })),
+  };
+}
+
+function writeCards(cards: BoardStateCard[]): void {
+  const data = getBoardData();
+  if (!data.boardId) return;
+  const columnByName = new Map(data.columns.map((c) => [c.name, c.id]));
+
+  for (const card of cards) {
+    const columnId = columnByName.get(card.column) ?? data.columns[0]?.id;
+    if (!columnId) continue;
+
+    const existing = db.select().from(tasks).where(eq(tasks.id, card.id)).get();
+    const values = {
+      boardId: data.boardId,
+      columnId,
+      position: card.position,
+      title: card.title,
+      description: card.description,
+      assignee: card.assignee,
+      dueDate: card.dueDate ? new Date(card.dueDate) : null,
+      checklist: card.checklist,
+      markdownTaskId: card.markdownTaskId,
+      cardNumber: card.number,
+      updatedAt: new Date(card.updatedAt),
+      deletedAt: card.deletedAt ? new Date(card.deletedAt) : null,
+    };
+
+    if (existing) {
+      db.update(tasks).set(values).where(eq(tasks.id, card.id)).run();
+    } else {
+      db.insert(tasks)
+        .values({ id: card.id, createdAt: new Date(card.updatedAt), ...values })
+        .run();
+    }
+
+    db.delete(taskLabels).where(eq(taskLabels.taskId, card.id)).run();
+    for (const label of card.labels) {
+      db.insert(taskLabels).values({ id: randomUUID(), taskId: card.id, label }).run();
+    }
+    db.delete(taskBranchLinks).where(eq(taskBranchLinks.taskId, card.id)).run();
+    for (const branch of card.branches) {
+      db.insert(taskBranchLinks)
+        .values({ id: randomUUID(), taskId: card.id, branchName: branch })
+        .run();
+    }
+    db.delete(taskPullRequestLinks)
+      .where(eq(taskPullRequestLinks.taskId, card.id))
+      .run();
+    for (const pr of card.pullRequests) {
+      db.insert(taskPullRequestLinks)
+        .values({ id: randomUUID(), taskId: card.id, prNumber: pr })
+        .run();
+    }
+    db.delete(taskIssueLinks).where(eq(taskIssueLinks.taskId, card.id)).run();
+    for (const issue of card.issues) {
+      db.insert(taskIssueLinks)
+        .values({ id: randomUUID(), taskId: card.id, issueNumber: issue })
+        .run();
+    }
+  }
+}
+
+export interface BoardStateStatus {
+  tracked: boolean;
+  changes: string[];
+  sha: string | null;
+}
+
+/** What pushing the board would change in the repository, in words. */
+export async function boardStateStatus(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<BoardStateStatus> {
+  const gh = await clientFactory();
+  let remoteCards: BoardStateCard[] = [];
+  let sha: string | null = null;
+  let tracked = false;
+
+  try {
+    const file = await gh.getFile(BOARD_STATE_PATH);
+    sha = file.sha;
+    tracked = true;
+    remoteCards = parseBoardState(file.content)?.cards ?? [];
+  } catch {
+    // Not in the repository yet — the first push creates it.
+  }
+
+  return {
+    tracked,
+    sha,
+    changes: describeChanges(localBoardState().cards, remoteCards),
+  };
+}
+
+/** Repository → this machine. Newer edits win per card. */
+export async function pullBoardState(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ added: number; updated: number } | null> {
+  const data = getBoardData();
+  if (!data.repository) return null;
+
+  const gh = await clientFactory();
+  let remote: BoardState | null = null;
+  try {
+    remote = parseBoardState((await gh.getFile(BOARD_STATE_PATH)).content);
+  } catch {
+    return null;
+  }
+  if (!remote) return null;
+
+  const merged = mergeBoardState(localBoardState().cards, remote.cards);
+  writeCards(merged.cards);
+
+  if (merged.added || merged.updated) {
+    logActivity({
+      repositoryId: data.repository.id,
+      type: "board_pulled",
+      message: `Board pulled from GitHub: ${merged.added} new, ${merged.updated} updated`,
+    });
+  }
+  return { added: merged.added, updated: merged.updated };
+}
+
+/** This machine → repository, merging first so a colleague's newer edit survives. */
+export async function pushBoardState(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; changes: string[] }> {
+  const data = getBoardData();
+  if (!data.repository) throw new Error("Not connected");
+
+  const gh = await clientFactory();
+  let remoteCards: BoardStateCard[] = [];
+  let sha: string | undefined;
+  try {
+    const file = await gh.getFile(BOARD_STATE_PATH);
+    sha = file.sha;
+    remoteCards = parseBoardState(file.content)?.cards ?? [];
+  } catch {
+    /* first push creates the file */
+  }
+
+  const local = localBoardState();
+  const changes = describeChanges(local.cards, remoteCards);
+  if (changes.length === 0) return { commitSha: "", changes: [] };
+
+  const merged = mergeBoardState(local.cards, remoteCards);
+  writeCards(merged.cards);
+
+  const written = await gh.putFile({
+    path: BOARD_STATE_PATH,
+    content: serialiseBoardState({ ...local, cards: merged.cards }),
+    expectedSha: sha,
+    message: `RepoBoard: update board (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+  });
+
+  logActivity({
+    repositoryId: data.repository.id,
+    type: "board_pushed",
+    message: `Board pushed: ${changes.slice(0, 3).join("; ")}${changes.length > 3 ? "…" : ""}`,
+  });
+
+  return { commitSha: written.commitSha, changes };
 }
 
 export function getActivity(limit = 50) {

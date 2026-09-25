@@ -104,6 +104,45 @@ export const api = {
       body: JSON.stringify({ action: "preview", taskId, targetHeading }),
     }),
 
+  boardStatus: () =>
+    request<{ tracked: boolean; changes: string[]; sha: string | null }>(
+      "/api/board",
+      { method: "POST", body: JSON.stringify({ action: "board-status" }) },
+    ),
+
+  boardPush: () =>
+    request<{ commitSha: string; changes: string[] }>("/api/board", {
+      method: "POST",
+      body: JSON.stringify({ action: "board-push" }),
+    }),
+
+  boardPull: () =>
+    request<{ added: number; updated: number }>("/api/board", {
+      method: "POST",
+      body: JSON.stringify({ action: "board-pull" }),
+    }),
+
+  pending: () =>
+    request<{
+      moves: {
+        taskId: string;
+        title: string;
+        from: string;
+        to: string;
+      }[];
+      baseSha: string;
+      conflict: boolean;
+    }>("/api/markdown", {
+      method: "POST",
+      body: JSON.stringify({ action: "pending" }),
+    }),
+
+  previewAll: () =>
+    request<PendingChange>("/api/markdown", {
+      method: "POST",
+      body: JSON.stringify({ action: "preview-all" }),
+    }),
+
   importIssues: (numbers: number[], columnId: string) =>
     request<{ created: number; skipped: number }>("/api/board", {
       method: "POST",

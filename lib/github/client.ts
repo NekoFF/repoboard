@@ -306,7 +306,8 @@ export class GitHubClient {
   async putFile(args: {
     path: string;
     content: string;
-    expectedSha: string;
+    /** Omitted when creating a file that does not exist yet. */
+    expectedSha?: string;
     message: string;
     branch?: string;
   }): Promise<{ commitSha: string; contentSha: string }> {
@@ -316,7 +317,7 @@ export class GitHubClient {
       path: args.path,
       message: args.message,
       content: Buffer.from(args.content, "utf8").toString("base64"),
-      sha: args.expectedSha,
+      sha: args.expectedSha ? args.expectedSha : undefined,
       branch: args.branch,
     });
     return {
