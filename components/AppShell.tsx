@@ -190,15 +190,14 @@ export function AppShell({
                 // floating over it, tools in a pill on the right edge.
                 <div className="rb-desk flex h-[100dvh] w-full flex-col overflow-hidden md:flex-row md:p-3">
                   <MobileBar onSearch={() => openPalette()} />
-                  <div className="rb-panel-back rb-glass hidden pr-6 md:flex">
+                  {/* The navigation reaches well under the main panel, so its own
+                      rounded corner is hidden and the two top edges read as one. */}
+                  <div className="rb-panel-back rb-glass hidden pr-[60px] md:flex">
                     <Suspense>
                       <Sidebar />
                     </Suspense>
                   </div>
-                  {/* Fully rounded, and a little shorter than the navigation
-                      behind it, so its corners show the panel underneath
-                      instead of meeting its edge in a step. */}
-                  <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-6 md:my-2.5">
+<div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-[60px]">
                     <main className="rb-page relative flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
                     <ToolRail />
                   </div>

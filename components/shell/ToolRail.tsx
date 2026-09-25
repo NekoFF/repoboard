@@ -42,11 +42,9 @@ export function ToolRail() {
   const { resolved, toggle } = useTheme();
 
   return (
-    // The gutter shades softly towards the panel's edge; the pill sits in it.
-    <div className="rb-rail-gutter relative hidden w-[60px] shrink-0 lg:flex">
     <aside
       aria-label="Tools"
-      className="rb-rail relative z-[1] my-2.5 ml-1 mr-2.5 flex w-11 flex-col items-center gap-1 rounded-full py-2"
+      className="rb-rail my-2.5 ml-1 mr-2.5 hidden w-11 shrink-0 flex-col items-center gap-1 rounded-full py-2 lg:flex"
     >
       <RailButton label="Search and commands" shortcut={`${modKey()}K`} onClick={() => openPalette()}>
         <Search className="size-4" />
@@ -65,6 +63,5 @@ export function ToolRail() {
         {resolved === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
       </RailButton>
     </aside>
-    </div>
   );
 }

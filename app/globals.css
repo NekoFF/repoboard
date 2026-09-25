@@ -24,7 +24,7 @@
     /* The desk the panels sit on, the recessed navigation panel, the tool rail. */
     --desk: 241 242 245;
     --panel-back: 250 250 252;
-    --rail: 224 227 232;
+    --rail: 244 245 248;
     --accent: 72 118 224;
     --on-accent: 255 255 255;
     /* Glass: the tint, how much of it, and the lit edge along the top. */
@@ -62,7 +62,7 @@
     --hover: 36 38 44;
     --desk: 15 16 19;
     --panel-back: 23 24 28;
-    --rail: 40 43 49;
+    --rail: 38 40 46;
     --accent: 116 154 245;
     --on-accent: 16 20 32;
     --glass: 34 36 42;
@@ -278,20 +278,15 @@
     backdrop-filter: blur(3px);
   }
 
-  /* The tool rail: a soft shade that deepens towards the panel's right edge,
-     and a solid pill set into it. */
-  .rb-rail-gutter::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 0 -72px;
-    pointer-events: none;
-    background: linear-gradient(to right, rgb(var(--ink) / 0), rgb(var(--ink) / 0.045));
-  }
+  /* The tool rail: a pill that sits on the panel, lit along its top edge and
+     casting its shadow outwards. */
   .rb-rail {
     background-color: rgb(var(--rail));
     box-shadow:
-      inset 0 1px 2px rgb(var(--shadow) / 0.06),
-      0 0 0 1px rgb(var(--ink) / 0.03);
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      0 0 0 1px rgb(var(--ink) / 0.05),
+      0 1px 2px rgb(var(--shadow) / 0.06),
+      0 8px 22px -10px rgb(var(--shadow) / 0.22);
   }
 
   /* Glass laid over content inside a panel: lighter, no drop shadow. */

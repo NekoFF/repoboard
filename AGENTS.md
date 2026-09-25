@@ -150,10 +150,10 @@ work surfaces (Board, Code) use the full width.
 
 Layout: panels on a desk. Navigation is glass (`rb-glass`)
 over a dotted desk with two soft colour washes; the main panel is opaque and
-fully rounded, slightly shorter than the navigation behind it so its corners
-reveal that panel instead of meeting its edge in a step. The tool rail is a
-solid pill inside the main panel's right edge, in a gutter that shades softly
-towards the edge. Page
+fully rounded, level with the navigation, and the navigation reaches 60px
+under it so its own rounded corner is hidden and the top edges read as one.
+The tool rail is a raised pill inside the main panel's right edge, lit on top
+with its shadow falling outwards. Page
 headers are glass bars floating over the page (`PageHeader` is absolute; the
 scroll area after it adds `rb-under-header`), with no rules under them.
 Dialogs, sheets, the command menu, menus and toasts use `rb-glass-strong` /
