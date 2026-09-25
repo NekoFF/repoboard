@@ -31,12 +31,14 @@ import {
 } from "@/lib/markdown/parser";
 import {
   BOARD_STATE_PATH,
-  describeChanges,
-  mergeBoardState,
+  describeFileChanges,
+  mergeBoardFile,
   parseBoardState,
   serialiseBoardState,
   type BoardState,
   type BoardStateCard,
+  type BoardStateMeta,
+  type BoardStateMilestone,
 } from "@/lib/board-state";
 import {
   buildDiff,
@@ -380,7 +382,8 @@ export function getBoardData(boardId?: string | null): BoardData {
     .all();
 
   const links = linksFor(rows.map((t) => t.id));
-  const source = boardSource(repository.id);
+  // Only the main board follows the markdown file.
+  const source = board.id === primaryBoardId(repository.id) ? boardSource(repository.id) : null;
   const goals = db
     .select()
     .from(milestones)
@@ -529,6 +532,7 @@ export function createBoard(args: {
       owner: args.owner ?? null,
       position,
       createdAt: now(),
+      updatedAt: now(),
     })
     .run();
   DEFAULT_COLUMN_HEADINGS.forEach((name, index) => {
@@ -557,7 +561,7 @@ export function updateBoard(
     if (patch[key] !== undefined) values[key] = patch[key];
   }
   if (Object.keys(values).length === 0) return;
-  db.update(boards).set(values).where(eq(boards.id, boardId)).run();
+  db.update(boards).set({ ...values, updatedAt: now() }).where(eq(boards.id, boardId)).run();
   if (patch.name && patch.name !== board.name) {
     logActivity({ repositoryId: repository.id, type: "board_updated", message: `renamed the board ${board.name} to ${patch.name}` });
   }
@@ -567,7 +571,7 @@ export function updateBoard(
 export function archiveBoard(boardId: string): void {
   const { repository, board } = ownBoard(boardId);
   if (board.id === primaryBoardId(repository.id)) throw new Error("The primary board cannot be archived");
-  db.update(boards).set({ archivedAt: now() }).where(eq(boards.id, boardId)).run();
+  db.update(boards).set({ archivedAt: now(), updatedAt: now() }).where(eq(boards.id, boardId)).run();
   logActivity({ repositoryId: repository.id, type: "board_archived", message: `archived the board ${board.name}` });
 }
 
@@ -1264,72 +1268,114 @@ export async function commitMarkdownMove(
 
 /* ------------------------------------------- the board as a repository file -- */
 
-function localBoardState(): BoardState {
-  const data = getBoardData();
-  const columnById = new Map(data.columns.map((c) => [c.id, c.name]));
+function boardColumnsOf(boardId: string) {
+  return db.select().from(columns).where(eq(columns.boardId, boardId)).orderBy(asc(columns.position)).all();
+}
 
-  // Deleted cards are included so the deletion travels; the board filters them.
-  const rows = db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.boardId, data.boardId ?? ""))
-    .all();
+function boardMilestonesOf(boardId: string) {
+  return db.select().from(milestones).where(eq(milestones.boardId, boardId)).orderBy(asc(milestones.position)).all();
+}
 
-  const links = linksFor(rows.map((t) => t.id));
-  const milestoneName = new Map(data.milestones.map((m) => [m.id, m.name]));
-
+function metaOf(board: typeof boards.$inferSelect): BoardStateMeta {
   return {
-    version: 1,
-    columns: data.columns.map((c) => c.name),
-    milestones: data.milestones.map((m) => ({
-      name: m.name,
-      description: m.description,
-      dueDate: m.dueDate,
-    })),
-    cards: rows.map((t) => ({
-      id: t.id,
-      number: t.cardNumber,
-      column: columnById.get(t.columnId) ?? data.columns[0]?.name ?? "Todo",
-      position: t.position,
-      title: t.title,
-      description: t.description,
-      assignee: t.assignee,
-      dueDate: t.dueDate?.getTime() ?? null,
-      checklist: t.checklist ?? [],
-      labels: links.labels.get(t.id) ?? [],
-      branches: links.branches.get(t.id) ?? [],
-      pullRequests: links.pullRequests.get(t.id) ?? [],
-      issues: links.issues.get(t.id) ?? [],
-      priority: t.priority ?? 0,
-      milestone: t.milestoneId ? (milestoneName.get(t.milestoneId) ?? null) : null,
-      markdownTaskId: t.markdownTaskId,
-      updatedAt: t.updatedAt.getTime(),
-      deletedAt: t.deletedAt?.getTime() ?? null,
-    })),
+    name: board.name,
+    description: board.description ?? null,
+    color: board.color ?? null,
+    art: board.art ?? null,
+    owner: board.owner ?? null,
+    // A board nobody has edited is 0, so the name in the repository wins.
+    updatedAt: board.updatedAt?.getTime() ?? 0,
   };
 }
 
-function writeCards(cards: BoardStateCard[]): void {
-  const data = getBoardData();
-  if (!data.boardId) return;
-  const columnByName = new Map(data.columns.map((c) => [c.name, c.id]));
-  const milestoneByName = new Map(data.milestones.map((m) => [m.name, m.id]));
+/** One board's cards as the file stores them. Deleted cards travel too; the board filters them. */
+function cardsOf(boardId: string): BoardStateCard[] {
+  const columnById = new Map(boardColumnsOf(boardId).map((c) => [c.id, c.name]));
+  const firstColumn = boardColumnsOf(boardId)[0]?.name ?? "Todo";
+  const milestoneName = new Map(boardMilestonesOf(boardId).map((m) => [m.id, m.name]));
+  const rows = db.select().from(tasks).where(eq(tasks.boardId, boardId)).all();
+  const links = linksFor(rows.map((t) => t.id));
+  return rows.map((t) => ({
+    id: t.id,
+    number: t.cardNumber,
+    column: columnById.get(t.columnId) ?? firstColumn,
+    position: t.position,
+    title: t.title,
+    description: t.description,
+    assignee: t.assignee,
+    dueDate: t.dueDate?.getTime() ?? null,
+    checklist: t.checklist ?? [],
+    labels: links.labels.get(t.id) ?? [],
+    branches: links.branches.get(t.id) ?? [],
+    pullRequests: links.pullRequests.get(t.id) ?? [],
+    issues: links.issues.get(t.id) ?? [],
+    priority: t.priority ?? 0,
+    milestone: t.milestoneId ? (milestoneName.get(t.milestoneId) ?? null) : null,
+    markdownTaskId: t.markdownTaskId,
+    updatedAt: t.updatedAt.getTime(),
+    deletedAt: t.deletedAt?.getTime() ?? null,
+  }));
+}
 
-  // A remote board file must never reassign a card that belongs to another repo.
+const milestonesOfState = (boardId: string) =>
+  boardMilestonesOf(boardId).map((m) => ({
+    name: m.name,
+    description: m.description,
+    dueDate: m.dueDate?.getTime() ?? null,
+  }));
+
+/**
+ * The whole project as `.repoboard/board.json`: the main board at the top
+ * level (as the file always had it), every other board — archived ones too,
+ * so archiving travels — under `boards`.
+ */
+function localBoardState(): BoardState {
+  const repository = activeRepository();
+  if (!repository) return { version: 1, columns: [], cards: [] };
+  const mainId = primaryBoardId(repository.id);
+  const all = db.select().from(boards).where(eq(boards.repositoryId, repository.id)).all();
+  const main = all.find((b) => b.id === mainId);
+  return {
+    version: 1,
+    columns: boardColumnsOf(mainId).map((c) => c.name),
+    milestones: milestonesOfState(mainId),
+    cards: cardsOf(mainId),
+    ...(main ? { board: metaOf(main) } : {}),
+    boards: all
+      .filter((b) => b.id !== mainId)
+      .sort((a, b) => a.position - b.position)
+      .map((b) => ({
+        id: b.id,
+        ...metaOf(b),
+        position: b.position,
+        archivedAt: b.archivedAt?.getTime() ?? null,
+        columns: boardColumnsOf(b.id).map((c) => c.name),
+        milestones: milestonesOfState(b.id),
+        cards: cardsOf(b.id),
+      })),
+  };
+}
+
+function writeCards(boardId: string, cards: BoardStateCard[]): void {
+  const cols = boardColumnsOf(boardId);
+  const columnByName = new Map(cols.map((c) => [c.name, c.id]));
+  const milestoneByName = new Map(boardMilestonesOf(boardId).map((m) => [m.name, m.id]));
+
+  // A remote board file must never move a card that lives on another board.
   for (const card of cards) {
     const existing = db.select({ boardId: tasks.boardId }).from(tasks).where(eq(tasks.id, card.id)).get();
-    if (existing && existing.boardId !== data.boardId) {
+    if (existing && existing.boardId !== boardId) {
       throw new Error("A card from another board has the same ID");
     }
   }
 
   for (const card of cards) {
-    const columnId = columnByName.get(card.column) ?? data.columns[0]?.id;
+    const columnId = columnByName.get(card.column) ?? cols[0]?.id;
     if (!columnId) continue;
 
     const existing = db.select().from(tasks).where(eq(tasks.id, card.id)).get();
     const values = {
-      boardId: data.boardId,
+      boardId,
       columnId,
       position: card.position,
       title: card.title,
@@ -1380,76 +1426,107 @@ function writeCards(cards: BoardStateCard[]): void {
   }
 }
 
+/** Milestones and columns travel by name; create the ones this machine has not seen. */
+function ensureNamed(repositoryId: string, boardId: string, columnNames: string[], ms: BoardStateMilestone[] = []): void {
+  const cols = boardColumnsOf(boardId);
+  const haveColumns = new Set(cols.map((c) => c.name));
+  columnNames.forEach((name, index) => {
+    if (haveColumns.has(name)) return;
+    db.insert(columns).values({ id: `col_${boardId}_${randomUUID().slice(0, 8)}`, boardId, name, position: cols.length + index }).run();
+  });
+  const haveMilestones = new Set(boardMilestonesOf(boardId).map((m) => m.name));
+  for (const m of ms) {
+    if (haveMilestones.has(m.name)) continue;
+    createMilestone({ boardId, repositoryId, name: m.name, description: m.description, dueDate: m.dueDate });
+  }
+}
+
+/** Make this machine match a merged board file. */
+function applyBoardFile(repositoryId: string, state: BoardState): void {
+  const mainId = primaryBoardId(repositoryId);
+  const main = db.select().from(boards).where(eq(boards.id, mainId)).get();
+  const sameMeta = (a: BoardStateMeta, b: BoardStateMeta) =>
+    a.name === b.name && a.description === b.description && a.color === b.color && a.art === b.art && a.owner === b.owner;
+  if (main && state.board && state.board.updatedAt >= metaOf(main).updatedAt && !sameMeta(state.board, metaOf(main))) {
+    const { name, description, color, art, owner, updatedAt } = state.board;
+    db.update(boards).set({ name, description, color, art, owner, updatedAt: new Date(updatedAt) }).where(eq(boards.id, mainId)).run();
+  }
+  ensureNamed(repositoryId, mainId, [], state.milestones);
+  writeCards(mainId, state.cards);
+
+  for (const incoming of state.boards ?? []) {
+    const row = db.select().from(boards).where(eq(boards.id, incoming.id)).get();
+    if (row && row.repositoryId !== repositoryId) throw new Error("A board from another project has the same ID");
+    const meta = {
+      name: incoming.name,
+      description: incoming.description,
+      color: incoming.color,
+      art: incoming.art,
+      owner: incoming.owner,
+      position: incoming.position,
+      updatedAt: new Date(incoming.updatedAt),
+      archivedAt: incoming.archivedAt ? new Date(incoming.archivedAt) : null,
+    };
+    if (!row) {
+      db.insert(boards).values({ id: incoming.id, repositoryId, createdAt: new Date(incoming.updatedAt), ...meta }).run();
+      const names = incoming.columns.length ? incoming.columns : DEFAULT_COLUMN_HEADINGS;
+      names.forEach((name, index) => {
+        db.insert(columns).values({ id: `col_${incoming.id}_${index}`, boardId: incoming.id, name, position: index }).run();
+      });
+    } else if (
+      incoming.updatedAt >= metaOf(row).updatedAt &&
+      (!sameMeta(incoming, metaOf(row)) || (incoming.archivedAt ?? null) !== (row.archivedAt?.getTime() ?? null))
+    ) {
+      db.update(boards).set(meta).where(eq(boards.id, row.id)).run();
+    }
+    ensureNamed(repositoryId, incoming.id, incoming.columns, incoming.milestones);
+    writeCards(incoming.id, incoming.cards);
+  }
+}
+
+async function readBoardFile(gh: Awaited<ReturnType<ClientFactory>>): Promise<{ state: BoardState | null; sha: string | null }> {
+  try {
+    const file = await gh.getFile(BOARD_STATE_PATH);
+    return { state: parseBoardState(file.content), sha: file.sha };
+  } catch {
+    // Not in the repository yet — the first push creates it.
+    return { state: null, sha: null };
+  }
+}
+
 export interface BoardStateStatus {
   tracked: boolean;
   changes: string[];
   sha: string | null;
 }
 
-/** What pushing the board would change in the repository, in words. */
+/** What pushing the boards would change in the repository, in words. */
 export async function boardStateStatus(
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<BoardStateStatus> {
-  const gh = await clientFactory();
-  let remoteCards: BoardStateCard[] = [];
-  let sha: string | null = null;
-  let tracked = false;
-
-  try {
-    const file = await gh.getFile(BOARD_STATE_PATH);
-    sha = file.sha;
-    tracked = true;
-    remoteCards = parseBoardState(file.content)?.cards ?? [];
-  } catch {
-    // Not in the repository yet — the first push creates it.
-  }
-
-  return {
-    tracked,
-    sha,
-    changes: describeChanges(localBoardState().cards, remoteCards),
-  };
+  const { state, sha } = await readBoardFile(await clientFactory());
+  return { tracked: sha !== null, sha, changes: describeFileChanges(localBoardState(), state) };
 }
 
-/** Repository → this machine. Newer edits win per card. */
+/** Repository → this machine, every board. Newer edits win per card and per board. */
 export async function pullBoardState(
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<{ added: number; updated: number } | null> {
-  const data = getBoardData();
-  if (!data.repository) return null;
-
-  const gh = await clientFactory();
-  let remote: BoardState | null = null;
-  try {
-    remote = parseBoardState((await gh.getFile(BOARD_STATE_PATH)).content);
-  } catch {
-    return null;
-  }
+  const repository = activeRepository();
+  if (!repository) return null;
+  const { state: remote } = await readBoardFile(await clientFactory());
   if (!remote) return null;
 
-  // Milestones travel by name; create the ones this machine has not seen.
-  if (data.boardId) {
-    const known = new Set(data.milestones.map((m) => m.name));
-    for (const m of remote.milestones ?? []) {
-      if (known.has(m.name)) continue;
-      createMilestone({
-        boardId: data.boardId,
-        repositoryId: data.repository.id,
-        name: m.name,
-        description: m.description,
-        dueDate: m.dueDate,
-      });
-    }
-  }
+  const merged = mergeBoardFile(localBoardState(), remote);
+  applyBoardFile(repository.id, merged.state);
 
-  const merged = mergeBoardState(localBoardState().cards, remote.cards);
-  writeCards(merged.cards);
-
-  if (merged.added || merged.updated) {
+  if (merged.added || merged.updated || merged.newBoards.length) {
     logActivity({
-      repositoryId: data.repository.id,
+      repositoryId: repository.id,
       type: "board_pulled",
-      message: `pulled the board from GitHub: ${merged.added} new, ${merged.updated} updated`,
+      message: `pulled the boards from GitHub: ${merged.added} new, ${merged.updated} updated${
+        merged.newBoards.length ? `, new board${merged.newBoards.length === 1 ? "" : "s"} ${merged.newBoards.join(", ")}` : ""
+      }`,
     });
   }
   return { added: merged.added, updated: merged.updated };
@@ -1459,38 +1536,29 @@ export async function pullBoardState(
 export async function pushBoardState(
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<{ commitSha: string; changes: string[] }> {
-  const data = getBoardData();
-  if (!data.repository) throw new Error("Not connected");
+  const repository = activeRepository();
+  if (!repository) throw new Error("Not connected");
 
   const gh = await clientFactory();
-  let remoteCards: BoardStateCard[] = [];
-  let sha: string | undefined;
-  try {
-    const file = await gh.getFile(BOARD_STATE_PATH);
-    sha = file.sha;
-    remoteCards = parseBoardState(file.content)?.cards ?? [];
-  } catch {
-    /* first push creates the file */
-  }
-
+  const { state: remote, sha } = await readBoardFile(gh);
   const local = localBoardState();
-  const changes = describeChanges(local.cards, remoteCards);
+  const changes = describeFileChanges(local, remote);
   if (changes.length === 0) return { commitSha: "", changes: [] };
 
-  const merged = mergeBoardState(local.cards, remoteCards);
-  writeCards(merged.cards);
+  const merged = mergeBoardFile(local, remote);
+  applyBoardFile(repository.id, merged.state);
 
   const written = await gh.putFile({
     path: BOARD_STATE_PATH,
-    content: serialiseBoardState({ ...local, cards: merged.cards }),
-    expectedSha: sha,
-    message: `RepoBoard: update board (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+    content: serialiseBoardState(merged.state),
+    expectedSha: sha ?? undefined,
+    message: `RepoBoard: update boards (${changes.length} change${changes.length === 1 ? "" : "s"})`,
   });
 
   logActivity({
-    repositoryId: data.repository.id,
+    repositoryId: repository.id,
     type: "board_pushed",
-    message: `saved the board to the repository: ${changes.slice(0, 3).join("; ")}${changes.length > 3 ? "…" : ""}`,
+    message: `saved the boards to the repository: ${changes.slice(0, 3).join("; ")}${changes.length > 3 ? "…" : ""}`,
   });
 
   return { commitSha: written.commitSha, changes };

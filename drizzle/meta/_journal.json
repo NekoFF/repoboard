@@ -43,6 +43,13 @@
       "when": 1790377035324,
       "tag": "0005_board_art",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790378830348,
+      "tag": "0006_board_updated_at",
+      "breakpoints": true
     }
   ]
 }

@@ -93,11 +93,11 @@ export function BoardScreen({
   }, [params, data.tasks, router, toast]);
 
   // What the board says that the markdown file does not say yet.
-  // The markdown file and board.json belong to the primary board only.
+  // The markdown file belongs to the main board only; board.json holds every board.
   const primary = data.board?.primary ?? true;
   const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
-  // How far the board has drifted from the copy stored in the repository.
-  const boardState = useResource(api.boardStatus, [], { enabled: connected && primary });
+  // How far the boards have drifted from the copy stored in the repository.
+  const boardState = useResource(api.boardStatus, [], { enabled: connected });
   const refs = useResource(api.refs, [], { enabled: connected });
 
   useEffect(() => {
@@ -170,7 +170,7 @@ export function BoardScreen({
     setSaving(true);
     try {
       const result = await api.boardPush();
-      toast.push({ kind: "success", message: "Board saved to the repository", detail: `${result.changes.length} changes in .repoboard/board.json` });
+      toast.push({ kind: "success", message: "Boards saved to the repository", detail: `${result.changes.length} changes in .repoboard/board.json` });
       boardState.reload();
       setDialog(null);
     } catch (error) {
@@ -182,7 +182,7 @@ export function BoardScreen({
 
   useHotkeys({
     "/": () => filterRef.current?.focus(),
-    s: () => primary && !syncing && sync(),
+    s: () => !syncing && sync(),
     m: () => setDialog("milestones"),
   });
 
@@ -214,20 +214,18 @@ export function BoardScreen({
               </Tooltip>
             )}
             {boardChanges > 0 && (
-              <Tooltip content="Card order, checklists and links are kept in .repoboard/board.json so teammates see them">
+              <Tooltip content="Boards, card order, checklists and links are kept in .repoboard/board.json so teammates see them">
                 <button className="rb-btn rb-btn-sm" onClick={() => setDialog("save")}>
                   <CloudUpload className="size-3.5" /> Save to repo
                   <span className="tabular-nums text-faint">{boardChanges}</span>
                 </button>
               </Tooltip>
             )}
-            {primary && (
-            <Tooltip content={data.markdownSource ? `Sync with ${data.markdownSource.path}` : "Pull the board from the repository"} shortcut="S">
+            <Tooltip content={data.markdownSource ? `Sync with ${data.markdownSource.path}` : "Pull the boards from the repository"} shortcut="S">
               <button className="rb-icon-btn" onClick={sync} disabled={syncing} aria-label="Sync">
                 {syncing ? <Spinner /> : <RefreshCw className="size-4" />}
               </button>
             </Tooltip>
-            )}
             <Menu
               align="end"
               trigger={
@@ -325,8 +323,8 @@ export function BoardScreen({
 
       {dialog === "save" && (
         <Modal
-          title="Save the board to the repository"
-          description="Commits .repoboard/board.json, so anyone who connects this repository sees the same cards, order and checklists."
+          title="Save the boards to the repository"
+          description="Commits .repoboard/board.json, so anyone who connects this repository sees the same boards, cards, order and checklists."
           onClose={() => setDialog(null)}
           footer={
             <>

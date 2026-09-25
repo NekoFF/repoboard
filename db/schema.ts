@@ -38,6 +38,8 @@ export const boards = sqliteTable("boards", {
   owner: text("owner"),
   position: integer("position").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }),
+  /** Last change to the board itself (name, colour, picture, owner, archive), for board.json merges. */
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
 });
 

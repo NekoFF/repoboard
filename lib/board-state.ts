@@ -43,11 +43,42 @@ export interface BoardStateMilestone {
   dueDate: number | null;
 }
 
+/** How a board looks and whose it is — everything but its cards. */
+export interface BoardStateMeta {
+  name: string;
+  description: string | null;
+  color: string | null;
+  art: string | null;
+  owner: string | null;
+  updatedAt: number;
+}
+
+/**
+ * A board besides the main one: one per person or per area. Archived boards
+ * are kept (with `archivedAt`) so archiving travels like any other edit.
+ */
+export interface BoardStateBoard extends BoardStateMeta {
+  id: string;
+  position: number;
+  archivedAt: number | null;
+  columns: string[];
+  milestones?: BoardStateMilestone[];
+  cards: BoardStateCard[];
+}
+
+/**
+ * The top level is the main board, as it always was, so files written before
+ * there were several boards still read the same — and a version of RepoBoard
+ * that knows only one board still reads this one. The other boards follow in
+ * `boards`.
+ */
 export interface BoardState {
   version: 1;
   columns: string[];
   cards: BoardStateCard[];
   milestones?: BoardStateMilestone[];
+  board?: BoardStateMeta;
+  boards?: BoardStateBoard[];
 }
 
 export const BOARD_STATE_PATH = ".repoboard/board.json";
@@ -55,8 +86,9 @@ export const BOARD_STATE_PATH = ".repoboard/board.json";
 export function serialiseBoardState(state: BoardState): string {
   // Stable key order and sorted cards so an unchanged board produces a
   // byte-identical file — otherwise every push would look like a change.
-  const cards = [...state.cards].sort((a, b) => a.id.localeCompare(b.id));
-  return `${JSON.stringify({ ...state, cards }, null, 2)}\n`;
+  const byId = <T extends { id: string }>(list: T[]) => [...list].sort((a, b) => a.id.localeCompare(b.id));
+  const boards = state.boards?.map((b) => ({ ...b, cards: byId(b.cards) }));
+  return `${JSON.stringify({ ...state, cards: byId(state.cards), ...(boards ? { boards: byId(boards) } : {}) }, null, 2)}\n`;
 }
 
 export function parseBoardState(content: string): BoardState | null {
@@ -141,5 +173,101 @@ export function describeChanges(
     }
   }
 
+  return lines;
+}
+
+/**
+ * The newer of two descriptions of the same board, by `updatedAt`. On a tie
+ * the repository wins: a board nobody has edited (0) takes the shared name.
+ */
+function newerMeta<T extends BoardStateMeta>(mine: T, theirs: T): T {
+  return theirs.updatedAt >= mine.updatedAt ? theirs : mine;
+}
+
+/** Milestones travel by name: everything either side has. */
+function unionMilestones(mine: BoardStateMilestone[] = [], theirs: BoardStateMilestone[] = []): BoardStateMilestone[] {
+  const names = new Set(mine.map((m) => m.name));
+  return [...mine, ...theirs.filter((m) => !names.has(m.name))];
+}
+
+export interface FileMergeResult {
+  state: BoardState;
+  added: number;
+  updated: number;
+  /** Boards that exist in the repository but were new to this machine. */
+  newBoards: string[];
+}
+
+/**
+ * Merge the whole file: the main board's cards, then every other board — its
+ * description by `updatedAt`, its cards one by one as `mergeBoardState` does.
+ * A board only one side knows is kept.
+ */
+export function mergeBoardFile(local: BoardState, remote: BoardState | null): FileMergeResult {
+  if (!remote) return { state: local, added: 0, updated: 0, newBoards: [] };
+  const main = mergeBoardState(local.cards, remote.cards);
+  let added = main.added;
+  let updated = main.updated;
+  const newBoards: string[] = [];
+
+  const byId = new Map((local.boards ?? []).map((b) => [b.id, b]));
+  for (const incoming of remote.boards ?? []) {
+    const mine = byId.get(incoming.id);
+    if (!mine) {
+      byId.set(incoming.id, incoming);
+      newBoards.push(incoming.name);
+      added += incoming.cards.length;
+      continue;
+    }
+    const cards = mergeBoardState(mine.cards, incoming.cards);
+    added += cards.added;
+    updated += cards.updated;
+    const meta = newerMeta(mine, incoming);
+    if (incoming.updatedAt > mine.updatedAt) updated += 1;
+    byId.set(mine.id, {
+      ...meta,
+      columns: meta === incoming ? incoming.columns : mine.columns,
+      milestones: unionMilestones(mine.milestones, incoming.milestones),
+      cards: cards.cards,
+    });
+  }
+
+  const board = local.board && remote.board ? newerMeta(local.board, remote.board) : (local.board ?? remote.board);
+  if (local.board && remote.board && remote.board.updatedAt > local.board.updatedAt) updated += 1;
+  return {
+    state: {
+      ...local,
+      milestones: unionMilestones(local.milestones, remote.milestones),
+      cards: main.cards,
+      ...(board ? { board } : {}),
+      boards: [...byId.values()],
+    },
+    added,
+    updated,
+    newBoards,
+  };
+}
+
+/** What pushing the whole file would change, in words; other boards are named. */
+export function describeFileChanges(local: BoardState, remote: BoardState | null): string[] {
+  const lines = describeChanges(local.cards, remote?.cards ?? []);
+  if (local.board && remote?.board && local.board.updatedAt > remote.board.updatedAt) {
+    lines.push(`edited the board ${local.board.name}`);
+  }
+  const theirs = new Map((remote?.boards ?? []).map((b) => [b.id, b]));
+  for (const board of local.boards ?? []) {
+    const there = theirs.get(board.id);
+    if (!there) {
+      if (!board.archivedAt) lines.push(`new board: ${board.name}`);
+    } else if (board.archivedAt && !there.archivedAt) {
+      lines.push(`archived the board ${board.name}`);
+    } else if (board.updatedAt > there.updatedAt) {
+      lines.push(there.name !== board.name ? `renamed the board ${there.name} to ${board.name}` : `edited the board ${board.name}`);
+    }
+    for (const line of describeChanges(board.cards, there?.cards ?? [])) lines.push(`${board.name}: ${line}`);
+  }
+  for (const board of remote?.boards ?? []) {
+    if (!(local.boards ?? []).some((b) => b.id === board.id) && !board.archivedAt) lines.push(`only on GitHub: board ${board.name}`);
+  }
   return lines;
 }
