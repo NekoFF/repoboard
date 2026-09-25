@@ -58,7 +58,7 @@ shows as checklists, notes and progress.
 | \`checklists/\` | Things that must be done **and checked**: a release, the privacy policy, licences. |
 | \`notes/\` | Knowledge: how to run and test the project, where things live, commands. |
 | \`decisions/\` | What was decided and why, with sources, so nobody re-argues it later. |
-| \`board.json\` | Written by RepoBoard: card order, checklists and links on the board. |
+| \`board.json\` | Written by RepoBoard: every board — for people and areas — with its cards, order, checklists and links. |
 
 ## Items
 

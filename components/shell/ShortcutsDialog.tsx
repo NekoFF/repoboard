@@ -9,6 +9,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
     keys: [
       [`${modKey()} K`, "Search and run commands"],
       ["G O", "Go to overview"],
+      ["G M", "Go to my work"],
       ["G B", "Go to board"],
       ["G D", "Go to documents"],
       ["G C", "Go to code"],

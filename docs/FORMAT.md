@@ -11,7 +11,7 @@ Everything that is not code lives in one folder at the root of the repository:
 ```
 .repoboard/
   README.md        the rules below, for people and agents
-  board.json       written by RepoBoard: card order, checklists, links
+  board.json       written by RepoBoard: every board with its cards, order, checklists, links
   checklists/      what must be done and checked
   notes/           how to run things, where they live
   decisions/       what was decided and why, with sources

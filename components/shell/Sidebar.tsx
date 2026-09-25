@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
+  CircleUserRound,
   FileText,
   GitBranch,
   Home,
@@ -26,6 +27,7 @@ import { modKey } from "@/lib/client/hotkeys";
 
 const NAV: { href: string; label: string; icon: ReactNode; keys: string }[] = [
   { href: "/", label: "Overview", icon: <Home className="size-4" />, keys: "G then O" },
+  { href: "/me", label: "My work", icon: <CircleUserRound className="size-4" />, keys: "G then M" },
   { href: "/boards", label: "Boards", icon: <SquareKanban className="size-4" />, keys: "G then B" },
   { href: "/docs", label: "Documents", icon: <FileText className="size-4" />, keys: "G then D" },
   { href: "/repository", label: "Code", icon: <GitBranch className="size-4" />, keys: "G then C" },

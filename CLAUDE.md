@@ -30,10 +30,16 @@ Project (a GitHub repository)
 ```
 
 - The **main board** has the id `board_<repositoryId>`, lives at `/board` and
-  is the only one that follows the markdown board file and `board.json`
-  (sync, pending changes, "Save to repo"). Other boards live at
-  `/board/<boardId>` and exist only in SQLite. `boards.owner` makes a
+  is the only one that follows the markdown board file (sync, pending
+  changes). Other boards live at `/board/<boardId>`. `boards.owner` makes a
   person's board; without it the board is an area. Archiving keeps the cards.
+- **`board.json` holds every board** (`lib/board-state.ts`): the main board at
+  the top level, as files always had it, the others under `boards` — name,
+  colour, picture, owner, columns, milestones, cards, archive. Boards merge by
+  `boards.updated_at` (a never-edited board is 0, so the repository's name
+  wins), cards one by one by their own `updatedAt`, milestones by name. Any
+  change to a board's own fields must set `updatedAt`. Sync and "Save to
+  repo" are on every board.
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.
@@ -83,7 +89,8 @@ Project (a GitHub repository)
 ```
 app/                   routes; pages are server components reading the database
   api/                 repo (projects), board (+ board-create/update/archive), docs, github (read-only proxy), markdown, activity
-  boards/              every board of the project, grouped into areas and people
+  me/                  My work: everything assigned to one person, by due date
+  boards/              every board of the project, as picture tiles
   board/               the main board; board/[boardId] the others; board/card/[id] a card on any board
 components/
   shell/               sidebar, project switcher, command menu, theme, shortcuts
@@ -106,8 +113,9 @@ tests/                 parser, documents, filters, graph, conflicts, sync pipeli
 
 ## Screens
 
-Overview · Boards → a board (board, list, calendar) → a card · Documents ·
-Code (graph, branches, commits, pull requests, issues) · Activity · Settings.
+Overview · My work · Boards → a board (board, list, calendar) → a card ·
+Documents · Code (graph, branches, commits, pull requests, issues) · Activity ·
+Settings.
 The sidebar lists the boards under "Boards"; the command menu has a Boards
 group.
 

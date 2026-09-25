@@ -157,6 +157,7 @@ export function AppShell({
       "?": openShortcuts,
       "g o": () => router.push("/"),
       "g b": () => router.push("/boards"),
+      "g m": () => router.push("/me"),
       "g d": () => router.push("/docs"),
       "g c": () => router.push("/repository"),
       "g a": () => router.push("/activity"),

@@ -10,8 +10,11 @@ what is left, and what still needs your own eyes before it counts.
 - **Boards** — one per person (Dima, Max, the intern) or per area (Design,
   Core), all in one project. On a board, each card is a topic; inside a card,
   numbered items (1, 1.1, 1.2…) are the steps, each with notes, an assignee
-  and comments. Columns, a list and a calendar, filters like
+  and comments. Each board gets a picture of its own — 24 slowly moving
+  motifs or a plain colour. Columns, a list and a calendar, filters like
   `label:bug @me !high due:week`, keyboard for everything, milestones.
+- **My work** — everything assigned to you, from every board, card and
+  checklist, by when it is due. Open a teammate's list the same way.
 - **Checklists that do not get lost** — a release, the privacy policy, the
   Impressum, font and dependency licences. Each item can say *why*, *what to
   do* and *how to verify* it, and carries notes from people and AI agents.
@@ -21,8 +24,12 @@ what is left, and what still needs your own eyes before it counts.
   so nothing hides behind a percentage.
 - **Code** — the repository's history drawn as lines that branch and merge;
   commits, pull requests and issues that mention `RB-12` show up on card 12.
+- **Shared through the repository** — every board travels in
+  `.repoboard/board.json`, so whoever connects the same repository sees the
+  same boards, cards and checklists; GitHub's permissions decide who may
+  change them.
 - **Several projects** — switch between repositories like in Linear; each has
-  its own board, checklists and token.
+  its own boards, checklists and token.
 - **For AI agents** — an MCP server lets Claude, Codex or any other agent read
   and work the same board and checklists. They can propose; they cannot commit.
 
@@ -73,7 +80,7 @@ On macOS you can also double-click **`RepoBoard — Start.command`**.
   checklists/      what must be done and checked
   notes/           how to run things, where they live
   decisions/       what was decided and why, with sources
-  board.json       card order, checklists and links (written by RepoBoard)
+  board.json       every board, its cards, order and checklists (written by RepoBoard)
 ```
 
 A checklist item looks like this:
@@ -98,8 +105,8 @@ claude mcp add repoboard -- node /path/to/repoboard/scripts/mcp-server.mjs
 ```
 
 (Settings shows the exact command for your installation.) Agents get the
-overview, the board, the documents and the needs-check queue, and can create,
-move and comment on cards. To change a checklist they edit the file in their
+overview, every board, the documents and the needs-check queue, and can
+create, move and comment on cards on any board. To change a checklist they edit the file in their
 own checkout and push — and they follow the rules in `.repoboard/README.md`:
 never tick an item themselves, set `[?]` and say how to verify.
 
@@ -108,7 +115,7 @@ never tick an item themselves, set `[?]` and say how to verify.
 | Keys | Does |
 | ---- | ---- |
 | `⌘K` / `Ctrl K` | search everything, run any command |
-| `G` then `O` `B` `D` `C` `A` | overview, boards, documents, code, activity |
+| `G` then `O` `M` `B` `D` `C` `A` | overview, my work, boards, documents, code, activity |
 | `C` | new card |
 | `/` | filter the board |
 | arrows, `J` `K`, `Enter` | move the selection, open |
@@ -120,7 +127,7 @@ never tick an item themselves, set `[?]` and say how to verify.
 
 | What | Where |
 | ---- | ----- |
-| Boards, cards, history | `~/.repoboard/repoboard.db` |
+| Boards, cards, history | `~/.repoboard/repoboard.db`, and `.repoboard/board.json` in your repository once you press *Save to repo* |
 | Tokens | `~/.repoboard/credentials.json` (readable only by you) |
 | Checklists, notes, decisions | your repository, `.repoboard/` |
 
@@ -225,3 +232,10 @@ keeps, and where everything lives.
 Source-available, not open source. You may read it, download it and run it for
 yourself; commercial use, redistribution and offering it as a service need
 written permission. See [LICENSE](LICENSE).
+
+## Licence
+
+RepoBoard is source-available, not open source: you may read it, run it and
+change your own copy for personal use or to try it out. Using it in a
+business, offering it as a service, or publishing copies needs written
+permission. The full terms are in [LICENSE](LICENSE).
