@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Archive, LayoutGrid, MoreHorizontal, Pencil, Plus, Tag, User, Users } from "lucide-react";
+import { Archive, LayoutGrid, MoreHorizontal, Pencil, Plus, Tag, User } from "lucide-react";
 import type { BoardSummary } from "@/lib/board-service";
 import { api, useResource } from "@/lib/client/api";
 import { PageHeader } from "@/components/PageHeader";
 import { ActorAvatar } from "@/components/Actor";
-import { BOARD_COLORS, boardColor, boardHref } from "@/components/labelColor";
+import { BOARD_COLORS, boardColor, boardHref, boardSeed, boardTone } from "@/components/labelColor";
+import { BoardArt } from "@/components/BoardArt";
 import { useShell } from "@/components/shell/ShellContext";
 import {
   EmptyState,
@@ -16,8 +17,6 @@ import {
   MenuItem,
   MenuSeparator,
   Modal,
-  ProgressBar,
-  RelativeTime,
   Segmented,
   Spinner,
   useToast,
@@ -189,113 +188,86 @@ export function BoardDialog({ board, onClose }: { board?: BoardSummary; onClose:
   );
 }
 
-function BoardTile({ board, onEdit }: { board: BoardSummary; onEdit: () => void }) {
+function BoardTile({ board, index, solid, onEdit }: { board: BoardSummary; index: number; solid: boolean; onEdit: () => void }) {
   const router = useRouter();
   const toast = useToast();
-  const total = board.open + board.done;
+  const { hue, sat } = boardTone(board.color, board.name);
+  const label = (
+    <>
+      {board.owner && <ActorAvatar name={board.owner} size={22} />}
+      <span className="min-w-0 flex-1 truncate">{board.name}</span>
+    </>
+  );
   return (
-    <div className="group relative flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift">
-      <Link href={boardHref(board)} className="absolute inset-0 rounded-2xl" aria-label={`Open ${board.name}`} />
-      <div className="flex items-start gap-3">
-        <BoardMark board={board} />
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 truncate text-md font-semibold text-ink">
-            {board.name}
-            {board.primary && <span className="rb-pill">Main</span>}
-          </p>
-          <p className="truncate text-sm text-muted">
-            {board.description ?? (board.owner ? `${board.owner}’s work` : board.primary ? "Follows the markdown file and board.json" : "An area of work")}
-          </p>
-        </div>
-        <span className="relative z-[1]">
-          <Menu
-            align="end"
-            trigger={
-              <button className="rb-icon-btn opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label="Board actions">
-                <MoreHorizontal className="size-4" />
-              </button>
-            }
-          >
-            <MenuItem icon={<Pencil className="size-3.5" />} onSelect={onEdit}>
-              Edit
-            </MenuItem>
-            {!board.primary && (
-              <>
-                <MenuSeparator />
-                <MenuItem
-                  danger
-                  icon={<Archive className="size-3.5" />}
-                  onSelect={async () => {
-                    try {
-                      await api.archiveBoard(board.id);
-                      toast.push({ kind: "info", message: `Archived ${board.name}`, detail: "Its cards are kept." });
-                      router.refresh();
-                    } catch (error) {
-                      toast.push({ kind: "error", message: "Could not archive", detail: (error as Error).message });
-                    }
-                  }}
-                >
-                  Archive board
-                </MenuItem>
-              </>
-            )}
-          </Menu>
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <ProgressBar counts={{ done: board.done, total: Math.max(total, 0) }} height={6} />
-        <div className="flex items-center justify-between text-xs text-muted">
-          <span>
-            <span className="tabular-nums text-ink">{board.open}</span> open,{" "}
-            <span className="tabular-nums text-ink">{board.done}</span> done
-            {board.items.total > 0 && (
-              <span className="text-faint">
-                , {board.items.done}/{board.items.total} items
-              </span>
-            )}
+    <div className="rb-tile group" style={{ ["--h" as string]: hue, ["--s" as string]: sat }}>
+      <Link href={boardHref(board)} className="rb-tile-window outline-none" aria-label={`Open ${board.name}`}>
+        {solid ? (
+          <span className="rb-tile-art rb-tile-art--solid">
+            <span className="absolute inset-x-5 bottom-4 flex items-center gap-2.5 text-lg font-semibold tracking-[-0.01em] text-white">
+              {label}
+            </span>
           </span>
-          {board.updatedAt && <RelativeTime value={board.updatedAt} className="text-faint" />}
-        </div>
-      </div>
+        ) : (
+          <>
+            <BoardArt seed={boardSeed(board.id)} index={index} />
+            <span className="rb-tile-plate text-md font-medium text-ink">{label}</span>
+          </>
+        )}
+      </Link>
+      <span className="absolute right-2.5 top-2.5 z-[2]">
+        <Menu
+          align="end"
+          trigger={
+            <button
+              className="grid size-8 place-items-center rounded-full bg-[rgb(var(--glass)/0.55)] text-ink opacity-0 backdrop-blur-md transition-opacity hover:bg-[rgb(var(--glass)/0.8)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+              aria-label="Board actions"
+            >
+              <MoreHorizontal className="size-4" />
+            </button>
+          }
+        >
+          <MenuItem icon={<Pencil className="size-3.5" />} onSelect={onEdit}>
+            Edit
+          </MenuItem>
+          {!board.primary && (
+            <>
+              <MenuSeparator />
+              <MenuItem
+                danger
+                icon={<Archive className="size-3.5" />}
+                onSelect={async () => {
+                  try {
+                    await api.archiveBoard(board.id);
+                    toast.push({ kind: "info", message: `Archived ${board.name}`, detail: "Its cards are kept." });
+                    router.refresh();
+                  } catch (error) {
+                    toast.push({ kind: "error", message: "Could not archive", detail: (error as Error).message });
+                  }
+                }}
+              >
+                Archive board
+              </MenuItem>
+            </>
+          )}
+        </Menu>
+      </span>
     </div>
   );
 }
 
-/**
- * All boards of the project. A board is either one person's work or one area;
- * each holds cards (topics), and each card holds numbered items (steps).
- */
+/** All boards of the project: the main one, then areas, then people. */
 export function BoardsScreen({ boards }: { boards: BoardSummary[] }) {
   const params = useSearchParams();
   const [dialog, setDialog] = useState<null | "new" | BoardSummary>(params.get("new") ? "new" : null);
-  const people = boards.filter((b) => b.owner);
-  const areas = boards.filter((b) => !b.owner);
-
-  const section = (title: string, icon: React.ReactNode, list: BoardSummary[], hint: string) =>
-    list.length > 0 && (
-      <section className="flex flex-col gap-3">
-        <div className="flex items-baseline gap-3">
-          <h2 className="flex items-center gap-2 text-md font-semibold text-ink">
-            <span className="text-muted">{icon}</span>
-            {title}
-          </h2>
-          <span className="hidden text-sm text-faint sm:inline">{hint}</span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {list.map((b) => (
-            <BoardTile key={b.id} board={b} onEdit={() => setDialog(b)} />
-          ))}
-        </div>
-      </section>
-    );
+  const solid = params.get("tile") === "solid";
+  const rank = (b: BoardSummary) => (b.primary ? 0 : b.owner ? 2 : 1);
+  const ordered = [...boards].sort((a, b) => rank(a) - rank(b));
 
   return (
     <>
       <PageHeader
         title="Boards"
         icon={<LayoutGrid className="size-4" />}
-        meta={boards.length ? `${boards.length} in this project` : undefined}
         actions={
           <button className="rb-btn-primary rb-btn-sm" onClick={() => setDialog("new")}>
             <Plus className="size-3.5" /> New board
@@ -303,21 +275,16 @@ export function BoardsScreen({ boards }: { boards: BoardSummary[] }) {
         }
       />
       <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[1080px] flex-col gap-10 px-6 pb-20 pt-8 sm:px-10">
-          <p className="max-w-[70ch] text-md leading-relaxed text-muted">
-            A project has boards — one per person, or one per area such as Design or Core. On a board, each{" "}
-            <span className="text-ink">card</span> is a topic; inside a card, <span className="text-ink">items</span> are
-            the steps, numbered 1, 1.1, 1.2, each with its own notes.
-          </p>
-          {section("Areas", <Tag className="size-4" />, areas, "Work grouped by subject")}
-          {section("People", <Users className="size-4" />, people, "Each person’s own list of work")}
-          {boards.length === 0 && <EmptyState title="No boards yet" body="Connect a repository to get a main board." />}
-          <button
-            className="flex h-24 items-center justify-center gap-2 rounded-2xl border border-dashed border-border-strong text-sm text-muted transition-colors hover:bg-hover hover:text-ink"
-            onClick={() => setDialog("new")}
-          >
-            <Plus className="size-4" /> New board for a person or an area
-          </button>
+        <div className="mx-auto max-w-[1080px] px-6 pb-20 pt-10 sm:px-10">
+          {ordered.length === 0 ? (
+            <EmptyState title="No boards yet" body="Connect a repository to get a main board." />
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-x-6 gap-y-10">
+              {ordered.map((b, i) => (
+                <BoardTile key={b.id} board={b} index={i} solid={solid} onEdit={() => setDialog(b)} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
       {dialog && <BoardDialog board={dialog === "new" ? undefined : dialog} onClose={() => setDialog(null)} />}

@@ -518,6 +518,154 @@
   }
 }
 
+/* Board tiles (Boards screen). A tile is a window: an abstract picture in the
+   board's colour, a glass plate with its name floating over it, and a second
+   window stacked behind. The tile sets --h and --s; each theme sets the
+   lightness, so one hue reads well on both. */
+.rb-tile {
+  --tl-bg: 94%;
+  --tl-mid: 84%;
+  --tl-deep: 70%;
+  --tl-line: 42%;
+  --tl-solid: 58%;
+  --tl-stroke: hsl(var(--h) calc(var(--s) * 1%) var(--tl-line));
+  position: relative;
+  isolation: isolate;
+}
+.dark .rb-tile {
+  --tl-bg: 19%;
+  --tl-mid: 27%;
+  --tl-deep: 40%;
+  --tl-line: 68%;
+  --tl-solid: 40%;
+}
+
+/* The window behind: a strip of glass peeking out above the tile. */
+.rb-tile::before {
+  content: "";
+  position: absolute;
+  inset: -8px 16px auto 16px;
+  height: 48px;
+  z-index: -1;
+  border-radius: 14px 14px 0 0;
+  background-color: hsl(var(--h) calc(var(--s) * 0.7%) var(--tl-mid) / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.05);
+  transition: translate 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rb-tile-window {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 11;
+  overflow: hidden;
+  border-radius: 18px;
+  background-color: hsl(var(--h) calc(var(--s) * 1%) var(--tl-bg));
+  box-shadow:
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 2px 4px -1px hsl(var(--h) 30% 20% / 0.08),
+    0 16px 30px -14px hsl(var(--h) 45% 25% / 0.3),
+    0 34px 60px -34px hsl(var(--h) 45% 20% / 0.35);
+  transition:
+    translate 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease;
+}
+.rb-tile:hover .rb-tile-window,
+.rb-tile:focus-within .rb-tile-window {
+  translate: 0 -3px;
+  box-shadow:
+    0 0 0 1px rgb(var(--ink) / 0.08),
+    0 4px 8px -2px hsl(var(--h) 30% 20% / 0.1),
+    0 22px 40px -16px hsl(var(--h) 45% 25% / 0.38),
+    0 44px 70px -36px hsl(var(--h) 45% 20% / 0.42);
+}
+.rb-tile:hover::before,
+.rb-tile:focus-within::before {
+  translate: 0 -5px;
+}
+
+.rb-tile-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.rb-tile-art--solid {
+  background-color: hsl(var(--h) calc(var(--s) * 1%) var(--tl-solid));
+}
+.rb-tile-blob {
+  position: absolute;
+  width: 95%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(
+    closest-side,
+    hsl(calc(var(--h) + var(--shift, 0)) calc(var(--s) * 1%) var(--tl-deep) / 0.9),
+    hsl(calc(var(--h) + var(--shift, 0)) calc(var(--s) * 1%) var(--tl-deep) / 0)
+  );
+  animation: rb-drift-1 20s ease-in-out infinite alternate;
+}
+/* Film grain, so the light has texture instead of a flat gradient. */
+.rb-tile-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.32;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* Inside the SVG pictures `transform` is safe: nothing else positions them. */
+.rb-tile-flow {
+  animation: rb-flow 30s linear infinite;
+}
+.rb-tile-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rb-spin 70s linear infinite;
+}
+
+/* The glass plate carrying the board's name. */
+.rb-tile-plate {
+  position: absolute;
+  inset: auto 10px 10px 10px;
+  display: flex;
+  height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 14px;
+  border-radius: 12px;
+  background-color: rgb(var(--glass) / 0.5);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--glass-edge) / calc(var(--glass-edge-alpha) * 0.4)),
+    0 8px 20px -10px rgb(0 0 0 / 0.25);
+}
+
+@keyframes rb-drift-1 {
+  0% { translate: 0 0; scale: 1; }
+  50% { translate: 14% -10%; scale: 1.12; }
+  100% { translate: -8% 12%; scale: 0.94; }
+}
+@keyframes rb-drift-2 {
+  0% { translate: 0 0; scale: 1.05; }
+  50% { translate: -16% 8%; scale: 0.92; }
+  100% { translate: 10% -12%; scale: 1.1; }
+}
+@keyframes rb-drift-3 {
+  0% { translate: 0 0; scale: 0.95; }
+  50% { translate: 12% 14%; scale: 1.08; }
+  100% { translate: -14% -6%; scale: 1; }
+}
+@keyframes rb-flow {
+  to { transform: translateX(-200px); }
+}
+@keyframes rb-spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
