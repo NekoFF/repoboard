@@ -6,17 +6,10 @@ import { AlignLeft, Check, FileText, GitBranch, GitPullRequest } from "lucide-re
 import type { BoardMilestone, BoardTask } from "@/lib/board-service";
 import { labelColor, displayLabel } from "@/components/labelColor";
 import { DueLabel, PriorityIcon, ProgressRing } from "@/components/ui";
+import { ActorAvatar } from "@/components/Actor";
 
 export function Avatar({ name, size = 18 }: { name: string; size?: number }) {
-  return (
-    <span
-      title={name}
-      className="grid shrink-0 place-items-center rounded-full bg-pill text-[9px] font-semibold uppercase text-muted ring-1 ring-border"
-      style={{ width: size, height: size }}
-    >
-      {name.replace(/^@/, "").slice(0, 2)}
-    </span>
-  );
+  return <ActorAvatar name={name} size={size} />;
 }
 
 export function LabelChip({ label }: { label: string }) {

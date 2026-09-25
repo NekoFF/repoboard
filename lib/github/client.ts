@@ -438,6 +438,17 @@ export class GitHubClient {
     );
   }
 
+  /**
+   * People who can be assigned work in this repository (GitHub's assignees:
+   * the owner and collaborators). Empty when the token may not list them.
+   */
+  async listPeople(): Promise<{ login: string; avatarUrl: string }[]> {
+    return this.octokit.rest.issues
+      .listAssignees({ owner: this.owner, repo: this.repo, per_page: 100 })
+      .then((r) => r.data.map((u) => ({ login: u.login, avatarUrl: u.avatar_url })))
+      .catch(() => []);
+  }
+
   /** Lists the markdown files a user can pick as a board source. */
   async listMarkdownFiles(): Promise<string[]> {
     const repo = await this.getRepo();

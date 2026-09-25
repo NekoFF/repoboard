@@ -25,13 +25,57 @@ function Card({ title, icon, description, children }: { title: string; icon: Rea
   );
 }
 
-function CopyLine({ text }: { text: string }) {
+const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
+
+/** Ready-to-paste MCP configuration for the common AI clients. */
+function AgentSetup({ server }: { server: string }) {
+  const [client, setClient] = useState<"claude" | "codex" | "cursor" | "desktop" | "other">("claude");
+  const json = (name: string) =>
+    JSON.stringify({ mcpServers: { repoboard: { command: "node", args: [server], env: { REPOBOARD_AGENT: name } } } }, null, 2);
+  const snippets = {
+    claude: { where: "Run once in a terminal:", text: `claude mcp add repoboard -e REPOBOARD_AGENT="Claude Code" -- node "${server}"` },
+    codex: {
+      where: "Add to ~/.codex/config.toml:",
+      text: `[mcp_servers.repoboard]\ncommand = "node"\nargs = ["${server}"]\nenv = { REPOBOARD_AGENT = "Codex" }`,
+    },
+    cursor: { where: "Add to ~/.cursor/mcp.json (or the project's .cursor/mcp.json):", text: json("Cursor") },
+    desktop: { where: "Add to Claude Desktop's claude_desktop_config.json:", text: json("Claude Desktop") },
+    other: { where: "Any MCP client that speaks stdio:", text: `REPOBOARD_AGENT="My agent" node "${server}"` },
+  } as const;
+  const current = snippets[client];
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <Segmented
+          size="sm"
+          value={client}
+          onChange={setClient}
+          options={[
+            { value: "claude", label: "Claude Code" },
+            { value: "codex", label: "Codex" },
+            { value: "cursor", label: "Cursor" },
+            { value: "desktop", label: "Claude Desktop" },
+            { value: "other", label: "Other" },
+          ]}
+        />
+      </div>
+      <p className="text-xs text-muted">{current.where}</p>
+      <CopyBlock text={current.text} />
+      <p className="text-xs text-muted">
+        <code className="font-mono">REPOBOARD_AGENT</code> is the name the activity feed shows for that agent. Without it
+        RepoBoard uses the name the client reports.
+      </p>
+    </div>
+  );
+}
+
+function CopyBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-code-bg py-1.5 pl-3 pr-1.5">
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-ink">{text}</code>
+    <div className="relative rounded-lg border border-border bg-code-bg">
+      <pre className="overflow-x-auto whitespace-pre p-3 pr-12 font-mono text-xs leading-relaxed text-ink">{text}</pre>
       <button
-        className="rb-icon-btn"
+        className="rb-icon-btn absolute right-1.5 top-1.5"
         aria-label="Copy"
         onClick={() =>
           navigator.clipboard?.writeText(text).then(() => {
@@ -45,8 +89,6 @@ function CopyLine({ text }: { text: string }) {
     </div>
   );
 }
-
-const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
 export function SettingsScreen({
   authLabel,
@@ -110,7 +152,6 @@ export function SettingsScreen({
     }
   };
 
-  const mcpCommand = `claude mcp add repoboard -- node "${paths.mcpServer}"`;
 
   return (
     <>
@@ -265,18 +306,15 @@ export function SettingsScreen({
             icon={<Bot className="size-4" />}
             description={
               <>
-                Agents work with the same board and checklists you see. They can read and change cards through the MCP
-                server, and edit the files in <code className="font-mono text-xs">.repoboard/</code> in their own copy of
-                the repository. They cannot commit through RepoBoard — writes to GitHub always go through your review.
+                Any AI that supports MCP — Claude, Codex, Cursor and others — works with the same board and checklists you
+                see: it reads the overview, creates, moves, changes and deletes cards, and comments, and every change shows
+                in the activity feed under its name. Checklists it edits as files in{" "}
+                <code className="font-mono text-xs">.repoboard/</code> in its own copy of the repository. It cannot commit
+                through RepoBoard — writes to GitHub always go through your review.
               </>
             }
           >
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium text-muted">Claude Code</p>
-              <CopyLine text={mcpCommand} />
-              <p className="text-xs font-medium text-muted">Any other MCP client (stdio)</p>
-              <CopyLine text={`node "${paths.mcpServer}"`} />
-            </div>
+            <AgentSetup server={paths.mcpServer} />
             <p className="text-sm text-muted">
               The rules agents follow — never tick an item themselves, mark it <code className="font-mono text-xs">[?]</code> and
               say how to verify it — are in <code className="font-mono text-xs">.repoboard/README.md</code>, which RepoBoard

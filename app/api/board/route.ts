@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { runAs } from "@/lib/actor";
+import { getViewer } from "@/lib/github/access";
+
 import { z } from "zod";
 import { GitHubClient } from "@/lib/github/client";
 import { getVerifiedRepository } from "@/lib/github/access";
@@ -153,7 +156,13 @@ const bodySchema = z.discriminatedUnion("action", [
   boardPushSchema,
 ]);
 
+/** Every change made through this route is attributed to the token's owner. */
 export async function POST(request: Request) {
+  const login = await getViewer().catch(() => null);
+  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   if (!await getVerifiedRepository()) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
   }
@@ -235,9 +244,7 @@ export async function POST(request: Request) {
           repositoryId: data.repository.id,
           taskId: body.taskId,
           type: "card_moved",
-          message: `Card moved ${moved.fromColumn} → ${moved.toColumn}${
-            task ? `: ${task.title}` : ""
-          }`,
+          message: `moved ${task?.title ?? "a card"} from ${moved.fromColumn} to ${moved.toColumn}`,
         });
       }
       return NextResponse.json({ ...moved });
@@ -295,7 +302,7 @@ export async function POST(request: Request) {
         repositoryId: data.repository.id,
         taskId: body.taskId,
         type: "card_restored",
-        message: "Card restored",
+        message: `restored ${data.tasks.find((t) => t.id === body.taskId)?.title ?? "a card"}`,
       });
       return NextResponse.json({ ok: true });
     }
@@ -314,7 +321,7 @@ export async function POST(request: Request) {
         repositoryId: data.repository.id,
         taskId: body.taskId,
         type: "card_deleted",
-        message: `Card deleted: ${data.tasks.find((t) => t.id === body.taskId)?.title ?? ""}`.trim(),
+        message: `deleted ${data.tasks.find((t) => t.id === body.taskId)?.title ?? "a card"}`,
       });
       return NextResponse.json({ ok: true });
     }

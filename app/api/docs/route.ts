@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { runAs } from "@/lib/actor";
+import { getViewer } from "@/lib/github/access";
+
 import { z } from "zod";
 import { getVerifiedRepository } from "@/lib/github/access";
 import { GitHubClient } from "@/lib/github/client";
@@ -116,7 +119,13 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), path: z.string().min(1), content: z.string() }),
 ]);
 
+/** Every change made through this route is attributed to the token's owner. */
 export async function POST(request: Request) {
+  const login = await getViewer().catch(() => null);
+  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   if (!(await getVerifiedRepository())) return denied();
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {

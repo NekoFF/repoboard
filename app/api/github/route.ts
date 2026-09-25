@@ -38,6 +38,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ pulls: await gh.listPullRequests() });
       case "issues":
         return NextResponse.json({ issues: await gh.listIssues() });
+      case "people":
+        return NextResponse.json({ people: await gh.listPeople() });
       case "graph":
         return NextResponse.json({ commits: await gh.commitGraph() });
       case "refs":

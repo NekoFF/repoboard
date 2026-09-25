@@ -120,9 +120,17 @@ Rules while more than one entry is in this table:
 
 ## MCP server
 
-`scripts/mcp-server.mjs` exposes the board and documents to AI clients over
-stdio: overview, cards (create, move, update, checklist, comment), documents
-(list, read from GitHub), the needs-check queue and activity. It resolves its
+`scripts/mcp-server.mjs` exposes the board and documents to any MCP client
+over stdio (Claude Code, Codex, Cursor, Claude Desktop…): overview, cards
+(create, move, update, delete/restore, checklist, comment), documents (list,
+read from GitHub), the needs-check queue and activity. Every event it writes
+is attributed to the agent (`REPOBOARD_AGENT`, else the client's reported
+name) with `actor_kind = agent`; Settings shows per-client setup.
+
+People: events written through the app are attributed to the GitHub login of
+the active token (route handlers wrap their work in `runAs` from
+`lib/actor.ts`; `logActivity` reads it). Write activity messages as actions
+that follow a name ("moved X from Todo to Done"). It resolves its
 paths from its own location, not the caller's directory. It has no tool that
 writes to GitHub — agents edit `.repoboard/` files in their own checkout.
 If you add a tool, keep that boundary.

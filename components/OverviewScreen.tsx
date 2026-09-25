@@ -21,6 +21,7 @@ import { api, useResource } from "@/lib/client/api";
 import { useShell } from "@/components/shell/ShellContext";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
+import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 import { milestoneProgress } from "@/components/MilestonesDialog";
 import {
   DueLabel,
@@ -423,8 +424,16 @@ export function OverviewScreen({
             ) : (
               <ol className="flex flex-col">
                 {(activity.data?.events ?? []).slice(0, 7).map((e) => (
-                  <li key={e.id} className="flex items-baseline gap-3 py-1.5 text-sm">
-                    <span className="min-w-0 flex-1 truncate text-muted">{e.message}</span>
+                  <li key={e.id} className="flex items-center gap-2.5 py-1.5 text-sm">
+                    {e.actor && <ActorAvatar name={e.actor} kind={e.actorKind} size={18} />}
+                    <span className="min-w-0 flex-1 truncate text-muted">
+                      {e.actor && (
+                        <span className="mr-1.5">
+                          <ActorName name={e.actor} kind={e.actorKind} />
+                        </span>
+                      )}
+                      {eventText(e.message, e.actor)}
+                    </span>
                     <RelativeTime value={e.createdAt} className="shrink-0 text-xs text-faint" />
                   </li>
                 ))}

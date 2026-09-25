@@ -28,6 +28,7 @@ import type { BoardData, BoardTask } from "@/lib/board-service";
 import { api, useResource } from "@/lib/client/api";
 import { Markdown } from "@/components/Markdown";
 import { Avatar, LabelChip } from "@/components/TaskCard";
+import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 import { displayLabel, labelColor } from "@/components/labelColor";
 import {
   DueLabel,
@@ -135,10 +136,21 @@ export function CardDetailPanel({
     () => Array.from(new Set(data.tasks.flatMap((t) => t.labels))).sort(),
     [data.tasks],
   );
+  // Everyone GitHub lets you assign in this repository, plus names already
+  // used on the board (agents, people outside GitHub).
+  const people = useResource(api.people, [], { enabled: connected });
   const allAssignees = useMemo(
-    () => Array.from(new Set(data.tasks.map((t) => t.assignee).filter(Boolean) as string[])).sort(),
-    [data.tasks],
+    () =>
+      Array.from(
+        new Set([
+          ...(people.data?.people.map((p) => p.login) ?? []),
+          ...(data.tasks.map((t) => t.assignee).filter(Boolean) as string[]),
+        ]),
+      ).sort((a, b) => a.localeCompare(b)),
+    [data.tasks, people.data],
   );
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const HISTORY_PREVIEW = 5;
 
   const save = async (patch: Partial<BoardTask>) => {
     const next = { ...draft, ...patch };
@@ -850,14 +862,24 @@ export function CardDetailPanel({
                     </button>
                   </div>
                 </div>
-                <ol className="flex flex-col">
+                {/* Newest first; only the latest few until asked for more. */}
+                <ol className="flex flex-col gap-3">
                   {activity.loading && <Skeleton className="h-8 w-full" />}
-                  {cardEvents.map((event) => (
-                    <li key={event.id} className="relative flex gap-3 pb-3 pl-4 before:absolute before:bottom-0 before:left-[3px] before:top-3 before:w-px before:bg-border last:before:hidden">
-                      <span className={`absolute left-0 top-[7px] size-[7px] rounded-full ${event.type === "comment" ? "bg-ink" : "bg-border-strong"}`} />
+                  {(showAllHistory ? cardEvents : cardEvents.slice(0, HISTORY_PREVIEW)).map((event) => (
+                    <li key={event.id} className="flex gap-2.5">
+                      {event.actor ? (
+                        <ActorAvatar name={event.actor} kind={event.actorKind} size={20} />
+                      ) : (
+                        <span className="mt-[7px] size-[7px] shrink-0 rounded-full bg-border-strong" style={{ margin: "7px 6.5px 0" }} />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className={`text-sm leading-snug ${event.type === "comment" ? "whitespace-pre-wrap text-ink" : "text-muted"}`}>
-                          {event.message}
+                          {event.actor && (
+                            <span className="mr-1.5">
+                              <ActorName name={event.actor} kind={event.actorKind} />
+                            </span>
+                          )}
+                          {eventText(event.message, event.actor)}
                         </p>
                         <RelativeTime value={event.createdAt} className="text-2xs text-faint" />
                       </div>
@@ -867,6 +889,11 @@ export function CardDetailPanel({
                     <li className="text-sm text-faint">No history yet.</li>
                   )}
                 </ol>
+                {cardEvents.length > HISTORY_PREVIEW && (
+                  <button className="rb-btn-ghost w-fit" onClick={() => setShowAllHistory((v) => !v)}>
+                    {showAllHistory ? "Show less" : `Show ${cardEvents.length - HISTORY_PREVIEW} earlier`}
+                  </button>
+                )}
               </div>
             </Section>
           </div>

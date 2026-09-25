@@ -19,6 +19,7 @@ import {
   workspaces,
 } from "@/db/schema";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
+import { currentActor, type Actor } from "@/lib/actor";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
@@ -136,7 +137,9 @@ export function logActivity(args: {
   taskId?: string | null;
   type: string;
   message: string;
+  actor?: Actor | null;
 }) {
+  const actor = args.actor === undefined ? currentActor() : args.actor;
   db.insert(activityEvents)
     .values({
       id: randomUUID(),
@@ -144,6 +147,8 @@ export function logActivity(args: {
       taskId: args.taskId ?? null,
       type: args.type,
       message: args.message,
+      actor: actor?.name ?? null,
+      actorKind: actor?.kind ?? null,
       createdAt: now(),
     })
     .run();
@@ -213,7 +218,7 @@ export function ensureBootstrap(repo: {
     logActivity({
       repositoryId,
       type: "board_created",
-      message: `Board created for ${repo.owner}/${repo.name}`,
+      message: `created the board for ${repo.owner}/${repo.name}`,
     });
   }
 
@@ -454,7 +459,7 @@ export function createTask(args: {
     repositoryId: args.repositoryId,
     taskId: id,
     type: "card_created",
-    message: `Card created: ${args.title}`,
+    message: `created ${args.title}`,
   });
 
   return id;
@@ -611,7 +616,7 @@ export function importIssues(args: {
     logActivity({
       repositoryId: args.repositoryId,
       type: "issue_linked",
-      message: `Imported ${created} GitHub issue(s) as cards`,
+      message: `imported ${created} GitHub issue${created === 1 ? "" : "s"} as cards`,
     });
   }
 
@@ -706,7 +711,7 @@ export async function syncFromMarkdown(
     logActivity({
       repositoryId: data.repository.id,
       type: "markdown_changed",
-      message: `Assigned ${withIds.assigned.length} task id(s) in ${data.markdownSource.path}`,
+      message: `added ${withIds.assigned.length} task id${withIds.assigned.length === 1 ? "" : "s"} to ${data.markdownSource.path}`,
     });
   }
 
@@ -780,7 +785,7 @@ export async function syncFromMarkdown(
   logActivity({
     repositoryId: data.repository.id,
     type: "github_synced",
-    message: `Synced ${data.markdownSource.path} (${created} new, ${updated} updated)`,
+    message: `synced ${data.markdownSource.path}: ${created} new, ${updated} updated`,
   });
 
   return {
@@ -926,7 +931,7 @@ export async function commitAllPending(
     logActivity({
       repositoryId: data.repository.id,
       type: "conflict_detected",
-      message: `Remote ${data.markdownSource.path} changed (${args.expectedSha} → ${file.sha})`,
+      message: `was stopped: ${data.markdownSource.path} changed on GitHub meanwhile (${args.expectedSha.slice(0, 7)} → ${file.sha.slice(0, 7)})`,
     });
     const error = new Error("Remote file changed since preview");
     (error as Error & { code?: string }).code = "CONFLICT";
@@ -1037,7 +1042,7 @@ export async function commitMarkdownMove(
       repositoryId: data.repository.id,
       taskId: args.taskId,
       type: "conflict_detected",
-      message: `Remote ${data.markdownSource.path} changed (${args.expectedSha} → ${file.sha})`,
+      message: `was stopped: ${data.markdownSource.path} changed on GitHub meanwhile (${args.expectedSha.slice(0, 7)} → ${file.sha.slice(0, 7)})`,
     });
     const error = new Error("Remote file changed since preview");
     (error as Error & { code?: string }).code = "CONFLICT";
@@ -1262,7 +1267,7 @@ export async function pullBoardState(
     logActivity({
       repositoryId: data.repository.id,
       type: "board_pulled",
-      message: `Board pulled from GitHub: ${merged.added} new, ${merged.updated} updated`,
+      message: `pulled the board from GitHub: ${merged.added} new, ${merged.updated} updated`,
     });
   }
   return { added: merged.added, updated: merged.updated };
@@ -1303,7 +1308,7 @@ export async function pushBoardState(
   logActivity({
     repositoryId: data.repository.id,
     type: "board_pushed",
-    message: `Board pushed: ${changes.slice(0, 3).join("; ")}${changes.length > 3 ? "…" : ""}`,
+    message: `saved the board to the repository: ${changes.slice(0, 3).join("; ")}${changes.length > 3 ? "…" : ""}`,
   });
 
   return { commitSha: written.commitSha, changes };
@@ -1338,7 +1343,7 @@ export function createMilestone(args: {
   logActivity({
     repositoryId: args.repositoryId,
     type: "milestone_created",
-    message: `Milestone created: ${args.name}`,
+    message: `created milestone ${args.name}`,
   });
   return id;
 }
@@ -1376,6 +1381,8 @@ export function getActivity(limit = 50) {
       type: e.type,
       message: e.message,
       taskId: e.taskId,
+      actor: e.actor,
+      actorKind: e.actorKind,
       createdAt: e.createdAt.getTime(),
     }));
 }
@@ -1400,7 +1407,7 @@ export function linkTask(args: {
       repositoryId: args.repositoryId,
       taskId: args.taskId,
       type: "branch_linked",
-      message: `Linked branch ${args.branch}`,
+      message: `linked branch ${args.branch}`,
     });
   }
   if (args.commit) {
@@ -1420,7 +1427,7 @@ export function linkTask(args: {
       repositoryId: args.repositoryId,
       taskId: args.taskId,
       type: "pr_linked",
-      message: `Linked PR #${args.pullRequest}`,
+      message: `linked pull request #${args.pullRequest}`,
     });
   }
   if (args.issue) {
@@ -1435,7 +1442,7 @@ export function linkTask(args: {
       repositoryId: args.repositoryId,
       taskId: args.taskId,
       type: "issue_linked",
-      message: `Linked issue #${args.issue}`,
+      message: `linked issue #${args.issue}`,
     });
   }
 }
@@ -1521,7 +1528,7 @@ export async function connectRepository(token: string, slug: string) {
   logActivity({
     repositoryId,
     type: "repo_connected",
-    message: `Connected ${summary.owner}/${summary.name}`,
+    message: `connected ${summary.owner}/${summary.name}`,
   });
   return summary;
 }

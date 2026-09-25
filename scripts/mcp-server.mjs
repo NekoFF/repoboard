@@ -57,6 +57,8 @@ db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 3000");
 
 const now = () => Date.now();
+// Assigned at the bottom; agentName() reads it once a client has connected.
+let server = null;
 
 /** The active project: from the environment, or the app's credentials file. */
 function activeProject() {
@@ -165,10 +167,22 @@ function serialiseCard(task) {
   };
 }
 
+/**
+ * Who is acting: REPOBOARD_AGENT if set, otherwise the name the MCP client
+ * reported when it connected ("claude-code", "codex-mcp-client", "cursor"…).
+ * Every event this server writes carries it, so the activity feed says which
+ * AI did what.
+ */
+function agentName() {
+  if (process.env.REPOBOARD_AGENT) return process.env.REPOBOARD_AGENT;
+  const client = server?.getClientVersion?.();
+  return client?.name || "AI agent";
+}
+
 function logActivity(repositoryId, taskId, type, message) {
   db.prepare(
-    "INSERT INTO activity_events (id, repository_id, task_id, type, message, created_at) VALUES (?,?,?,?,?,?)",
-  ).run(randomUUID(), repositoryId, taskId, type, message, now());
+    "INSERT INTO activity_events (id, repository_id, task_id, type, message, actor, actor_kind, created_at) VALUES (?,?,?,?,?,?,?,?)",
+  ).run(randomUUID(), repositoryId, taskId, type, message, agentName(), "agent", now());
 }
 
 function nextCardNumber(boardId) {
@@ -302,9 +316,20 @@ const tools = [
     },
   },
   {
+    name: "delete_card",
+    description:
+      "Delete a card. Reversible: the person can undo it in the app, and restore_card brings it back. Say why in a comment first.",
+    inputSchema: { type: "object", properties: { card: { type: "string" } }, required: ["card"] },
+  },
+  {
+    name: "restore_card",
+    description: "Bring back a deleted card.",
+    inputSchema: { type: "object", properties: { card: { type: "string" } }, required: ["card"] },
+  },
+  {
     name: "comment_on_card",
     description:
-      "Leave a note on a card. It appears in the card's history and the activity feed — how agents tell each other and the person what they did. Start the message with your name, e.g. 'codex: …'.",
+      "Leave a note on a card. It appears in the card's history and the activity feed under your name — how agents tell each other and the person what they found or did.",
     inputSchema: { type: "object", properties: { card: text, message: text }, required: ["card", "message"] },
   },
   {
@@ -438,7 +463,7 @@ const handlers = {
     for (const label of labels) {
       db.prepare("INSERT INTO task_labels (id, task_id, label) VALUES (?,?,?)").run(randomUUID(), id, label);
     }
-    logActivity(repo.id, id, "card_created", `Card created: ${title}`);
+    logActivity(repo.id, id, "card_created", `created ${serialiseCard(cardOf(id)).ref} ${title} in ${col.name}`);
     return serialiseCard(cardOf(id));
   },
 
@@ -456,7 +481,7 @@ const handlers = {
       now(),
       task.id,
     );
-    logActivity(repo.id, task.id, "card_moved", `Card moved ${from?.name ?? "?"} → ${target.name}: ${task.title}`);
+    logActivity(repo.id, task.id, "card_moved", `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}`);
     return {
       ...serialiseCard(cardOf(task.id)),
       note: task.markdown_task_id
@@ -487,7 +512,20 @@ const handlers = {
         db.prepare("INSERT INTO task_labels (id, task_id, label) VALUES (?,?,?)").run(randomUUID(), task.id, label);
       }
     }
-    logActivity(repo.id, task.id, "card_updated", `Card updated: ${title ?? task.title}`);
+    const changes = [];
+    if (title !== undefined && title !== task.title) changes.push(`renamed it from “${task.title}”`);
+    if (description !== undefined && description !== task.description) changes.push("changed the description");
+    if (assignee !== undefined && (assignee || null) !== task.assignee) changes.push(assignee ? `assigned ${assignee}` : "unassigned it");
+    if (priority !== undefined && priorityValue(priority) !== (task.priority ?? 0)) changes.push(`set priority to ${priority}`);
+    if (milestone !== undefined) changes.push(milestone ? `moved it to milestone ${milestone}` : "removed the milestone");
+    if (dueDate !== undefined) changes.push(dueDate ? `set the due date to ${dueDate}` : "cleared the due date");
+    if (labels) changes.push(`set labels to ${labels.join(", ") || "none"}`);
+    logActivity(
+      repo.id,
+      task.id,
+      "card_updated",
+      `${changes.length ? changes.join(", ") : "updated"} on ${serialiseCard(cardOf(task.id)).ref ?? ""} ${title ?? task.title}`.trim(),
+    );
     return serialiseCard(cardOf(task.id));
   },
 
@@ -496,6 +534,8 @@ const handlers = {
     const list = task.checklist ? JSON.parse(task.checklist) : [];
     list.push({ id: randomUUID(), text: itemText, done: false });
     db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), task.id);
+    const { repo } = requireBoard();
+    logActivity(repo.id, task.id, "card_updated", `added checklist item “${itemText}” to ${task.title}`);
     return { card: serialiseCard(cardOf(task.id)).ref, checklist: list };
   },
 
@@ -508,7 +548,29 @@ const handlers = {
     }
     item.done = Boolean(done);
     db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), task.id);
+    const { repo } = requireBoard();
+    logActivity(repo.id, task.id, "card_updated", `${done ? "ticked" : "unticked"} “${item.text}” on ${task.title}`);
     return { checklist: list };
+  },
+
+  delete_card({ card }) {
+    const { repo } = requireBoard();
+    const task = cardOf(card);
+    db.prepare("UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?").run(now(), now(), task.id);
+    logActivity(repo.id, task.id, "card_deleted", `deleted ${task.title}`);
+    return { deleted: task.title, restore: `restore_card with card ${task.id}` };
+  },
+
+  restore_card({ card }) {
+    const { repo, board } = requireBoard();
+    const number = String(card).match(/^(?:rb-)?(\d+)$/i)?.[1];
+    const task = number
+      ? db.prepare("SELECT * FROM tasks WHERE card_number = ? AND board_id = ?").get(Number(number), board.id)
+      : db.prepare("SELECT * FROM tasks WHERE id = ? AND board_id = ?").get(card, board.id);
+    if (!task) throw new Error(`No card ${card} on this board`);
+    db.prepare("UPDATE tasks SET deleted_at = NULL, updated_at = ? WHERE id = ?").run(now(), task.id);
+    logActivity(repo.id, task.id, "card_restored", `restored ${task.title}`);
+    return serialiseCard(cardOf(task.id));
   },
 
   comment_on_card({ card, message }) {
@@ -570,16 +632,22 @@ const handlers = {
     const { repo } = requireBoard();
     return db
       .prepare(
-        "SELECT type, message, task_id, created_at FROM activity_events WHERE repository_id = ? ORDER BY created_at DESC LIMIT ?",
+        "SELECT type, message, task_id, actor, actor_kind, created_at FROM activity_events WHERE repository_id = ? ORDER BY created_at DESC LIMIT ?",
       )
       .all(repo.id, Math.min(Number(limit) || 30, 200))
-      .map((e) => ({ type: e.type, message: e.message, cardId: e.task_id, at: new Date(e.created_at).toISOString() }));
+      .map((e) => ({
+        by: e.actor ? `${e.actor}${e.actor_kind === "agent" ? " (AI)" : ""}` : null,
+        type: e.type,
+        message: e.message,
+        cardId: e.task_id,
+        at: new Date(e.created_at).toISOString(),
+      }));
   },
 };
 
 /* --------------------------------------------------------------- server -- */
 
-const server = new Server({ name: "repoboard", version: "0.2.0" }, { capabilities: { tools: {} } });
+server = new Server({ name: "repoboard", version: "0.3.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 

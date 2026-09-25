@@ -163,6 +163,10 @@ export const activityEvents = sqliteTable("activity_events", {
   taskId: text("task_id"),
   type: text("type").notNull(), // card_created | card_moved | markdown_changed | ...
   message: text("message").notNull(),
+  // Who did it: a GitHub login for people using the app, an agent's name
+  // ("Claude Code", "Codex") for changes made through the MCP server.
+  actor: text("actor"),
+  actorKind: text("actor_kind", { enum: ["person", "agent"] }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 

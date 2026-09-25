@@ -7,6 +7,7 @@ import path from "node:path";
 const access = vi.hoisted(() => ({ valid: true }));
 vi.mock("@/lib/github/access", () => ({
   getVerifiedRepository: async () => access.valid ? { owner: "acme", name: "beta" } : null,
+  getViewer: async () => (access.valid ? "tester" : null),
 }));
 
 const databaseFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "repoboard-scope-")), "board.db");
@@ -80,5 +81,17 @@ describe("repository selection", () => {
 
     process.env.GITHUB_REPO = "acme/alpha";
     expect(service.getBoardData().tasks.map((task) => task.title)).toEqual(["Alpha only", "Alpha issue"]);
+  });
+});
+
+describe("attribution", () => {
+  it("records who made a change through the board route", async () => {
+    const beta = service.getBoardData();
+    const response = await boardRoute.POST(new Request("http://localhost/api/board", {
+      method: "POST", body: JSON.stringify({ action: "create", columnId: beta.columns[0].id, title: "Signed work" }),
+    }));
+    expect(response.status).toBe(200);
+    const event = service.getActivity().find((e) => e.message === "created Signed work");
+    expect(event).toMatchObject({ actor: "tester", actorKind: "person" });
   });
 });

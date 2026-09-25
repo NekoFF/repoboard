@@ -319,7 +319,7 @@ export function Modal({
   );
 }
 
-/** A panel that slides in from the right edge, over the page it belongs to. */
+/** A large panel centred over the page it belongs to (the card, a commit). */
 export function Sheet({
   label,
   onClose,
@@ -336,8 +336,8 @@ export function Sheet({
       <Dialog.Portal>
         <Dialog.Overlay className="rb-fade-in rb-scrim fixed inset-0 z-[60]" />
         <Dialog.Content
-          className="rb-sheet-in rb-glass-strong fixed inset-y-0 right-0 z-[61] flex w-full flex-col overflow-hidden focus:outline-none sm:inset-y-3 sm:right-3 sm:w-[calc(100vw-24px)] sm:rounded-[22px]"
-          style={{ maxWidth: width }}
+          className="rb-pop rb-glass-strong fixed inset-0 z-[61] m-auto flex h-full w-full flex-col overflow-hidden focus:outline-none sm:h-[calc(100dvh-48px)] sm:w-[calc(100vw-48px)] sm:rounded-[22px]"
+          style={{ maxWidth: width, maxHeight: 920 }}
           aria-describedby={undefined}
           tabIndex={-1}
           // Focus the panel itself, not its first button: otherwise that

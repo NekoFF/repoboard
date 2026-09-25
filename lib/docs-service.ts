@@ -142,7 +142,7 @@ export function trackDoc(path: string, options: { pinned?: boolean; quiet?: bool
     })
     .run();
   if (!options.quiet) {
-    logActivity({ repositoryId: repository.id, type: "doc_tracked", message: `Tracking ${path}` });
+    logActivity({ repositoryId: repository.id, type: "doc_tracked", message: `started tracking ${path}` });
   }
   return toTracked(findRow(repository.id, path)!);
 }
@@ -154,7 +154,7 @@ export function untrackDoc(id: string): void {
   if (!row || row.repositoryId !== repository.id) throw new Error("Document not found");
   if (row.role === "board") throw new Error("This file drives the board. Pick another board source first.");
   db.delete(markdownSources).where(eq(markdownSources.id, id)).run();
-  logActivity({ repositoryId: repository.id, type: "doc_untracked", message: `Stopped tracking ${row.path}` });
+  logActivity({ repositoryId: repository.id, type: "doc_untracked", message: `stopped tracking ${row.path}` });
 }
 
 export function setDocPinned(id: string, pinned: boolean): void {
@@ -275,7 +275,7 @@ export async function commitDocEdit(
     logActivity({
       repositoryId: repository.id,
       type: "conflict_detected",
-      message: `Remote ${args.path} changed (${args.expectedSha.slice(0, 7)} → ${file.sha.slice(0, 7)})`,
+      message: `was stopped: ${args.path} changed on GitHub meanwhile (${args.expectedSha.slice(0, 7)} → ${file.sha.slice(0, 7)})`,
     });
     const error = new Error("The file changed on GitHub since the preview");
     (error as Error & { code?: string }).code = "CONFLICT";
@@ -339,7 +339,7 @@ export async function commitDocCreate(
   const written = await gh.putFile({ path, content: args.content, message: commitMessage(path, "", true) });
   trackDoc(path);
   saveSnapshot(repository.id, path, parseDocument(args.content, fileName(path)), written.contentSha);
-  logActivity({ repositoryId: repository.id, type: "doc_changed", message: `RepoBoard: create ${path}` });
+  logActivity({ repositoryId: repository.id, type: "doc_changed", message: `created ${path}` });
   return { ...written, path };
 }
 
@@ -391,7 +391,7 @@ export async function syncWorkspace(
     logActivity({
       repositoryId: repository.id,
       type: "doc_tracked",
-      message: `Found ${added.length} new file${added.length === 1 ? "" : "s"} in ${WORKSPACE_DIR}/`,
+      message: `found ${added.length} new file${added.length === 1 ? "" : "s"} in ${WORKSPACE_DIR}/`,
     });
   }
   if (added.length) await refreshDocs(clientFactory);

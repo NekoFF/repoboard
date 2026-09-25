@@ -122,6 +122,7 @@ export const api = {
 
   refs: () => request<{ refs: CardReference[] }>("/api/github?resource=refs"),
   graph: () => request<{ commits: GraphCommit[] }>("/api/github?resource=graph"),
+  people: () => request<{ people: { login: string; avatarUrl: string }[] }>("/api/github?resource=people"),
 
   board: () => request<BoardData>("/api/board"),
 
@@ -155,6 +156,8 @@ export const api = {
         type: string;
         message: string;
         taskId: string | null;
+        actor: string | null;
+        actorKind: "person" | "agent" | null;
         createdAt: number;
       }[];
     }>(`/api/activity?limit=${limit}`),

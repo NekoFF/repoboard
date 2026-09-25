@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { runAs } from "@/lib/actor";
+import { getViewer } from "@/lib/github/access";
+
 import { z } from "zod";
 import {
   connectRepository,
@@ -67,7 +70,13 @@ const bodySchema = z.union([
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
 
+/** Every change made through this route is attributed to the token's owner. */
 export async function POST(request: Request) {
+  const login = await getViewer().catch(() => null);
+  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   if (isEnvironmentConfigured()) {
     return NextResponse.json(
       {

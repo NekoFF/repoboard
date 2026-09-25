@@ -22,6 +22,7 @@ import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, RelativeTime, RowSkeleton, Segmented, formatDate } from "@/components/ui";
 import { api, useResource } from "@/lib/client/api";
+import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 
 type Filter = "all" | "cards" | "docs" | "comments" | "github";
 
@@ -59,7 +60,8 @@ function splitAuthor(message: string): { author: string | null; text: string } {
 
 export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; connected: boolean }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const events = useResource(() => api.activity(300), [], { pollMs: 30_000 });
+  const [limit, setLimit] = useState(50);
+  const events = useResource(() => api.activity(limit), [limit], { pollMs: 30_000 });
   const all = useMemo(() => events.data?.events ?? [], [events.data]);
   const cards = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 
@@ -103,7 +105,7 @@ export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; 
           )}
           {days.map(([day, list]) => (
             <section key={day} className="mb-8">
-              <h2 className="rb-glass-bar sticky top-[var(--rb-header-h)] z-[1] -mx-2 rounded-lg px-2 py-2 text-xs font-medium text-faint">
+              <h2 className="py-2 text-xs font-medium text-faint">
                 {formatDate(Date.parse(day), { weekday: "long", day: "numeric", month: "long" })}
               </h2>
               <ol className="flex flex-col">
@@ -112,13 +114,30 @@ export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; 
                   const { author, text } = event.type === "comment" ? splitAuthor(event.message) : { author: null, text: event.message };
                   return (
                     <li key={event.id} className="flex gap-3 border-b border-border py-3 last:border-b-0">
-                      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-pill text-muted">
-                        {ICON[event.type] ?? <Activity className="size-3.5" />}
+                      <span className="relative mt-0.5 shrink-0">
+                        {event.actor ? (
+                          <ActorAvatar name={event.actor} kind={event.actorKind} size={24} />
+                        ) : (
+                          <span className="grid size-6 place-items-center rounded-full bg-pill text-muted">
+                            {ICON[event.type] ?? <Activity className="size-3.5" />}
+                          </span>
+                        )}
+                        {event.actor && (
+                          <span className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full bg-surface text-muted ring-1 ring-border [&_svg]:size-2.5">
+                            {ICON[event.type] ?? <Activity />}
+                          </span>
+                        )}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className={`text-sm leading-relaxed ${event.type === "comment" ? "whitespace-pre-wrap text-ink" : "text-muted"}`}>
-                          {author && <span className="mr-1.5 font-medium text-ink">{author}</span>}
-                          {text}
+                          {event.actor ? (
+                            <span className="mr-1.5">
+                              <ActorName name={event.actor} kind={event.actorKind} />
+                            </span>
+                          ) : (
+                            author && <span className="mr-1.5 font-medium text-ink">{author}</span>
+                          )}
+                          {eventText(text, event.actor ?? author)}
                         </p>
                         {card && (
                           <Link href={`/board?card=${card.id}`} className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-faint hover:text-ink">
@@ -134,6 +153,11 @@ export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; 
               </ol>
             </section>
           ))}
+          {!events.loading && all.length >= limit && (
+            <button className="rb-btn mx-auto flex" onClick={() => setLimit((n) => n + 50)} disabled={events.refreshing}>
+              Show earlier activity
+            </button>
+          )}
         </div>
       </div>
     </>
