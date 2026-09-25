@@ -241,7 +241,6 @@
     background-image:
       radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1.2px),
       radial-gradient(55% 60% at 4% 6%, rgb(var(--accent) / 0.2), transparent 70%),
-      radial-gradient(45% 50% at 12% 96%, rgb(var(--state-done) / 0.1), transparent 70%),
       radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.15), transparent 70%);
     background-size: 22px 22px, 100% 100%, 100% 100%;
     background-attachment: fixed;
