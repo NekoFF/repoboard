@@ -29,7 +29,7 @@
     --on-accent: 255 255 255;
     /* Glass: the tint, how much of it, and the lit edge along the top. */
     --glass: 255 255 255;
-    --glass-alpha: 0.62;
+    --glass-alpha: 0.48;
     --glass-edge: 255 255 255;
     --glass-edge-alpha: 0.85;
 
@@ -66,7 +66,7 @@
     --accent: 116 154 245;
     --on-accent: 16 20 32;
     --glass: 34 36 42;
-    --glass-alpha: 0.58;
+    --glass-alpha: 0.5;
     --glass-edge: 255 255 255;
     --glass-edge-alpha: 0.07;
 
@@ -240,8 +240,9 @@
     background-color: rgb(var(--desk));
     background-image:
       radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1.2px),
-      radial-gradient(60% 55% at 8% 0%, rgb(var(--accent) / 0.13), transparent 70%),
-      radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.1), transparent 70%);
+      radial-gradient(55% 60% at 4% 6%, rgb(var(--accent) / 0.2), transparent 70%),
+      radial-gradient(45% 50% at 12% 96%, rgb(var(--state-done) / 0.1), transparent 70%),
+      radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.15), transparent 70%);
     background-size: 22px 22px, 100% 100%, 100% 100%;
     background-attachment: fixed;
   }
@@ -275,12 +276,30 @@
     backdrop-filter: blur(3px);
   }
 
-  /* The tool rail: plain frosted glass — no highlight, no shadow — so it
-     reads as part of the panel rather than an object on it. */
+  /* The tool rail floats over the page's right edge as glass: what scrolls
+     under it (board columns, rows) shows through, blurred. Its shadow falls
+     to the left, in the same tone as the main panel's, so it reads as lying
+     on top. */
   .rb-rail {
-    background-color: rgb(var(--ink) / 0.04);
-    -webkit-backdrop-filter: blur(24px) saturate(1.8);
-    backdrop-filter: blur(24px) saturate(1.8);
+    background-color: rgb(var(--glass) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(22px) saturate(1.8);
+    backdrop-filter: blur(22px) saturate(1.8);
+    box-shadow:
+      0 0 0 1px rgb(var(--ink) / 0.05),
+      -14px 0 34px -20px rgb(var(--shadow) / 0.16),
+      -3px 0 10px -6px rgb(var(--shadow) / 0.07);
+  }
+  /* Room reserved on the right for the floating rail (lg and up). */
+  .rb-page {
+    --rb-rail: 0px;
+  }
+  @media (min-width: 1024px) {
+    .rb-page {
+      --rb-rail: 64px;
+    }
+  }
+  .rb-clear-rail {
+    padding-right: var(--rb-rail);
   }
 
   /* Glass laid over content inside a panel: lighter, no drop shadow. */
@@ -296,12 +315,14 @@
   .rb-panel-main {
     border-radius: 22px;
     background-color: rgb(var(--surface));
-    /* A wide, soft shadow thrown mostly to the left, so the panel clearly
-       lies on top of the navigation it overlaps. */
+    /* A quiet shadow to the left (it lies on the navigation), plus a lit top
+       edge and a faint lower shade for a little volume. */
     box-shadow:
-      -28px 0 64px -22px rgb(var(--shadow) / 0.2),
-      -8px 0 24px -12px rgb(var(--shadow) / 0.1),
-      0 30px 70px -34px rgb(var(--shadow) / 0.18),
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      inset 0 -1px 0 rgb(var(--ink) / 0.03),
+      -16px 0 40px -24px rgb(var(--shadow) / 0.13),
+      -3px 0 10px -6px rgb(var(--shadow) / 0.06),
+      0 22px 50px -30px rgb(var(--shadow) / 0.14),
       0 0 0 1px rgb(var(--ink) / 0.035);
   }
 
@@ -334,7 +355,15 @@
   }
   .rb-under-header {
     padding-top: var(--rb-header-h);
+    padding-right: var(--rb-rail);
     scroll-padding-top: var(--rb-header-h);
+  }
+  /* Surfaces that should pass under the glass rail (the board). */
+  .rb-under-header.rb-under-rail {
+    padding-right: 0;
+  }
+  .rb-header {
+    padding-right: var(--rb-rail);
   }
 
   /* ---------------------------------------------------- rendered markdown -- */

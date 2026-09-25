@@ -202,7 +202,7 @@ export function OverviewScreen({
   const [owner, name] = (repo ?? `${header.owner ?? ""}/${header.name ?? ""}`).split("/");
 
   return (
-    <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+    <div className="rb-scroll-thin rb-clear-rail min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[1080px] flex-col gap-12 px-6 pb-20 pt-8 sm:px-10">
         {/* ----------------------------------------------------- header -- */}
         <header className="flex flex-wrap items-center gap-4">

@@ -198,8 +198,10 @@ export function AppShell({
                     </Suspense>
                   </div>
 <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-[60px]">
-                    <main className="rb-page relative flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
-                    <ToolRail />
+                    <main className="rb-page relative flex min-w-0 flex-1 flex-col overflow-hidden">
+                      {children}
+                      <ToolRail />
+                    </main>
                   </div>
                 </div>
               ) : showingSettings ? (

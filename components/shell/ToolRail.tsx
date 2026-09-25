@@ -44,7 +44,7 @@ export function ToolRail() {
   return (
     <aside
       aria-label="Tools"
-      className="rb-rail my-2.5 ml-1 mr-2.5 hidden w-11 shrink-0 flex-col items-center gap-1 rounded-full py-2 lg:flex"
+      className="rb-rail absolute bottom-2.5 right-2.5 top-2.5 z-30 hidden w-11 flex-col items-center gap-1 rounded-full py-2 lg:flex"
     >
       <RailButton label="Search and commands" shortcut={`${modKey()}K`} onClick={() => openPalette()}>
         <Search className="size-4" />
