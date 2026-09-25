@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardData, PendingChange } from "@/lib/board-service";
-import type { DocChange, DocView, TrackedDoc } from "@/lib/docs-service";
+import type { DocChange, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type {
   BranchSummary,
@@ -95,6 +95,12 @@ export const api = {
   untrackDoc: (id: string) => post<{ ok: true }>("/api/docs", { action: "untrack", id }),
   pinDoc: (id: string, pinned: boolean) => post<{ ok: true }>("/api/docs", { action: "pin", id, pinned }),
   refreshDocs: () => post<{ refreshed: number; failed: string[] }>("/api/docs", { action: "refresh" }),
+  syncWorkspace: () =>
+    post<{ exists: boolean; added: string[]; removed: string[] }>("/api/docs", { action: "sync-workspace" }),
+  previewWorkspace: (templates: string[], readme: boolean) =>
+    post<{ files: WorkspaceFile[]; existing: string[] }>("/api/docs", { action: "workspace-preview", templates, readme }),
+  createWorkspace: (templates: string[], readme: boolean) =>
+    post<{ commitSha: string; paths: string[] }>("/api/docs", { action: "workspace-create", templates, readme }),
   previewDocEdit: (path: string, edits: DocEdit[], baseSha: string | null) =>
     post<DocChange>("/api/docs", { action: "preview", path, edits, baseSha }),
   commitDocEdit: (path: string, edits: DocEdit[], expectedSha: string, force?: boolean) =>

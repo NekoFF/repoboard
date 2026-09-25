@@ -1,15 +1,6 @@
-import { MarkdownSyncScreen } from "@/components/MarkdownSyncScreen";
-import { getPageContext } from "@/lib/page-context";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function MarkdownSyncPage() {
-  const { data, header, connected } = await getPageContext();
-  return (
-    <MarkdownSyncScreen
-      data={data}
-      header={header}
-      connected={connected}
-    />
-  );
+// The markdown screen became Documents; old links and bookmarks still work.
+export default function MarkdownSyncPage() {
+  redirect("/docs");
 }

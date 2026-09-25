@@ -15,7 +15,8 @@
     "postinstall": "node scripts/ensure-native.mjs",
     "fix": "node scripts/ensure-native.mjs",
     "mcp": "node scripts/mcp-server.mjs",
-    "stop": "node scripts/stop.mjs"
+    "stop": "node scripts/stop.mjs",
+    "demo": "node scripts/demo.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

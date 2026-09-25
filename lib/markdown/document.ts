@@ -1,9 +1,17 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
-import type { Heading, List, ListItem, Root, RootContent } from "mdast";
+import type { Blockquote, Heading, List, ListItem, Paragraph, Root, RootContent } from "mdast";
 import { parseTaskLine } from "@/lib/markdown/parser";
-import { parseItemMeta, STATE_CHAR, type ItemState } from "@/lib/markdown/format";
+import {
+  parseDetail,
+  parseItemMeta,
+  parseNote,
+  STATE_CHAR,
+  type ItemDetail,
+  type ItemNote,
+  type ItemState,
+} from "@/lib/markdown/format";
 import type { DocSnapshot } from "@/db/schema";
 
 /**
@@ -37,6 +45,14 @@ export interface DocItem {
   indent: number;
   /** Index into `sections`. */
   section: number;
+  /** Line of the item this one is nested under, if any. */
+  parent: number | null;
+  /** Nested plain bullets: Why / Do / Verify / Source… */
+  details: ItemDetail[];
+  /** Nested blockquote lines — review notes from people or agents. */
+  notes: ItemNote[];
+  /** Last line that belongs to this item (details, notes, sub-items). */
+  endLine: number;
 }
 
 export interface DocSection {
@@ -48,6 +64,7 @@ export interface DocSection {
   total: number;
   done: number;
   doing: number;
+  review: number;
   cancelled: number;
 }
 
@@ -58,10 +75,13 @@ export interface ParsedDocument {
   total: number;
   done: number;
   doing: number;
+  review: number;
   cancelled: number;
 }
 
-function count(target: { total: number; done: number; doing: number; cancelled: number }, state: ItemState) {
+type Counts = { total: number; done: number; doing: number; review: number; cancelled: number };
+
+function count(target: Counts, state: ItemState) {
   if (state === "cancelled") {
     target.cancelled += 1;
     return;
@@ -69,6 +89,7 @@ function count(target: { total: number; done: number; doing: number; cancelled: 
   target.total += 1;
   if (state === "done") target.done += 1;
   if (state === "doing") target.doing += 1;
+  if (state === "review") target.review += 1;
 }
 
 const QUOTE_PREFIX = /^(\s*>\s?)+/;
@@ -83,12 +104,21 @@ export function parseDocument(content: string, fallbackTitle = "Untitled"): Pars
   const tree = unified().use(remarkParse).use(remarkGfm).parse(content) as Root;
 
   const sections: DocSection[] = [
-    { heading: "", depth: 0, line: 0, total: 0, done: 0, doing: 0, cancelled: 0 },
+    { heading: "", depth: 0, line: 0, total: 0, done: 0, doing: 0, review: 0, cancelled: 0 },
   ];
   const items: DocItem[] = [];
   let title: string | null = null;
 
-  const visitList = (list: List, indent: number) => {
+  // The text of a node, taken from the file itself so formatting survives,
+  // with list bullets, quote markers and indentation stripped.
+  const textOf = (node: { position?: { start: { line: number }; end: { line: number } } }) =>
+    lines
+      .slice((node.position?.start.line ?? 1) - 1, node.position?.end.line ?? 0)
+      .map((l) => l.replace(QUOTE_PREFIX, "").replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim())
+      .filter(Boolean)
+      .join(" ");
+
+  const visitList = (list: List, indent: number, parent: number | null) => {
     for (const item of list.children as ListItem[]) {
       const line = (item.position?.start.line ?? 1) - 1;
       // Items inside a blockquote carry the "> " prefix on their line.
@@ -96,6 +126,22 @@ export function parseDocument(content: string, fallbackTitle = "Untitled"): Pars
       if (parsed) {
         const section = sections.length - 1;
         const meta = parseItemMeta(parsed.title);
+        const details: ItemDetail[] = [];
+        const notes: ItemNote[] = [];
+        for (const child of item.children.slice(1)) {
+          if (child.type === "list") {
+            for (const sub of (child as List).children as ListItem[]) {
+              const subLine = lines[(sub.position?.start.line ?? 1) - 1] ?? "";
+              if (!parseTaskLine(subLine.replace(QUOTE_PREFIX, ""))) details.push(parseDetail(textOf(sub)));
+            }
+          } else if (child.type === "blockquote") {
+            for (const para of (child as Blockquote).children) {
+              if (para.type === "paragraph") notes.push(parseNote(textOf(para as Paragraph)));
+            }
+          } else if (child.type === "paragraph") {
+            details.push(parseDetail(textOf(child as Paragraph)));
+          }
+        }
         items.push({
           line,
           text: parsed.title,
@@ -111,11 +157,15 @@ export function parseDocument(content: string, fallbackTitle = "Untitled"): Pars
           id: parsed.id,
           indent,
           section,
+          parent,
+          details,
+          notes,
+          endLine: (item.position?.end.line ?? line + 1) - 1,
         });
         count(sections[section], parsed.state);
       }
       for (const child of item.children) {
-        if (child.type === "list") visitList(child as List, indent + 1);
+        if (child.type === "list") visitList(child as List, indent + 1, parsed ? line : parent);
       }
     }
   };
@@ -132,10 +182,11 @@ export function parseDocument(content: string, fallbackTitle = "Untitled"): Pars
         total: 0,
         done: 0,
         doing: 0,
+        review: 0,
         cancelled: 0,
       });
     } else if (node.type === "list") {
-      visitList(node as List, 0);
+      visitList(node as List, 0, null);
     } else if (node.type === "blockquote") {
       for (const child of node.children) visit(child);
     }
@@ -143,7 +194,7 @@ export function parseDocument(content: string, fallbackTitle = "Untitled"): Pars
 
   for (const node of tree.children) visit(node);
 
-  const totals = { total: 0, done: 0, doing: 0, cancelled: 0 };
+  const totals: Counts = { total: 0, done: 0, doing: 0, review: 0, cancelled: 0 };
   for (const item of items) count(totals, item.state);
   return { title: title ?? fallbackTitle, sections, items, ...totals };
 }
@@ -154,6 +205,7 @@ export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
     total: parsed.total,
     done: parsed.done,
     doing: parsed.doing,
+    review: parsed.review,
     cancelled: parsed.cancelled,
     sections: parsed.sections.map((s) => ({
       heading: s.heading,
@@ -161,6 +213,7 @@ export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
       total: s.total,
       done: s.done,
       doing: s.doing,
+      review: s.review,
     })),
     items: parsed.items.map((i) => ({
       title: i.title,
@@ -188,6 +241,8 @@ export type DocEdit =
   | { type: "state"; line: number; title: string; id?: string | null; state: ItemState }
   | { type: "toggle"; line: number; title: string; id?: string | null; done: boolean }
   | { type: "add"; section: string | null; title: string }
+  /** A review note under an item: "> author date: text". */
+  | { type: "note"; line: number; title: string; id?: string | null; author: string; text: string; date?: string }
   | { type: "replace"; content: string };
 
 function findItem(parsed: ParsedDocument, edit: { line: number; title: string; id?: string | null }) {
@@ -204,7 +259,7 @@ function findItem(parsed: ParsedDocument, edit: { line: number; title: string; i
 }
 
 function setState(raw: string, state: ItemState): string {
-  return raw.replace(/^((?:\s*>\s?)*\s*[-*+]\s+)\[( |x|X|\/|-)\]/, `$1[${STATE_CHAR[state]}]`);
+  return raw.replace(/^((?:\s*>\s?)*\s*[-*+]\s+)\[( |x|X|\/|-|\?)\]/, `$1[${STATE_CHAR[state]}]`);
 }
 
 export interface EditResult {
@@ -229,8 +284,9 @@ export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
   let lines = content.split("\n");
   let applied = 0;
   const missed: string[] = [];
-  const changed: Record<ItemState, number> = { todo: 0, doing: 0, done: 0, cancelled: 0 };
+  const changed: Record<ItemState, number> = { todo: 0, doing: 0, review: 0, done: 0, cancelled: 0 };
   let added = 0;
+  let noted = 0;
 
   for (const edit of edits) {
     const parsed = parseDocument(lines.join("\n"));
@@ -246,6 +302,24 @@ export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
       lines[item.line] = setState(lines[item.line], target);
       applied += 1;
       changed[target] += 1;
+    } else if (edit.type === "note") {
+      const item = findItem(parsed, edit);
+      const text = edit.text.trim().replace(/\s*\n\s*/g, " ");
+      if (!item || !text) {
+        if (!item) missed.push(edit.title);
+        continue;
+      }
+      // Notes sit at the item's content column, as a nested blockquote.
+      const lead = lines[item.line].match(/^((?:\s*>\s?)*\s*)[-*+]\s+/)?.[0] ?? "- ";
+      const indent = " ".repeat(lead.replace(/>/g, " ").length);
+      const date = edit.date ?? new Date().toISOString().slice(0, 10);
+      const author = edit.author.trim().replace(/\s+/g, "-") || "note";
+      const quote = `${indent}> ${author} ${date}: ${text}`;
+      // A note right under another note would merge into its paragraph.
+      const lastIsQuote = /^\s*>/.test(lines[item.endLine] ?? "") && item.endLine > item.line;
+      lines.splice(item.endLine + 1, 0, ...(lastIsQuote ? [`${indent}>`, quote] : [quote]));
+      applied += 1;
+      noted += 1;
     } else if (edit.type === "add") {
       const text = edit.title.trim().replace(/\s+/g, " ");
       if (!text) continue;
@@ -286,9 +360,11 @@ export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
   const parts: string[] = [];
   if (changed.done) parts.push(`tick ${plural(changed.done)}`);
   if (changed.doing) parts.push(`start ${plural(changed.doing)}`);
+  if (changed.review) parts.push(`ask to check ${plural(changed.review)}`);
   if (changed.todo) parts.push(`reopen ${plural(changed.todo)}`);
   if (changed.cancelled) parts.push(`cancel ${plural(changed.cancelled)}`);
   if (added) parts.push(`add ${plural(added)}`);
+  if (noted) parts.push(`add ${noted} note${noted === 1 ? "" : "s"}`);
 
   return {
     content: next,

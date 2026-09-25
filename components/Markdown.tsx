@@ -54,7 +54,7 @@ export function InlineMarkdown({ text }: { text: string }) {
   );
 }
 
-const STATES: ItemState[] = ["todo", "doing", "done", "cancelled"];
+const STATES: ItemState[] = ["todo", "doing", "review", "done", "cancelled"];
 
 function ItemStateButton({
   item,

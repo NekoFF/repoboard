@@ -5,6 +5,7 @@
  * in docs/FORMAT.md; keep the two in step.
  *
  *   - [ ] todo          - [/] in progress
+ *   - [?] needs checking — the work is done, a person still has to verify it
  *   - [x] done          - [-] cancelled / won't do
  *
  * Inline, anywhere on the item's line:
@@ -17,15 +18,52 @@
  *   [[docs/PRIVACY.md]]            link to another document
  *   <!-- rb:task_x -->             stable identity (added by RepoBoard)
  *
- * The state characters match the Obsidian Tasks convention. GitHub only draws
- * `[ ]` and `[x]` as checkboxes; the other two still read naturally as text.
+ * The state characters follow the Obsidian Tasks convention. GitHub only draws
+ * `[ ]` and `[x]` as checkboxes; the others still read naturally as text.
+ *
+ * Details belong to the item as nested plain bullets, so they render as a
+ * tidy sub-list everywhere; review notes are a nested blockquote:
+ *
+ *   - [ ] Impressum reachable from every screen !high #legal
+ *     - Why: German law requires provider identification that is easy to find.
+ *     - Verify: open Settings → About → Legal notice in two taps.
+ *     > codex 2026-09-25: a contact form counts as the second channel.
  */
 
-export type ItemState = "todo" | "doing" | "done" | "cancelled";
+/** Detail keys with a fixed meaning; anything else is shown as plain text. */
+export const DETAIL_KEYS = ["why", "do", "how", "verify", "source", "note", "done"] as const;
+
+export interface ItemDetail {
+  key: string | null;
+  text: string;
+}
+
+export interface ItemNote {
+  author: string | null;
+  date: string | null;
+  text: string;
+}
+
+export function parseDetail(text: string): ItemDetail {
+  const match = text.match(/^\*{0,2}([A-Za-z][\w ]{0,15}?)\*{0,2}:\*{0,2}\s+(.+)$/s);
+  if (match && (DETAIL_KEYS as readonly string[]).includes(match[1].toLowerCase())) {
+    return { key: match[1].toLowerCase(), text: match[2].trim() };
+  }
+  return { key: null, text: text.trim() };
+}
+
+export function parseNote(text: string): ItemNote {
+  const match = text.match(/^\*{0,2}([\w.-]{1,32})\*{0,2}(?:\s+(\d{4}-\d{2}-\d{2}))?:\*{0,2}\s+(.+)$/s);
+  if (match) return { author: match[1], date: match[2] ?? null, text: match[3].trim() };
+  return { author: null, date: null, text: text.trim() };
+}
+
+export type ItemState = "todo" | "doing" | "review" | "done" | "cancelled";
 
 export const STATE_CHAR: Record<ItemState, string> = {
   todo: " ",
   doing: "/",
+  review: "?",
   done: "x",
   cancelled: "-",
 };
@@ -34,6 +72,7 @@ export function stateFromChar(char: string): ItemState {
   if (char === "x" || char === "X") return "done";
   if (char === "/") return "doing";
   if (char === "-") return "cancelled";
+  if (char === "?") return "review";
   return "todo";
 }
 

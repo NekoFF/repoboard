@@ -37,3 +37,16 @@ export async function getVerifiedRepository(): Promise<RepoSummary | null> {
 export function invalidateAccessCache(): void {
   cached = null;
 }
+
+const viewers = new Map<string, string | null>();
+
+/** Login of the person the active token belongs to, cached per token. */
+export async function getViewer(): Promise<string | null> {
+  const token = await getAuthProvider().getToken();
+  if (!token) return null;
+  const key = createHash("sha256").update(token).digest("hex");
+  if (viewers.has(key)) return viewers.get(key) ?? null;
+  const login = await GitHubClient.viewer(token);
+  if (login) viewers.set(key, login);
+  return login;
+}

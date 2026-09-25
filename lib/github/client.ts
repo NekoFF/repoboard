@@ -99,6 +99,26 @@ export function cardNumbersIn(text: string | null | undefined): number[] {
   return [...found];
 }
 
+/**
+ * Octokit retries failed requests with a back-off. That is right for 5xx, but
+ * GitHub answers 409 for an empty repository, and retrying that made every
+ * screen of a fresh repository wait ~15 seconds for nothing.
+ */
+function makeOctokit(token: string): Octokit {
+  return new Octokit({
+    auth: token,
+    // Only for the demo and tests (scripts/demo-github.mjs); unset in real use.
+    ...(process.env.GITHUB_API_URL ? { baseUrl: process.env.GITHUB_API_URL } : {}),
+    retry: { doNotRetry: [400, 401, 403, 404, 409, 410, 422, 451] },
+  });
+}
+
+/** GitHub's answer for a repository that has no commits yet. */
+export function isEmptyRepository(error: unknown): boolean {
+  const e = error as { status?: number; message?: string };
+  return e?.status === 409 || /repository is empty/i.test(e?.message ?? "");
+}
+
 const referenceCache = new Map<string, { at: number; refs: CardReference[] }>();
 const REFERENCE_TTL_MS = 60_000;
 
@@ -113,14 +133,14 @@ export class GitHubClient {
     const token = await getAuthProvider().getToken();
     const repo = getConfiguredRepo();
     if (!token || !repo) throw new GitHubNotConfiguredError();
-    return new GitHubClient(new Octokit({ auth: token }), repo.owner, repo.name);
+    return new GitHubClient(makeOctokit(token), repo.owner, repo.name);
   }
 
   /** Validates a token/repo pair before it is persisted by the connect flow. */
   static async probe(token: string, slug: string): Promise<RepoSummary> {
     const [owner, name] = slug.split("/");
     if (!owner || !name) throw new Error("Repository must be owner/name");
-    const octokit = new Octokit({ auth: token });
+    const octokit = makeOctokit(token);
     const { data } = await octokit.rest.repos.get({ owner, repo: name });
     return {
       owner: data.owner.login,
@@ -130,6 +150,16 @@ export class GitHubClient {
       htmlUrl: data.html_url,
       pushedAt: data.pushed_at ?? null,
     };
+  }
+
+  /** The GitHub login the token belongs to — the default author of notes. */
+  static async viewer(token: string): Promise<string | null> {
+    try {
+      const { data } = await makeOctokit(token).rest.users.getAuthenticated();
+      return data.login;
+    } catch {
+      return null;
+    }
   }
 
   async getRepo(): Promise<RepoSummary> {
@@ -194,12 +224,13 @@ export class GitHubClient {
   }
 
   async listCommits(branch?: string, perPage = 30): Promise<CommitSummary[]> {
-    const { data } = await this.octokit.rest.repos.listCommits({
-      owner: this.owner,
-      repo: this.repo,
-      sha: branch,
-      per_page: perPage,
-    });
+    const data = await this.octokit.rest.repos
+      .listCommits({ owner: this.owner, repo: this.repo, sha: branch, per_page: perPage })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error)) return [];
+        throw error;
+      });
     return data.map((c) => ({
       sha: c.sha,
       message: c.commit.message.split("\n")[0],
@@ -354,12 +385,14 @@ export class GitHubClient {
   /** Lists the markdown files a user can pick as a board source. */
   async listMarkdownFiles(): Promise<string[]> {
     const repo = await this.getRepo();
-    const { data } = await this.octokit.rest.git.getTree({
-      owner: this.owner,
-      repo: this.repo,
-      tree_sha: repo.defaultBranch,
-      recursive: "1",
-    });
+    const data = await this.octokit.rest.git
+      .getTree({ owner: this.owner, repo: this.repo, tree_sha: repo.defaultBranch, recursive: "1" })
+      .then((r) => r.data)
+      .catch((error) => {
+        // An empty repository has no tree yet; a 404 means the default branch does not exist yet.
+        if (isEmptyRepository(error) || (error as { status?: number }).status === 404) return { tree: [] };
+        throw error;
+      });
     return data.tree
       .filter((n) => n.type === "blob" && n.path?.endsWith(".md"))
       .map((n) => n.path!)
@@ -381,6 +414,69 @@ export class GitHubClient {
       content: Buffer.from(data.content, "base64").toString("utf8"),
       sha: data.sha,
     };
+  }
+
+  /**
+   * Several new files in one commit (the Contents API can only do one per
+   * commit). Fails instead of overwriting when a path already exists, and the
+   * branch update is not forced, so a concurrent push makes it fail cleanly.
+   */
+  async createFiles(args: {
+    files: { path: string; content: string }[];
+    message: string;
+  }): Promise<{ commitSha: string }> {
+    const repo = await this.getRepo();
+    const branch = repo.defaultBranch;
+    const ref = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error) || (error as { status?: number }).status === 404) return null;
+        throw error;
+      });
+    if (!ref) {
+      // An empty repository has no branch to commit onto; the Contents API can
+      // start one, one file per commit.
+      let commitSha = "";
+      for (const file of args.files) {
+        const written = await this.putFile({ path: file.path, content: file.content, message: args.message });
+        commitSha = written.commitSha;
+      }
+      return { commitSha };
+    }
+    const { data: head } = await this.octokit.rest.git.getCommit({
+      owner: this.owner,
+      repo: this.repo,
+      commit_sha: ref.object.sha,
+    });
+    for (const file of args.files) {
+      const exists = await this.getFile(file.path).then(
+        () => true,
+        () => false,
+      );
+      if (exists) throw new Error(`${file.path} already exists`);
+    }
+    const { data: tree } = await this.octokit.rest.git.createTree({
+      owner: this.owner,
+      repo: this.repo,
+      base_tree: head.tree.sha,
+      tree: args.files.map((f) => ({ path: f.path, mode: "100644" as const, type: "blob" as const, content: f.content })),
+    });
+    const { data: commit } = await this.octokit.rest.git.createCommit({
+      owner: this.owner,
+      repo: this.repo,
+      message: args.message,
+      tree: tree.sha,
+      parents: [head.sha],
+    });
+    await this.octokit.rest.git.updateRef({
+      owner: this.owner,
+      repo: this.repo,
+      ref: `heads/${branch}`,
+      sha: commit.sha,
+      force: false,
+    });
+    return { commitSha: commit.sha };
   }
 
   /**

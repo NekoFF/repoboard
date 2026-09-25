@@ -12,6 +12,14 @@ import {
   type ParsedDocument,
 } from "@/lib/markdown/document";
 import { buildDiff, type DiffLine } from "@/lib/markdown/sync";
+import {
+  kindOfPath,
+  templateById,
+  templatePath,
+  WORKSPACE_DIR,
+  WORKSPACE_README,
+  type DocKind,
+} from "@/lib/templates";
 
 /**
  * Documents: markdown files in the repository that RepoBoard keeps an eye on.
@@ -25,17 +33,25 @@ import { buildDiff, type DiffLine } from "@/lib/markdown/sync";
  * SHA, never overwrite a file that moved without the person saying so.
  */
 
-type ClientFactory = () => Promise<MarkdownGitHub & { listMarkdownFiles?: () => Promise<string[]> }>;
+type DocsGitHub = MarkdownGitHub & {
+  listMarkdownFiles?: () => Promise<string[]>;
+  createFiles?: (args: { files: { path: string; content: string }[]; message: string }) => Promise<{ commitSha: string }>;
+};
+type ClientFactory = () => Promise<DocsGitHub>;
 const defaultClientFactory: ClientFactory = () => GitHubClient.create();
 
 export interface TrackedDoc {
   id: string;
   path: string;
   role: "board" | "checklist";
+  /** Where it lives: .repoboard/checklists → checklist, notes → note … */
+  kind: DocKind;
   pinned: boolean;
   title: string;
   total: number;
   done: number;
+  doing: number;
+  review: number;
   sections: DocSnapshot["sections"];
   items: DocSnapshot["items"];
   sha: string | null;
@@ -52,10 +68,13 @@ function toTracked(row: typeof markdownSources.$inferSelect): TrackedDoc {
     id: row.id,
     path: row.path,
     role: row.role,
+    kind: kindOfPath(row.path),
     pinned: row.pinned,
     title: snap?.title ?? fileName(row.path),
     total: snap?.total ?? 0,
     done: snap?.done ?? 0,
+    doing: snap?.doing ?? 0,
+    review: snap?.review ?? 0,
     sections: snap?.sections ?? [],
     items: snap?.items ?? [],
     sha: row.snapshotSha,
@@ -100,7 +119,7 @@ function saveSnapshot(repositoryId: string, path: string, parsed: ParsedDocument
     .run();
 }
 
-export function trackDoc(path: string): TrackedDoc {
+export function trackDoc(path: string, options: { pinned?: boolean; quiet?: boolean } = {}): TrackedDoc {
   const repository = requireRepository();
   const existing = findRow(repository.id, path);
   if (existing) return toTracked(existing);
@@ -113,10 +132,12 @@ export function trackDoc(path: string): TrackedDoc {
       lastKnownSha: null,
       autoSync: false,
       role: "checklist",
-      pinned: true,
+      pinned: options.pinned ?? true,
     })
     .run();
-  logActivity({ repositoryId: repository.id, type: "doc_tracked", message: `Tracking ${path}` });
+  if (!options.quiet) {
+    logActivity({ repositoryId: repository.id, type: "doc_tracked", message: `Tracking ${path}` });
+  }
   return toTracked(findRow(repository.id, path)!);
 }
 
@@ -324,4 +345,97 @@ export function normaliseNewPath(raw: string): string {
   }
   if (!/\.md$/i.test(path)) path = `${path}.md`;
   return path;
+}
+
+/* ------------------------------------------------------------ workspace -- */
+
+const inWorkspace = (path: string) =>
+  path.startsWith(`${WORKSPACE_DIR}/`) && /\.md$/i.test(path);
+
+/**
+ * Everything under .repoboard/ is tracked without anyone asking: that folder
+ * exists to be tracked. Checklists are pinned to the sidebar; notes and
+ * decisions live on the Documents screen. Files deleted on GitHub are dropped.
+ */
+export async function syncWorkspace(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ exists: boolean; added: string[]; removed: string[] }> {
+  const repository = requireRepository();
+  const gh = await clientFactory();
+  if (!gh.listMarkdownFiles) return { exists: false, added: [], removed: [] };
+  const files = (await gh.listMarkdownFiles()).filter(inWorkspace);
+  const present = new Set(files);
+  const tracked = listDocs();
+  const known = new Set(tracked.map((d) => d.path));
+
+  const added: string[] = [];
+  for (const path of files) {
+    if (known.has(path)) continue;
+    trackDoc(path, { pinned: kindOfPath(path) === "checklist", quiet: true });
+    added.push(path);
+  }
+  const removed: string[] = [];
+  for (const doc of tracked) {
+    if (inWorkspace(doc.path) && !present.has(doc.path) && doc.role !== "board") {
+      db.delete(markdownSources).where(eq(markdownSources.id, doc.id)).run();
+      removed.push(doc.path);
+    }
+  }
+  if (added.length) {
+    logActivity({
+      repositoryId: repository.id,
+      type: "doc_tracked",
+      message: `Found ${added.length} new file${added.length === 1 ? "" : "s"} in ${WORKSPACE_DIR}/`,
+    });
+  }
+  if (added.length) await refreshDocs(clientFactory);
+  return { exists: files.length > 0, added, removed };
+}
+
+export interface WorkspaceFile {
+  path: string;
+  content: string;
+  diff: DiffLine[];
+}
+
+function templateFiles(ids: string[], withReadme: boolean): WorkspaceFile[] {
+  const files: { path: string; content: string }[] = [];
+  if (withReadme) files.push({ path: `${WORKSPACE_DIR}/README.md`, content: WORKSPACE_README });
+  for (const id of ids) {
+    const template = templateById(id);
+    if (template) files.push({ path: templatePath(template), content: template.content });
+  }
+  return files.map((f) => ({ ...f, diff: buildDiff("", f.content) }));
+}
+
+/** What setting up the workspace would add. Nothing is written here. */
+export async function previewWorkspace(
+  args: { templates: string[]; readme: boolean },
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ files: WorkspaceFile[]; existing: string[] }> {
+  requireRepository();
+  const gh = await clientFactory();
+  const files = templateFiles(args.templates, args.readme);
+  const all = gh.listMarkdownFiles ? await gh.listMarkdownFiles() : [];
+  const existing = files.map((f) => f.path).filter((p) => all.includes(p));
+  return { files: files.filter((f) => !existing.includes(f.path)), existing };
+}
+
+export async function createWorkspace(
+  args: { templates: string[]; readme: boolean },
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; paths: string[] }> {
+  const repository = requireRepository();
+  const gh = await clientFactory();
+  if (!gh.createFiles) throw new Error("This GitHub client cannot create files");
+  const { files } = await previewWorkspace(args, clientFactory);
+  if (files.length === 0) throw new Error("Those files already exist");
+  const message =
+    files.length === 1
+      ? `RepoBoard: create ${files[0].path}`
+      : `RepoBoard: set up ${WORKSPACE_DIR}/ (${files.length} files)`;
+  const result = await gh.createFiles({ files: files.map(({ path, content }) => ({ path, content })), message });
+  logActivity({ repositoryId: repository.id, type: "doc_changed", message });
+  await syncWorkspace(clientFactory);
+  return { commitSha: result.commitSha, paths: files.map((f) => f.path) };
 }

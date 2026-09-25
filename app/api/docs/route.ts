@@ -4,6 +4,9 @@ import { getVerifiedRepository } from "@/lib/github/access";
 import { GitHubClient } from "@/lib/github/client";
 import {
   commitDocCreate,
+  createWorkspace,
+  previewWorkspace,
+  syncWorkspace,
   commitDocEdit,
   listDocs,
   previewDocCreate,
@@ -51,7 +54,7 @@ export async function GET(request: Request) {
   }
 }
 
-const itemState = z.enum(["todo", "doing", "done", "cancelled"]);
+const itemState = z.enum(["todo", "doing", "review", "done", "cancelled"]);
 const edit = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("state"),
@@ -68,6 +71,15 @@ const edit = z.discriminatedUnion("type", [
     done: z.boolean(),
   }),
   z.object({ type: z.literal("add"), section: z.string().nullable(), title: z.string().min(1) }),
+  z.object({
+    type: z.literal("note"),
+    line: z.number().int().min(0),
+    title: z.string(),
+    id: z.string().nullish(),
+    author: z.string().min(1).max(40),
+    text: z.string().min(1).max(4000),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
   z.object({ type: z.literal("replace"), content: z.string() }),
 ]);
 
@@ -76,6 +88,17 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("untrack"), id: z.string() }),
   z.object({ action: z.literal("pin"), id: z.string(), pinned: z.boolean() }),
   z.object({ action: z.literal("refresh") }),
+  z.object({ action: z.literal("sync-workspace") }),
+  z.object({
+    action: z.literal("workspace-preview"),
+    templates: z.array(z.string()),
+    readme: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("workspace-create"),
+    templates: z.array(z.string()),
+    readme: z.boolean(),
+  }),
   z.object({
     action: z.literal("preview"),
     path: z.string().min(1),
@@ -112,6 +135,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true });
       case "refresh":
         return NextResponse.json(await refreshDocs());
+      case "sync-workspace":
+        return NextResponse.json(await syncWorkspace());
+      case "workspace-preview":
+        return NextResponse.json(await previewWorkspace(body));
+      case "workspace-create":
+        return NextResponse.json(await createWorkspace(body));
       case "preview":
         return NextResponse.json(await previewDocEdit(body));
       case "commit":

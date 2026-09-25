@@ -7,7 +7,7 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { THEME_SCRIPT } from "@/components/shell/ThemeProvider";
-import { getVerifiedRepository } from "@/lib/github/access";
+import { getVerifiedRepository, getViewer } from "@/lib/github/access";
 import { isEnvironmentConfigured, listProjects } from "@/lib/github/auth-provider";
 import { projectSummaries } from "@/lib/board-service";
 import { listDocs } from "@/lib/docs-service";
@@ -40,8 +40,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const docs = verified
     ? listDocs()
         .filter((d) => d.pinned)
-        .map((d) => ({ id: d.id, path: d.path, title: d.title, role: d.role, done: d.done, total: d.total }))
+        .map((d) => ({
+          id: d.id,
+          path: d.path,
+          title: d.title,
+          role: d.role,
+          kind: d.kind,
+          done: d.done,
+          total: d.total,
+          review: d.review,
+        }))
     : [];
+  const viewer = verified ? await getViewer() : null;
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -51,6 +61,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <AppShell
           repo={repo}
+          viewer={viewer}
           connected={Boolean(verified)}
           projects={projects}
           docs={docs}

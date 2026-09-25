@@ -23,8 +23,8 @@ export const DEFAULT_COLUMN_HEADINGS = [
 export const DONE_HEADING = "Done";
 
 const TASK_ID_PATTERN = /<!--\s*rb:(task_[A-Za-z0-9_-]+)\s*-->/;
-// See format.ts: " " todo, "/" in progress, "x" done, "-" cancelled.
-const CHECKBOX_LINE = /^(\s*)([-*+])\s+\[( |x|X|\/|-)\]\s+(.*)$/;
+// See format.ts: " " todo, "/" in progress, "?" needs checking, "x" done, "-" cancelled.
+const CHECKBOX_LINE = /^(\s*)([-*+])\s+\[( |x|X|\/|-|\?)\]\s+(.*)$/;
 
 export interface ParsedTask {
   /** Stable id from the `<!-- rb:task_x -->` marker, or null when absent. */

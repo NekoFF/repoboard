@@ -155,3 +155,55 @@ describe("RepoBoard markdown format", () => {
     expect(result.content).toContain("- [-] Fix #42 crash");
   });
 });
+
+describe("item details and review notes", () => {
+  const DOC = `# Release
+
+## Legal
+
+- [?] Impressum reachable from every screen !high #legal
+  - Why: German law requires provider identification that is easy to find.
+  - Verify: open Settings → About → Legal notice in two taps.
+  - A plain remark without a key
+  - [ ] Sub-item: add e-mail address
+  > codex 2026-09-25: a contact form counts as the second channel.
+- [ ] Privacy policy linked in the store listing
+`;
+
+  it("reads details, notes, sub-items and the needs-check state", () => {
+    const doc = parseDocument(DOC);
+    const impressum = doc.items[0];
+    expect(impressum.state).toBe("review");
+    expect(doc.review).toBe(1);
+    expect(impressum.details).toEqual([
+      { key: "why", text: "German law requires provider identification that is easy to find." },
+      { key: "verify", text: "open Settings → About → Legal notice in two taps." },
+      { key: null, text: "A plain remark without a key" },
+    ]);
+    expect(impressum.notes).toEqual([
+      { author: "codex", date: "2026-09-25", text: "a contact form counts as the second channel." },
+    ]);
+    const sub = doc.items[1];
+    expect(sub.title).toBe("Sub-item: add e-mail address");
+    expect(sub.parent).toBe(impressum.line);
+    expect(doc.items[2].parent).toBeNull();
+  });
+
+  it("adds a review note under an item without merging it into an earlier note", () => {
+    const doc = parseDocument(DOC);
+    const impressum = doc.items[0];
+    const result = applyDocEdits(DOC, [
+      { type: "note", line: impressum.line, title: impressum.text, author: "claude", text: "Checked §5 DDG: VAT id only if you have one.", date: "2026-09-26" },
+    ]);
+    const after = parseDocument(result.content);
+    expect(after.items[0].notes.map((n) => n.author)).toEqual(["codex", "claude"]);
+    expect(result.summary).toBe("Add 1 note");
+
+    const plain = parseDocument(result.content).items.find((i) => i.title.startsWith("Privacy"))!;
+    const second = applyDocEdits(result.content, [
+      { type: "note", line: plain.line, title: plain.text, author: "gpt", text: "Also needed for Google Play.", date: "2026-09-26" },
+    ]);
+    const last = parseDocument(second.content).items.find((i) => i.title.startsWith("Privacy"))!;
+    expect(last.notes).toEqual([{ author: "gpt", date: "2026-09-26", text: "Also needed for Google Play." }]);
+  });
+});

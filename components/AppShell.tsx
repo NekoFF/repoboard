@@ -51,6 +51,7 @@ function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: ()
 
 export function AppShell({
   repo,
+  viewer,
   connected,
   projects,
   docs,
@@ -58,6 +59,7 @@ export function AppShell({
   children,
 }: {
   repo: string | null;
+  viewer: string | null;
   connected: boolean;
   projects: ProjectInfo[];
   docs: SidebarDoc[];
@@ -132,6 +134,7 @@ export function AppShell({
   const shell = useMemo(
     () => ({
       repo,
+      viewer,
       connected: unlocked,
       projects,
       docs,
@@ -139,7 +142,7 @@ export function AppShell({
       openPalette,
       openShortcuts,
     }),
-    [repo, unlocked, projects, docs, managedByEnvironment, openPalette, openShortcuts],
+    [repo, viewer, unlocked, projects, docs, managedByEnvironment, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";

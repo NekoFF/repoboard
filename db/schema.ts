@@ -129,13 +129,14 @@ export interface DocSnapshot {
   total: number;
   done: number;
   doing?: number;
+  review?: number;
   cancelled?: number;
-  sections: { heading: string; depth: number; total: number; done: number; doing?: number }[];
+  sections: { heading: string; depth: number; total: number; done: number; doing?: number; review?: number }[];
   /** Compact per-item state for the overview's item map and "due soon". */
   items: {
     title: string;
     text?: string;
-    state?: "todo" | "doing" | "done" | "cancelled";
+    state?: "todo" | "doing" | "review" | "done" | "cancelled";
     done: boolean;
     section: number;
     line: number;
