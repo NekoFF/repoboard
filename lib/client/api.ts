@@ -19,6 +19,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly conflict = false,
+    /** The full error body, for errors that carry data (e.g. needsIds). */
+    readonly body: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -41,6 +43,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       body.error ?? `Request failed (${response.status})`,
       response.status,
       Boolean(body.conflict),
+      body,
     );
   }
   return body as T;

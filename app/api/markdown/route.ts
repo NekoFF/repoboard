@@ -121,7 +121,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ id, path: body.path });
       }
       case "sync":
-        return NextResponse.json(await syncFromMarkdown());
+        // The app never writes ids silently; NEEDS_IDS below sends the change
+        // back for review.
+        return NextResponse.json(await syncFromMarkdown(undefined, { writeIds: false }));
       case "pending":
         return NextResponse.json(
           (await pendingMarkdownMoves()) ?? { moves: [], baseSha: "", conflict: false },
@@ -143,7 +145,10 @@ export async function POST(request: Request) {
         return NextResponse.json(await commitMarkdownMove(body));
     }
   } catch (error) {
-    const err = error as Error & { code?: string };
+    const err = error as Error & { code?: string; payload?: Record<string, unknown> };
+    if (err.code === "NEEDS_IDS") {
+      return NextResponse.json({ error: err.message, needsIds: true, ...err.payload }, { status: 409 });
+    }
     if (err.code === "CONFLICT") {
       return NextResponse.json({ error: err.message, conflict: true }, {
         status: 409,

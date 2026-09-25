@@ -85,6 +85,9 @@ export function CommandPalette({
   const branches = useResource(api.branches, [], { enabled: open && connected });
   const pulls = useResource(api.pulls, [], { enabled: open && connected });
   const issues = useResource(api.issues, [], { enabled: open && connected });
+  // Checklist items from the last read of each document: every important
+  // point is two keystrokes away, not buried in a file.
+  const docItems = useResource(api.docs, [open], { enabled: open && connected });
   const loading = board.loading || branches.loading || pulls.loading || issues.loading;
 
   const columnName = useMemo(
@@ -188,6 +191,26 @@ export function CommandPalette({
                       {doc.title}
                     </Item>
                   ))}
+                </Command.Group>
+              )}
+
+              {(docItems.data?.docs ?? []).some((d) => d.items.length > 0 && d.role !== "board") && (
+                <Command.Group heading="Checklist items" className={groupClass}>
+                  {docItems.data!.docs
+                    .filter((d) => d.role !== "board")
+                    .flatMap((d) =>
+                      d.items.map((item) => (
+                        <Item
+                          key={`${d.id}-${item.line}`}
+                          value={`item ${item.title} ${d.title}`}
+                          icon={<StatusIcon status={item.state ?? (item.done ? "done" : "todo")} />}
+                          hint={d.title}
+                          onSelect={go(`/docs?path=${encodeURIComponent(d.path)}#line-${item.line}`)}
+                        >
+                          {item.title}
+                        </Item>
+                      )),
+                    )}
                 </Command.Group>
               )}
 

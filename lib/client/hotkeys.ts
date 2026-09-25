@@ -24,6 +24,11 @@ export function overlayOpen(): boolean {
 
 type Handler = (event: KeyboardEvent) => void;
 
+// Shared by every useHotkeys instance: while one of them is in the middle of
+// "g …", the others must not treat the second key as their own shortcut
+// (on the board, "g c" would otherwise also create a card).
+let sequenceUntil = 0;
+
 /**
  * Single-key and two-key ("g b") shortcuts. They never fire while typing or
  * with a modifier held, so they cannot fight the browser or a text field.
@@ -67,10 +72,13 @@ export function useHotkeys(
           map[combo](event);
           return;
         }
+      } else if (Date.now() < sequenceUntil) {
+        return;
       }
       const starts = Object.keys(map).some((k) => k.startsWith(`${key} `));
       if (starts) {
         pending = key;
+        sequenceUntil = Date.now() + 900;
         timer = setTimeout(() => (pending = null), 900);
         event.preventDefault();
         return;

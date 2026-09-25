@@ -335,3 +335,17 @@ describe("batched moves", () => {
     expect(pending!.moves).toHaveLength(0);
   });
 });
+
+describe("ids are never written without review", () => {
+  it("hands the id change back instead of committing it when writeIds is off", async () => {
+    const error = await service
+      .syncFromMarkdown(factory, { writeIds: false })
+      .then(() => null, (e: Error & { code?: string; payload?: { content: string; count: number; baseSha: string } }) => e);
+    expect(error?.code).toBe("NEEDS_IDS");
+    expect(error?.payload?.count).toBe(3);
+    expect(error?.payload?.baseSha).toBe("sha_0");
+    expect(error?.payload?.content).toContain("<!-- rb:task_");
+    expect(github.commits).toHaveLength(0);
+    expect(service.getBoardData().tasks).toHaveLength(0);
+  });
+});

@@ -7,6 +7,7 @@ import { activeRepository, logActivity, type MarkdownGitHub } from "@/lib/board-
 import {
   applyDocEdits,
   parseDocument,
+  SNAPSHOT_VERSION,
   toSnapshot,
   type DocEdit,
   type ParsedDocument,
@@ -57,6 +58,8 @@ export interface TrackedDoc {
   links: string[];
   sha: string | null;
   snapshotAt: number | null;
+  /** The stored copy predates fields RepoBoard now reads; read it again. */
+  stale: boolean;
 }
 
 function fileName(path: string): string {
@@ -81,6 +84,7 @@ function toTracked(row: typeof markdownSources.$inferSelect): TrackedDoc {
     links: snap?.links ?? [],
     sha: row.snapshotSha,
     snapshotAt: row.snapshotAt?.getTime() ?? null,
+    stale: (snap?.version ?? 1) < SNAPSHOT_VERSION,
   };
 }
 
@@ -194,7 +198,7 @@ export async function refreshDocs(
     docs.map(async (doc) => {
       try {
         const file = await gh.getFile(doc.path);
-        if (file.sha !== doc.sha) {
+        if (file.sha !== doc.sha || doc.stale) {
           saveSnapshot(repository.id, doc.path, parseDocument(file.content, fileName(doc.path)), file.sha);
           refreshed += 1;
         }

@@ -20,11 +20,12 @@ import { KanbanBoard, type BoardView } from "@/components/KanbanBoard";
 import { PageHeader } from "@/components/PageHeader";
 import { ImportIssuesDialog } from "@/components/ImportIssuesDialog";
 import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
+import { DocWriteDialog } from "@/components/DocWriteDialog";
 import { NewCardDialog } from "@/components/NewCardDialog";
 import { MilestonesDialog } from "@/components/MilestonesDialog";
 import { FilterBar, type FilterBarHandle } from "@/components/FilterBar";
 import { Menu, MenuItem, MenuSeparator, Modal, Segmented, Spinner, Tooltip, useToast } from "@/components/ui";
-import { api, useResource } from "@/lib/client/api";
+import { api, ApiError, useResource } from "@/lib/client/api";
 import { applyFilter, parseFilter } from "@/lib/client/filters";
 import { useHotkeys } from "@/lib/client/hotkeys";
 import { statusOfColumn } from "@/lib/status";
@@ -48,6 +49,7 @@ export function BoardScreen({
   const [syncing, setSyncing] = useState(false);
   const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save">(null);
   const [saving, setSaving] = useState(false);
+  const [ids, setIds] = useState<{ path: string; content: string; baseSha: string; count: number } | null>(null);
 
   useEffect(() => {
     try {
@@ -142,7 +144,13 @@ export function BoardScreen({
       pending.reload();
       router.refresh();
     } catch (error) {
-      toast.push({ kind: "error", message: "Sync failed", detail: (error as Error).message });
+      const body = (error as ApiError).body;
+      if (body?.needsIds) {
+        // First sync of a file without ids: show the exact change before writing it.
+        setIds(body as unknown as { path: string; content: string; baseSha: string; count: number });
+      } else {
+        toast.push({ kind: "error", message: "Sync failed", detail: (error as Error).message });
+      }
     } finally {
       setSyncing(false);
     }
@@ -254,6 +262,24 @@ export function BoardScreen({
       </div>
 
       {dialog === "new" && <NewCardDialog data={data} onClose={() => setDialog(null)} />}
+
+      {ids && (
+        <DocWriteDialog
+          path={ids.path}
+          edits={[{ type: "replace", content: ids.content }]}
+          baseSha={ids.baseSha}
+          onClose={() => setIds(null)}
+          onDone={() => {
+            setIds(null);
+            toast.push({
+              kind: "info",
+              message: `Added ${ids.count} id${ids.count === 1 ? "" : "s"} to ${ids.path}`,
+              detail: "They are hidden comments; GitHub shows the file as before. Syncing now.",
+            });
+            void sync();
+          }}
+        />
+      )}
       {dialog === "milestones" && <MilestonesDialog data={data} onClose={() => setDialog(null)} />}
 
       {dialog === "commit" && (

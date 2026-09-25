@@ -183,7 +183,7 @@ export function SortableTaskCard({
         {...attributes}
         {...listeners}
         role="button"
-        tabIndex={-1}
+        tabIndex={0}
         data-card-id={task.id}
         data-selected={selected ? "true" : undefined}
         onClick={onOpen}

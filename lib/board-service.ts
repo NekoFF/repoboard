@@ -662,7 +662,9 @@ export interface SyncResult {
  */
 export async function syncFromMarkdown(
   clientFactory: ClientFactory = defaultClientFactory,
+  options: { writeIds?: boolean } = {},
 ): Promise<SyncResult> {
+  const { writeIds = true } = options;
   const data = getBoardData();
   if (!data.repository || !data.boardId || !data.markdownSource) {
     throw new Error("Connect a repository and pick a markdown file first");
@@ -676,6 +678,21 @@ export async function syncFromMarkdown(
   let committedIds = false;
 
   const withIds = ensureTaskIds(content);
+  if (withIds.changed && !writeIds) {
+    // Adding ids is a write to the user's file: hand it back so it goes
+    // through the same reviewed diff as every other write.
+    const error = new Error(
+      `${withIds.assigned.length} task(s) in ${data.markdownSource.path} need a stable id first`,
+    ) as Error & { code?: string; payload?: unknown };
+    error.code = "NEEDS_IDS";
+    error.payload = {
+      path: data.markdownSource.path,
+      content: withIds.content,
+      baseSha: sha,
+      count: withIds.assigned.length,
+    };
+    throw error;
+  }
   if (withIds.changed) {
     const written = await gh.putFile({
       path: data.markdownSource.path,

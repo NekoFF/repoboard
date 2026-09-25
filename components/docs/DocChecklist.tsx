@@ -266,6 +266,7 @@ export function DocChecklist({
   // Links like #line-42 (from the overview or another document) open that
   // item, and every item above it, and bring it into view.
   useEffect(() => {
+    const reveal = () => {
     const match = window.location.hash.match(/^#line-(\d+)$/);
     if (!match) return;
     const target = doc.items.find((i) => i.line === Number(match[1]));
@@ -280,6 +281,11 @@ export function DocChecklist({
     requestAnimationFrame(() =>
       document.getElementById(`line-${target.line}`)?.scrollIntoView({ block: "center", behavior: "smooth" }),
     );
+    };
+    reveal();
+    // The command menu can point at another item of the document already open.
+    window.addEventListener("hashchange", reveal);
+    return () => window.removeEventListener("hashchange", reveal);
   }, [doc.items]);
 
   const stateOf = (item: DocItem) => states.get(item.line) ?? item.state;

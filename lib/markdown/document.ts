@@ -14,6 +14,9 @@ import {
 } from "@/lib/markdown/format";
 import type { DocSnapshot } from "@/db/schema";
 
+/** Bump when DocSnapshot gains fields, so stored snapshots are re-read. */
+export const SNAPSHOT_VERSION = 2;
+
 /**
  * A markdown file read as a checklist: every `- [ ]` anywhere in the file is an
  * item, grouped under the nearest heading above it.
@@ -224,6 +227,7 @@ export function wikiLinks(content: string): string[] {
 
 export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
   return {
+    version: SNAPSHOT_VERSION,
     title: parsed.title,
     links: parsed.links,
     total: parsed.total,
