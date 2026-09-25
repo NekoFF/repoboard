@@ -88,7 +88,9 @@ export function MilestonesDialog({ data, onClose }: { data: BoardData; onClose: 
                   }}
                 />
                 <div className="mt-1.5 flex items-center gap-2">
-                  <ProgressBar counts={progress} height={4} className="max-w-[180px]" />
+                  <span className="w-full max-w-[180px]">
+                    <ProgressBar counts={progress} height={4} />
+                  </span>
                   <span className="text-2xs tabular-nums text-faint">
                     {progress.done}/{progress.total} done
                   </span>

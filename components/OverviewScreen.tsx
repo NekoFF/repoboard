@@ -382,8 +382,10 @@ export function OverviewScreen({
                 {checklists.map((doc) => (
                   <Link key={doc.id} href={docHref(doc.path)} className="-mx-2 flex h-11 items-center gap-4 rounded-md px-2 hover:bg-hover">
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{doc.title}</span>
-                    {doc.review > 0 && <span className="text-2xs font-medium text-state-review">{doc.review} to check</span>}
-                    <ProgressBar counts={{ done: doc.done, review: doc.review, doing: doc.doing, total: doc.total }} height={5} className="w-28" />
+                    {doc.review > 0 && <span className="whitespace-nowrap text-2xs font-medium text-state-review">{doc.review} to check</span>}
+                    <span className="w-28 shrink-0">
+                      <ProgressBar counts={{ done: doc.done, review: doc.review, doing: doc.doing, total: doc.total }} height={5} />
+                    </span>
                     <span className="w-9 text-right text-xs tabular-nums text-muted">{percent(doc.done, doc.total)}%</span>
                   </Link>
                 ))}

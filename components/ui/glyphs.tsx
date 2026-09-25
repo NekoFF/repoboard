@@ -43,12 +43,12 @@ export function StatusIcon({
       {status === "done" ? (
         <>
           <circle cx="7" cy="7" r="6" fill="currentColor" />
-          <path d="M4.3 7.2 6.2 9l3.6-3.8" fill="none" stroke="rgb(var(--surface))" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4.3 7.2 6.2 9l3.6-3.8" fill="none" style={{ stroke: "rgb(var(--surface))" }} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </>
       ) : status === "cancelled" ? (
         <>
           <circle cx="7" cy="7" r="6" fill="currentColor" />
-          <path d="M5 5l4 4M9 5 5 9" stroke="rgb(var(--surface))" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M5 5l4 4M9 5 5 9" style={{ stroke: "rgb(var(--surface))" }} strokeWidth="1.5" strokeLinecap="round" />
         </>
       ) : (
         <>
@@ -87,8 +87,8 @@ export function PriorityIcon({
       <svg width={size} height={size} viewBox="0 0 14 14" className={`shrink-0 text-danger ${className}`} role="img" aria-label={label}>
         <title>{label}</title>
         <rect x="1" y="1" width="12" height="12" rx="3" fill="currentColor" />
-        <path d="M7 3.8v4" stroke="rgb(var(--surface))" strokeWidth="1.6" strokeLinecap="round" />
-        <circle cx="7" cy="10.1" r="0.95" fill="rgb(var(--surface))" />
+        <path d="M7 3.8v4" style={{ stroke: "rgb(var(--surface))" }} strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="7" cy="10.1" r="0.95" style={{ fill: "rgb(var(--surface))" }} />
       </svg>
     );
   }
@@ -195,13 +195,12 @@ export function ProgressRing({
         cy="7"
         r={r}
         fill="none"
-        stroke={complete ? "currentColor" : "rgb(var(--state-done))"}
+        style={{ stroke: complete ? "currentColor" : "rgb(var(--state-done))", transition: "stroke-dashoffset 240ms ease" }}
         strokeWidth="1.6"
         strokeLinecap="round"
         strokeDasharray={c}
         strokeDashoffset={c * (1 - ratio)}
         transform="rotate(-90 7 7)"
-        style={{ transition: "stroke-dashoffset 240ms ease" }}
       />
     </svg>
   );
@@ -211,8 +210,8 @@ export function ProgressRing({
 export function Logo({ size = 22, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={`shrink-0 ${className}`} aria-hidden>
-      <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="rgb(var(--ink))" />
-      <path d="M7 12.4l3.2 3.1L17 8.6" fill="none" stroke="rgb(var(--state-done))" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="1.5" y="1.5" width="21" height="21" rx="6" style={{ fill: "rgb(var(--ink))" }} />
+      <path d="M7 12.4l3.2 3.1L17 8.6" fill="none" style={{ stroke: "rgb(var(--state-done))" }} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

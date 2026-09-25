@@ -36,7 +36,13 @@ export async function GET() {
     // Names and counts only — tokens never leave the server.
     projects: projects(),
   };
-  if (!live) return NextResponse.json({ connected: false, ...base });
+  if (!live) {
+    return NextResponse.json({
+      connected: false,
+      ...base,
+      projects: listProjects(),
+    });
+  }
 
   const identity = getRepoIdentity();
   return NextResponse.json({

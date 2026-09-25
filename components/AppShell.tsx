@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { KeyRound, RefreshCw } from "lucide-react";
+import { KeyRound, Menu as MenuIcon, RefreshCw, Search } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
@@ -45,6 +46,36 @@ function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: ()
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Phones and narrow windows: the sidebar becomes a drawer behind a menu button. */
+function MobileBar({ onSearch }: { onSearch: () => void }) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  useEffect(() => setOpen(false), [pathname]);
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-canvas px-3 md:hidden">
+      <Dialog.Root open={open} onOpenChange={setOpen}>
+        <Dialog.Trigger className="rb-icon-btn" aria-label="Open navigation">
+          <MenuIcon className="size-5" />
+        </Dialog.Trigger>
+        <Dialog.Portal>
+          <Dialog.Overlay className="rb-fade-in fixed inset-0 z-[70] bg-black/30" />
+          <Dialog.Content className="rb-sheet-in fixed inset-y-0 left-0 z-[71] flex shadow-pop focus:outline-none" aria-describedby={undefined}>
+            <Dialog.Title className="sr-only">Navigation</Dialog.Title>
+            <Suspense>
+              <Sidebar />
+            </Suspense>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+      <Logo size={20} />
+      <span className="flex-1 text-sm font-semibold text-ink">RepoBoard</span>
+      <button className="rb-icon-btn" onClick={onSearch} aria-label="Search">
+        <Search className="size-4" />
+      </button>
     </div>
   );
 }
@@ -154,7 +185,8 @@ export function AppShell({
           <ShellContext.Provider value={shell}>
             <ConnectionContext.Provider value={{ status, retry }}>
               {unlocked ? (
-                <div className="flex h-screen w-full overflow-hidden bg-canvas">
+                <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas md:flex-row">
+                  <MobileBar onSearch={() => openPalette()} />
                   <div className="hidden md:flex">
                     <Suspense>
                       <Sidebar />

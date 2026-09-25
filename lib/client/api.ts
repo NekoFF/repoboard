@@ -7,6 +7,7 @@ import type { DocEdit } from "@/lib/markdown/document";
 import type {
   BranchSummary,
   CardReference,
+  GraphCommit,
   CommitDetail,
   CommitSummary,
   IssueSummary,
@@ -117,6 +118,7 @@ export const api = {
     post<{ commitSha: string; path: string }>("/api/docs", { action: "create", path, content }),
 
   refs: () => request<{ refs: CardReference[] }>("/api/github?resource=refs"),
+  graph: () => request<{ commits: GraphCommit[] }>("/api/github?resource=graph"),
 
   board: () => request<BoardData>("/api/board"),
 

@@ -62,6 +62,16 @@ export interface PullRequestSummary {
   checks: { total: number; passed: number } | null;
 }
 
+export interface GraphCommit {
+  sha: string;
+  message: string;
+  author: string | null;
+  date: string | null;
+  parents: string[];
+  /** Branches whose tip is this commit. */
+  heads: string[];
+}
+
 export interface IssueSummary {
   number: number;
   title: string;
@@ -380,6 +390,52 @@ export class GitHubClient {
 
     referenceCache.set(key, { at: Date.now(), refs });
     return refs;
+  }
+
+  /**
+   * The history of every branch at once, with parents, so it can be drawn as
+   * lines that split and merge. Limited to recent commits on the most
+   * recently active branches — enough to see the shape of the work.
+   */
+  async commitGraph(limitPerBranch = 40, maxBranches = 12): Promise<GraphCommit[]> {
+    const repo = await this.getRepo();
+    const branches = await this.octokit.rest.repos
+      .listBranches({ owner: this.owner, repo: this.repo, per_page: 100 })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error)) return [];
+        throw error;
+      });
+    // Default branch first, then the rest; the API gives no activity order,
+    // so the per-branch histories decide what is recent.
+    const ordered = [
+      ...branches.filter((b) => b.name === repo.defaultBranch),
+      ...branches.filter((b) => b.name !== repo.defaultBranch),
+    ].slice(0, maxBranches);
+
+    const byShaMap = new Map<string, GraphCommit>();
+    await Promise.all(
+      ordered.map(async (branch) => {
+        const { data } = await this.octokit.rest.repos
+          .listCommits({ owner: this.owner, repo: this.repo, sha: branch.name, per_page: limitPerBranch })
+          .catch(() => ({ data: [] as Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"] }));
+        for (const c of data) {
+          if (byShaMap.has(c.sha)) continue;
+          byShaMap.set(c.sha, {
+            sha: c.sha,
+            message: c.commit.message.split("\n")[0],
+            author: c.author?.login ?? c.commit.author?.name ?? null,
+            date: c.commit.author?.date ?? null,
+            parents: c.parents.map((p) => p.sha),
+            heads: [],
+          });
+        }
+      }),
+    );
+    for (const branch of ordered) byShaMap.get(branch.commit.sha)?.heads.push(branch.name);
+    return [...byShaMap.values()].sort(
+      (a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"),
+    );
   }
 
   /** Lists the markdown files a user can pick as a board source. */

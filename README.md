@@ -1,461 +1,224 @@
 # RepoBoard
 
-A project board that lives on your own computer and keeps your GitHub
-repository as the single source of truth. Cards, branches, commits, pull
-requests, issues and a Markdown roadmap are one connected thing.
+**Plan your project inside its repository.**
 
-Nothing is uploaded anywhere. The app runs on your machine and talks only to
-github.com, using a token you create yourself.
+RepoBoard is a board, a set of checklists and a project memory that live next
+to your code — as plain markdown in your GitHub repository. It runs on your
+own computer, talks only to github.com, and shows at a glance what is done,
+what is left, and what still needs your own eyes before it counts.
+
+- **Board** — cards in columns, a list and a calendar, filters like
+  `label:bug @me !high due:week`, keyboard for everything, milestones.
+- **Checklists that do not get lost** — a release, the privacy policy, the
+  Impressum, font and dependency licences. Each item can say *why*, *what to
+  do* and *how to verify* it, and carries notes from people and AI agents.
+- **Needs your check** — agents mark finished work as `[?]`; only you tick it
+  off. One queue shows everything waiting for you.
+- **Overview** — one square per item across the board and every checklist,
+  so nothing hides behind a percentage.
+- **Code** — the repository's history drawn as lines that branch and merge;
+  commits, pull requests and issues that mention `RB-12` show up on card 12.
+- **Several projects** — switch between repositories like in Linear; each has
+  its own board, checklists and token.
+- **For AI agents** — an MCP server lets Claude, Codex or any other agent read
+  and work the same board and checklists. They can propose; they cannot commit.
+
+Everything RepoBoard writes to your repository goes through a diff you review
+first, and it refuses to overwrite a file that changed on GitHub meanwhile.
 
 ---
 
-# Installation — the complete version
+## Try it in one minute
 
-Never used a terminal? That is fine. Follow this top to bottom; it takes about
-ten minutes and you can copy every command.
-
-You need: a computer (Windows, macOS or Linux) and a GitHub account.
-
-## Step 1 — Install Node.js
-
-Node is the engine the app runs on. Install the version marked **LTS**.
-
-**Windows**
-1. Open <https://nodejs.org> and click the big **LTS** button.
-2. Run the downloaded `.msi` file and click Next until it finishes. Leave every
-   option at its default.
-3. Restart your computer (Windows needs this so the `node` command is found).
-
-**macOS**
-1. Open <https://nodejs.org> and click the big **LTS** button.
-2. Open the downloaded `.pkg` file and click through the installer.
-
-*(If you already use Homebrew, `brew install node@22` works too.)*
-
-**Linux (Ubuntu / Debian / Mint)**
-Open a terminal and paste:
-```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs
-```
-
-**Check it worked.** Open a terminal (see Step 3 if you do not know how) and type:
-```bash
-node -v
-```
-You should see something like `v22.11.0`. Anything **v20 or higher** is fine.
-If you instead see "command not found", Node did not install — redo this step
-and, on Windows, make sure you restarted.
-
-## Step 2 — Get RepoBoard onto your computer
-
-**The easy way (no extra tools):**
-1. Open the repository page on GitHub.
-2. Click the green **Code** button → **Download ZIP**.
-3. Unpack the ZIP. You now have a folder called `repoboard` (or
-   `repoboard-main`). Put it somewhere you will find again, for example your
-   Documents folder.
-
-**Or, if you have Git installed:**
-```bash
-git clone https://github.com/NekoFF/repoboard.git
-```
-
-## Step 3 — Open a terminal inside that folder
-
-This is the part that trips people up. You need a terminal whose current
-folder is the RepoBoard folder.
-
-**Windows**
-- Open the folder in File Explorer.
-- Click the address bar at the top (where the folder path is), type `cmd` and
-  press Enter.
-- A black window opens, already in the right folder.
-
-  Use `cmd`, not PowerShell. PowerShell refuses to run npm out of the box on a
-  normal Windows installation — see "running scripts is disabled" in
-  Troubleshooting if you already hit that.
-
-**macOS**
-- Open the folder in Finder.
-- Right-click the folder → **Services** → **New Terminal at Folder**.
-- If you do not see that option: open Terminal (⌘+Space, type "Terminal"),
-  type `cd ` (with the space), then drag the folder onto the window and press
-  Enter.
-
-**Linux**
-- Right-click inside the folder → **Open in Terminal**.
-
-**Check you are in the right place.** Type `ls` (macOS/Linux) or `dir`
-(Windows) and press Enter. You should see `package.json` in the list. If you do
-not, you are in the wrong folder.
-
-**A tip that saves trouble on Windows:** before you start, rename the folder to
-something short with no spaces and no brackets — for example `repoboard` — and
-put it somewhere simple like `C:\repoboard`. Downloading the ZIP twice gives
-you names like `repoboard-main (1)`, and brackets and spaces break commands
-unless you quote them.
-
-## Step 4 — Install and start
-
-Type these two commands, one at a time, pressing Enter after each:
+You need [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
 npm install
+npm run demo
 ```
-This downloads what the app needs. It takes one to three minutes and prints a
-lot of text. Warnings are normal. Only a line starting with `npm ERR!` is a
-real problem — see Troubleshooting below.
+
+Open <http://localhost:3100>. The demo is a made-up project ("Lumen", a
+browser for TVs) served by a small fake GitHub, so no token and no real
+repository are involved. `npm run demo -- --reset` starts it over.
+
+## Use it on your own repository
 
 ```bash
 npm run dev
 ```
-When you see `Ready`, the app is running. **Leave this window open** — closing
-it stops the app.
 
-## Step 5 — Open it
+Open <http://localhost:3000>, go to **Settings → Connect a repository**, and
+paste a fine-grained token:
 
-Open your browser and go to:
+1. <https://github.com/settings/personal-access-tokens/new>
+2. **Repository access:** *Only select repositories* → the repository.
+3. **Permissions:** Contents *read and write*; Metadata, Pull requests and
+   Issues *read-only*.
+4. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
 
-**<http://localhost:3000>**
+Then open **Documents** and create the `.repoboard/` folder from the
+templates you want. Connect more repositories from the project switcher in the
+top-left corner.
 
-You will see RepoBoard with an empty state asking you to connect a repository.
+On macOS you can also double-click **`RepoBoard — Start.command`**.
 
-## Step 6 — Create a GitHub token
+## The `.repoboard/` folder
 
-The token is how the app is allowed to read your repository. It is like a key
-that only works for the one repository you choose.
-
-1. Go to <https://github.com/settings/tokens?type=beta>
-2. Click **Generate new token**.
-3. **Token name:** anything, for example `repoboard`.
-4. **Expiration:** 90 days is a sensible choice.
-5. **Repository access:** choose **Only select repositories**, then pick the
-   one repository you want the board for.
-6. **Permissions → Repository permissions**, set exactly these four:
-
-   | Permission    | Set to         |
-   | ------------- | -------------- |
-   | Contents      | Read and write |
-   | Metadata      | Read-only      |
-   | Pull requests | Read-only      |
-   | Issues        | Read-only      |
-
-   *Metadata usually switches itself on — that is expected.*
-7. Click **Generate token** at the bottom.
-8. Copy the token now. It starts with `github_pat_` and GitHub will never show
-   it again.
-
-*If the repository belongs to an organisation rather than to you personally, an
-organisation owner may have to approve the token before it works.*
-
-## Step 7 — Connect
-
-Back in RepoBoard at <http://localhost:3000>:
-
-1. Click **Settings** in the bottom left.
-2. **Repository:** type it as `owner/name`, for example `NekoFF/my-project`.
-3. **Token:** paste what you copied.
-4. Click **Connect repository**.
-
-Done. Your branches, commits, pull requests and issues are now live in the app.
-
-## What to do first
-
-- Open **Board** and click **Import GitHub issues** — your existing issues
-  become cards in one click.
-- Or open **Markdown Sync** and pick a file like `ROADMAP.md` to drive the
-  board from a checklist in your repository.
-- Press **⌘K** (Mac) or **Ctrl+K** (Windows/Linux) to search everything.
-
-## Starting and stopping it
-
-**The simplest way (macOS):** double-click **`RepoBoard — Start.command`** in
-the project folder. It starts the app and opens it in your browser. Closing
-that window stops it.
-
-If it somehow keeps running in the background, double-click
-**`RepoBoard — Stop.command`**.
-
-**From a terminal:**
-
-```bash
-npm run dev     # start; Ctrl+C stops it
-npm run stop    # stop one that is still running in the background
+```
+.repoboard/
+  README.md        the rules, for people and agents
+  checklists/      what must be done and checked
+  notes/           how to run things, where they live
+  decisions/       what was decided and why, with sources
+  board.json       card order, checklists and links (written by RepoBoard)
 ```
 
-You do not repeat `npm install`, and you do not create a new token. Your board
-lives in `~/.repoboard/`, not in the app folder.
+A checklist item looks like this:
 
-**How to tell whether it is running:** open <http://localhost:3000>. A page
-means yes; "cannot connect" means no. The app only answers on your own
-computer — other devices on your network cannot reach it.
-
-## Updating to a newer version
-
-New versions are published on the repository page. Updating never touches your
-board: your data lives in a folder called `.repoboard` in your **home**
-directory, not inside the app folder, so replacing the app folder is safe.
-
-**If you downloaded a ZIP**
-1. Download the new ZIP the same way as in Step 2.
-2. Unpack it and delete the old app folder — your board and token are not in
-   there.
-3. Open a terminal in the new folder (Step 3) and run:
-   ```bash
-   npm install
-   npm run dev
-   ```
-
-**If you used `git clone`**
-```bash
-git pull
-npm install
-npm run dev
+```markdown
+- [?] Impressum reachable from every screen !high @alex due:2026-10-01 #legal
+  - Why: the provider must be easy to identify.
+  - Verify: from a fresh install, reach it in two presses of the remote.
+  > codex 2026-09-25: a contact form counts as the second contact channel.
 ```
 
-`npm install` is needed because a new version may use new libraries. Any
-database changes apply themselves the first time the app starts — there is
-nothing else to run.
+`[ ]` to do · `[/]` in progress · `[?]` needs checking · `[x]` done · `[-]` won't do.
+The full format is in [docs/FORMAT.md](docs/FORMAT.md). It reads fine on
+GitHub and the folder opens as an Obsidian vault.
 
-*Installed before this data folder existed?* If you have a `repoboard.db` file
-sitting inside the app folder, that installation keeps using it, and deleting
-the folder would delete your board. To move to the safe location: stop the app,
-then move `repoboard.db` and the `.repoboard` folder from the app folder into
-your home directory (`~/.repoboard/`), creating it if needed.
+## AI agents
+
+Connect the MCP server to Claude Code:
+
+```bash
+claude mcp add repoboard -- node /path/to/repoboard/scripts/mcp-server.mjs
+```
+
+(Settings shows the exact command for your installation.) Agents get the
+overview, the board, the documents and the needs-check queue, and can create,
+move and comment on cards. To change a checklist they edit the file in their
+own checkout and push — and they follow the rules in `.repoboard/README.md`:
+never tick an item themselves, set `[?]` and say how to verify.
+
+## Keyboard
+
+| Keys | Does |
+| ---- | ---- |
+| `⌘K` / `Ctrl K` | search everything, run any command |
+| `G` then `O` `B` `D` `C` `A` | overview, board, documents, code, activity |
+| `C` | new card |
+| `/` | filter the board |
+| arrows, `J` `K`, `Enter` | move the selection, open |
+| `X`, `1`–`4` | done, send to a column |
+| `E`, `⌘Enter` | edit a document, review changes |
+| `?` | all shortcuts |
 
 ## Where your data is kept
 
 | What | Where |
 | ---- | ----- |
-| Your board, cards and history | `~/.repoboard/repoboard.db` |
-| Your GitHub token | `~/.repoboard/credentials.json` (readable only by you) |
+| Boards, cards, history | `~/.repoboard/repoboard.db` |
+| Tokens | `~/.repoboard/credentials.json` (readable only by you) |
+| Checklists, notes, decisions | your repository, `.repoboard/` |
 
-To back up everything, copy that one folder. To start completely fresh, delete
-it — the app will rebuild an empty board on the next start.
-
-## Troubleshooting
-
-**Windows: `A positional parameter cannot be found that accepts argument '1'`**
-Your folder name contains brackets or spaces — typically `repoboard-main (1)`
-because the ZIP was downloaded twice. Put the whole path in quotes:
-```powershell
-cd "C:\Users\you\Downloads\repoboard-main (1)\repoboard-main"
-```
-Better: rename the folder to `repoboard` so this cannot happen again.
-
-**Windows: I typed `cmd C:\some\path` and ended up in `C:\Windows\System32`**
-`cmd` followed by a path does not move into that folder. Either use the
-Explorer address-bar method in Step 3, or move there afterwards with:
-```
-cd /d "C:\Users\you\Downloads\repoboard-main\repoboard-main"
-```
-Check with `dir` that you see `package.json`.
-
-**Windows: `npm ... cannot be loaded because running scripts is disabled on this system`**
-You are in PowerShell, which blocks scripts by default, and npm is a script.
-Any one of these fixes it:
-- Easiest: close PowerShell and use **Command Prompt** instead — in the folder's
-  address bar type `cmd` instead of `powershell` (Step 3).
-- Or stay in PowerShell and add `.cmd` to the commands: `npm.cmd install`, then
-  `npm.cmd run dev`.
-- Or allow scripts for your own account, once, then use npm normally:
-  ```powershell
-  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-  ```
-  Answer `Y` when it asks. This needs no administrator rights and only affects
-  your user.
-
-**`node` or `npm` is not recognised / command not found**
-Node is not installed, or Windows was not restarted after installing it. Redo
-Step 1.
-
-**Anything at all: run the built-in check first**
-```bash
-npm run doctor
-```
-If it reports a problem with the database engine, this usually fixes it without
-reinstalling anything:
-```bash
-npm run fix
-```
-It prints your Node version, whether the pieces installed correctly, and what
-to do about it in plain words. Start here before reading the rest of this
-section.
-
-**`Could not locate the bindings file` / errors mentioning `node-gyp`, `MSBuild`, `Python` or `C++`**
-The database library needs a small binary matching your Node version. It
-normally downloads a ready-made one; if none matches, it tries to compile, and
-compiling needs developer tools you probably do not have.
-
-First make sure you are on the current version of this app — older versions did
-not have ready-made binaries for Node 24. Update (see above), delete the
-`node_modules` folder, and run `npm install` again.
-
-If it still happens, install the **LTS** version of Node from
-<https://nodejs.org>, delete `node_modules`, and install again. As a last
-resort you can install the build tools instead: on Windows, "Desktop
-development with C++" from the Visual Studio Build Tools; on macOS,
-`xcode-select --install`; on Linux, `build-essential` and `python3`.
-
-**`Error: listen EADDRINUSE: address already in use :::3000`**
-Something else already uses port 3000 — most likely RepoBoard is already
-running in another terminal window. Close that window, or start it on a
-different port:
-```bash
-npm run dev -- -p 3001
-```
-and open <http://localhost:3001> instead.
-
-**The page loads but has no styling, just black text on white**
-The app was rebuilt while running. Press Ctrl+C in the terminal and run
-`npm run dev` again.
-
-**"Bad credentials" or "Not Found" after connecting**
-The token is wrong, expired, or was not given access to that specific
-repository. Redo Step 6, making sure you selected the repository under
-**Only select repositories**.
-
-**I want to point it at a different repository**
-Settings → **Disconnect**, then connect the other one.
+Back up the `~/.repoboard` folder to keep everything local. Updating the app
+never touches it.
 
 ## Is this safe?
 
-- Your token is stored only on your computer, in
-  `~/.repoboard/credentials.json`, readable only by your user account. It is
-  never sent anywhere except to github.com.
-- The app listens on `127.0.0.1` only, which means other devices on your
-  network cannot reach it. It has no login of its own, so that restriction is
-  what keeps the token yours. Do not run `npm run dev:lan` unless you
-  understand that it removes this protection.
-- RepoBoard never writes to your repository without showing you the exact diff
-  first, and it refuses to overwrite a file that changed on GitHub since it
-  last read it.
+- Tokens stay on your computer and are only ever sent to github.com. They
+  never reach the browser.
+- The app listens on `127.0.0.1` only; other devices on your network cannot
+  reach it. It has no login of its own, so that is what keeps the token yours.
+  Do not run `npm run dev:lan` unless you understand that it removes this.
+- Nothing is written to your repository without a diff you approved, and a
+  file that changed on GitHub since you opened it is never overwritten.
+- The legal checklists are reminders, not legal advice.
+
+---
+
+# Installation, step by step
+
+Never used a terminal? Follow this top to bottom; it takes about ten minutes.
+
+**1. Install Node.js.** Open <https://nodejs.org>, download the **LTS**
+version and install it with the default options. On Windows, restart the
+computer afterwards. Check it worked: open a terminal and type `node -v` — you
+should see `v20` or higher.
+
+**2. Get RepoBoard.** On the repository page click **Code → Download ZIP** and
+unpack it somewhere simple (on Windows, e.g. `C:\repoboard` — no spaces or
+brackets in the path). Or `git clone https://github.com/NekoFF/repoboard.git`.
+
+**3. Open a terminal in that folder.**
+Windows: open the folder in Explorer, click the address bar, type `cmd`, press
+Enter (use `cmd`, not PowerShell). macOS: right-click the folder → Services →
+New Terminal at Folder. Linux: right-click → Open in Terminal. Type `ls`
+(or `dir` on Windows): you should see `package.json`.
+
+**4. Install and start.**
+```bash
+npm install
+npm run dev
+```
+Leave the window open; closing it stops the app. Open <http://localhost:3000>.
+
+**Stopping and starting again:** `Ctrl+C` stops it; `npm run dev` starts it
+again. `npm run stop` stops one that is still running in the background. You
+never repeat `npm install` unless you update.
+
+**Updating:** download the new version, replace the app folder (your data is
+not in it), then `npm install` and `npm run dev`. Database changes apply
+themselves on start.
+
+## Troubleshooting
+
+**Run the built-in check first:** `npm run doctor` — it explains problems in
+plain words. If it reports the database engine, `npm run fix` usually solves it.
+
+**Windows: `running scripts is disabled on this system`** — you are in
+PowerShell. Use `cmd` instead, or run `npm.cmd install` / `npm.cmd run dev`,
+or once: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`.
+
+**Windows: `A positional parameter cannot be found`** — the folder path has
+spaces or brackets (e.g. `repoboard-main (1)`). Rename the folder, or quote the
+path: `cd "C:\Users\you\Downloads\repoboard-main (1)"`.
+
+**`node` or `npm` is not recognised** — Node is not installed, or Windows was
+not restarted afterwards.
+
+**`Could not locate the bindings file` / `node-gyp` / `MSBuild` errors** — the
+database engine has no ready-made binary for your Node version. Update to the
+current RepoBoard, delete `node_modules`, `npm install` again. Still failing:
+install the LTS version of Node.
+
+**`EADDRINUSE :::3000`** — RepoBoard is already running somewhere. Close that
+window, or use another port: `npm run dev -- -p 3001`.
+
+**"Bad credentials" or "Not Found" when connecting** — the token is wrong,
+expired, or was not given access to that repository.
 
 ---
 
 # For developers
 
-## How the Markdown sync works
-
-Pick any `.md` file in the repository (`ROADMAP.md`, `TODO.md`, `PLAN.md`, …).
-Headings become columns, checkboxes become card state:
-
-```markdown
-## Todo
-
-- [ ] Phone input pairing <!-- rb:task_k3f9x21a -->
-
-## In Progress
-
-- [ ] Private mode cookie isolation <!-- rb:task_b71qc04d -->
-
-## Done
-
-- [x] D-pad focus memory <!-- rb:task_z04mn8re -->
-```
-
-| Markdown           | Board              |
-| ------------------ | ------------------ |
-| `## Todo`          | Column *Todo*      |
-| `## In Progress`   | Column *In Progress* |
-| `## Review`        | Column *Review*    |
-| `## Done`          | Column *Done*      |
-| `- [ ]`            | open card          |
-| `- [x]`            | completed card     |
-| `<!-- rb:task_x -->` | stable card identity |
-
-The `rb:` markers are HTML comments, so github.com renders the file normally
-while RepoBoard keeps an identity that survives renaming and reordering. If a
-task has no marker, the first sync adds one and commits it back.
-
-### Board → GitHub
-
-Dragging a card between columns moves the task under the matching heading and
-flips its checkbox. Before anything is written:
-
-1. the file is fetched fresh from GitHub,
-2. its SHA is compared with the one the edit was based on,
-3. a diff preview is shown,
-4. only then is the Contents API called, with the expected SHA attached.
-
-The commit reads e.g. `RepoBoard: move "Private mode cookie isolation" to Done`.
-
-### Conflicts
-
-If the remote SHA moved, RepoBoard **never** overwrites. The preview turns into
-a conflict panel offering *Use local*, *Use remote* or *Merge manually* (a
-side-by-side view). Forcing a write still rebases onto the freshly fetched
-remote content, so a concurrent edit by someone else is not lost.
-
-## What lives where
-
-GitHub is authoritative for branches, commits, pull requests, issues and file
-contents — none of it is mirrored into SQLite. The database holds only
-RepoBoard's own state:
-
-```
-workspaces · repositories · boards · columns · tasks · task_labels
-task_branch_links · task_commit_links · task_pull_request_links
-task_issue_links · markdown_sources · markdown_task_mappings
-activity_events · sync_state
-```
-
-## Project layout
-
-```
-app/                 routes and API handlers
-  api/repo           connect / disconnect / status
-  api/board          card CRUD, moves, links
-  api/github         read-only proxy for live GitHub data
-  api/markdown       source selection, sync, preview, commit
-  api/activity       local event log
-components/          screens and UI (Figma-derived)
-lib/
-  github/            AuthProvider abstraction + Octokit client
-  markdown/          remark parser, id backfill, move, diff, conflict rules
-  db/                SQLite client and migration runner
-  board-service.ts   the layer that ties board, markdown and GitHub together
-db/schema.ts         Drizzle schema
-drizzle/             generated SQL migrations
-tests/               parser, conflict and full sync-pipeline tests
-```
-
-## Scripts
-
 ```bash
 npm run dev          # http://localhost:3000, bound to 127.0.0.1
-npm run dev:lan      # same, reachable from the network — see the safety note
+npm run demo         # against the fake GitHub in scripts/demo-github.mjs
+npm test             # unit and integration tests
+npx tsc --noEmit     # types
 npm run build        # production build (writes to .next-build)
-npm test             # 29 unit + integration tests
-npm run db:generate  # regenerate migrations after a schema change
-npm run db:migrate   # apply migrations by hand (normally automatic on boot)
-npm run doctor       # check Node, dependencies and the database engine
+npm run db:generate  # a migration after changing db/schema.ts
+npm run mcp          # the MCP server on stdio
 ```
 
-## Scope
-
-One repository per installation. The Settings screen connects a repository and
-creates the board; to point RepoBoard somewhere else, disconnect and connect
-the other repository. The schema already carries workspace and repository ids,
-so multiple boards are a UI change rather than a migration.
-
-## Auth
-
-`lib/github/auth-provider.ts` defines the `AuthProvider` interface; the MVP
-implements `PatAuthProvider`. Swapping in GitHub OAuth or a GitHub App means
-adding a class there — no caller changes, because nothing else reads the token.
+Next.js 14 (app router) · React 18 · Tailwind with CSS-variable tokens ·
+SQLite through Drizzle · Octokit · dnd-kit · Radix primitives · cmdk ·
+remark. See [CLAUDE.md](CLAUDE.md) for the architecture, the rules the code
+keeps, and where everything lives.
 
 ## License
 
 Source-available, not open source. You may read it, download it and run it for
 yourself; commercial use, redistribution and offering it as a service need
 written permission. See [LICENSE](LICENSE).
-
-## Design
-
-The UI follows the RepoBoard Figma file: 230px sidebar, 68px top bar, dense
-developer-tool spacing, off-white canvas (`#fbfbfa`), near-black ink
-(`#121213`), thin `#e0e0de` borders and colour used only for state (green
-`#2e7847` for synced, amber `#b8731a` for conflicts). Tokens live in
-`tailwind.config.ts`.

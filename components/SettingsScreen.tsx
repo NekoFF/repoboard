@@ -1,197 +1,302 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { BoardData, RepoHeader } from "@/lib/board-service";
-import { TopBar } from "@/components/TopBar";
-import { useConnection } from "@/components/ConnectionState";
-import { useToast } from "@/components/ui";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Bot, Check, Copy, ExternalLink, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { ProjectMark } from "@/components/shell/ProjectSwitcher";
+import { useShell } from "@/components/shell/ShellContext";
+import { useTheme } from "@/components/shell/ThemeProvider";
+import { Logo, RelativeTime, Segmented, Spinner, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
 
+function Card({ title, icon, description, children }: { title: string; icon: ReactNode; description?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-6">
+      <div>
+        <h2 className="flex items-center gap-2 text-md font-semibold text-ink">
+          <span className="text-muted">{icon}</span>
+          {title}
+        </h2>
+        {description && <p className="mt-1 text-sm leading-relaxed text-muted">{description}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function CopyLine({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-code-bg py-1.5 pl-3 pr-1.5">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-ink">{text}</code>
+      <button
+        className="rb-icon-btn"
+        aria-label="Copy"
+        onClick={() =>
+          navigator.clipboard?.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+        }
+      >
+        {copied ? <Check className="size-3.5 text-state-done" /> : <Copy className="size-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
+
 export function SettingsScreen({
-  data,
-  header,
-  connected,
   authLabel,
   tokenSource,
+  managedByEnvironment,
+  paths,
 }: {
-  data: BoardData;
-  header: RepoHeader;
-  connected: boolean;
   authLabel: string;
   tokenSource: string | null;
+  managedByEnvironment: boolean;
+  paths: { database: string; credentials: string; mcpServer: string };
 }) {
   const router = useRouter();
+  const params = useSearchParams();
   const toast = useToast();
-  const { status, retry } = useConnection();
-  const accessGranted = status === "connected";
-  const [token, setToken] = useState("");
+  const { projects, connected, repo: activeRepo } = useShell();
+  const { choice, setChoice } = useTheme();
   const [repo, setRepo] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [adding, setAdding] = useState(projects.length === 0 || Boolean(params.get("add")));
 
-  const connect = async (event: React.FormEvent) => {
+  useEffect(() => {
+    if (params.get("add")) setAdding(true);
+  }, [params]);
+
+  const connect = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
+    setBusy("connect");
     setError(null);
-    setResult(null);
     try {
       const body = await api.connectRepository(token, repo);
-      setResult(
-        `Connected ${body.repo.owner}/${body.repo.name} · default branch ${body.repo.defaultBranch} · ${body.repo.visibility}`,
-      );
       toast.push({
         kind: "success",
         message: `Connected ${body.repo.owner}/${body.repo.name}`,
-        detail: "The board was created locally.",
+        detail: `Default branch ${body.repo.defaultBranch}, ${body.repo.visibility}`,
       });
       setToken("");
+      setRepo("");
+      setAdding(false);
       router.refresh();
-      retry();
+      router.push("/");
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  const disconnect = async () => {
-    setBusy(true);
+  const act = async (key: string, fn: () => Promise<unknown>, message: string) => {
+    setBusy(key);
     try {
-      await api.disconnectRepository();
+      await fn();
+      toast.push({ kind: "success", message });
       router.refresh();
     } catch (err) {
-      setError((err as Error).message);
+      toast.push({ kind: "error", message: "That did not work", detail: (err as Error).message });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
+
+  const mcpCommand = `claude mcp add repoboard -- node "${paths.mcpServer}"`;
 
   return (
     <>
-      <TopBar
-        owner={accessGranted ? header.owner : null}
-        repo={accessGranted ? header.name : null}
-        defaultBranch={accessGranted ? header.defaultBranch : null}
-        lastSyncAt={accessGranted ? header.lastSyncAt : null}
-        connected={accessGranted}
-      />
+      {connected ? (
+        <PageHeader title="Settings" icon={<KeyRound className="size-4" />} />
+      ) : (
+        <header className="flex h-14 items-center gap-2.5 px-6">
+          <Logo />
+          <span className="text-md font-semibold tracking-[-0.01em] text-ink">RepoBoard</span>
+        </header>
+      )}
 
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-[18px] overflow-y-auto p-[22px]">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[24px] font-semibold text-ink">Settings</h1>
-          <p className="text-[12px] text-muted">
-            RepoBoard runs entirely on your machine. The token is stored in
-            .repoboard/credentials.json (0600) or read from GITHUB_PAT — never in
-            source control, never sent anywhere but github.com.
-          </p>
-        </div>
-
-        <div className="rb-card flex max-w-[620px] flex-col gap-3 p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[14px] font-semibold text-ink">
-              GitHub connection
-            </span>
-            {accessGranted ? (
-              <span className="inline-flex items-center rounded-sm bg-success-bg px-2 py-1 text-[11px] font-medium text-success-fg">
-                connected
-              </span>
-            ) : (
-              <span className="rb-pill">{status === "checking" ? "checking" : status === "error" ? "needs attention" : "not connected"}</span>
+      <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[760px] flex-col gap-6 px-6 pb-20 pt-8 sm:px-10">
+          <Card
+            title="Projects"
+            icon={<KeyRound className="size-4" />}
+            description="Each project is one GitHub repository with its own board, checklists and token. Tokens stay on this computer."
+          >
+            {managedByEnvironment && (
+              <p className="rounded-lg bg-pill p-3 text-sm text-muted">
+                This instance is configured through environment variables (GITHUB_REPO / GITHUB_PAT), so projects are
+                managed there.
+              </p>
             )}
-          </div>
 
-          <p className="text-[11px] text-muted">
-            Auth provider: {authLabel}
-            {tokenSource ? ` · token from ${tokenSource}` : ""}
-          </p>
+            {projects.length > 0 && (
+              <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
+                {projects.map((p) => (
+                  <div key={p.repo} className="flex items-center gap-3 px-4 py-3">
+                    <ProjectMark repo={p.repo} size={28} />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 truncate text-base font-medium text-ink">
+                        {p.repo}
+                        {p.active && <span className="rb-pill-ok">Active</span>}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {p.open !== undefined ? `${p.open} open, ${p.done ?? 0} done` : "No board yet"}
+                        {p.lastSyncAt ? (
+                          <>
+                            {", synced "}
+                            <RelativeTime value={p.lastSyncAt} />
+                          </>
+                        ) : null}
+                      </p>
+                    </div>
+                    {!p.active && !managedByEnvironment && (
+                      <button
+                        className="rb-btn rb-btn-sm"
+                        disabled={busy !== null}
+                        onClick={() => act(`switch-${p.repo}`, () => api.switchProject(p.repo), `Switched to ${p.repo}`)}
+                      >
+                        {busy === `switch-${p.repo}` && <Spinner />} Open
+                      </button>
+                    )}
+                    {!managedByEnvironment && (
+                      <button
+                        className="rb-icon-btn"
+                        aria-label={`Disconnect ${p.repo}`}
+                        title="Disconnect — forgets the token; the board stays on this computer"
+                        disabled={busy !== null}
+                        onClick={() => act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`)}
+                      >
+                        {busy === `remove-${p.repo}` ? <Spinner /> : <Trash2 className="size-3.5" />}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-          <form className="flex flex-col gap-2" onSubmit={connect}>
-            <label className="text-[12px] font-medium text-ink">
-              Repository
-              <input
-                className="rb-input mt-1"
-                placeholder="owner/name"
-                value={repo}
-                onChange={(event) => setRepo(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className="text-[12px] font-medium text-ink">
-              Fine-grained personal access token
-              <input
-                type="password"
-                className="rb-input mt-1"
-                placeholder="github_pat_…"
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-                required
-              />
-            </label>
-
-            <p className="text-[11px] text-muted">
-              Needs repository permissions: Contents (read &amp; write), Metadata
-              (read), Pull requests (read), Issues (read).
-            </p>
-
-            <div className="flex items-center gap-2">
-              <button className="rb-btn-primary" disabled={busy}>
-                {busy ? "Checking…" : "Connect repository"}
-              </button>
-              {connected && (
-                <button
-                  type="button"
-                  className="rb-btn"
-                  onClick={disconnect}
-                  disabled={busy}
-                >
-                  Disconnect
+            {!managedByEnvironment &&
+              (adding ? (
+                <form className="flex flex-col gap-4 rounded-xl border border-border bg-canvas p-5" onSubmit={connect}>
+                  <p className="text-sm font-semibold text-ink">Connect a repository</p>
+                  <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+                    Repository
+                    <input
+                      className="rb-input h-9 font-mono"
+                      placeholder="owner/name"
+                      value={repo}
+                      onChange={(event) => setRepo(event.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+                    Fine-grained access token
+                    <input
+                      type="password"
+                      className="rb-input h-9 font-mono"
+                      placeholder="github_pat_…"
+                      value={token}
+                      onChange={(event) => setToken(event.target.value)}
+                      required
+                      autoComplete="off"
+                    />
+                  </label>
+                  <div className="rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+                    <p>
+                      <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
+                        Create a token on GitHub <ExternalLink className="size-3" />
+                      </a>{" "}
+                      with <em>Only select repositories</em> → this repository, and these permissions:
+                    </p>
+                    <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <li><span className="text-ink">Contents</span> — read and write</li>
+                      <li><span className="text-ink">Metadata</span> — read</li>
+                      <li><span className="text-ink">Pull requests</span> — read</li>
+                      <li><span className="text-ink">Issues</span> — read</li>
+                    </ul>
+                  </div>
+                  {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}
+                  <div className="flex items-center gap-2">
+                    <button className="rb-btn-primary h-9 px-4" disabled={busy === "connect"}>
+                      {busy === "connect" && <Spinner />} {busy === "connect" ? "Checking with GitHub" : "Connect"}
+                    </button>
+                    {projects.length > 0 && (
+                      <button type="button" className="rb-btn-ghost" onClick={() => setAdding(false)}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+              ) : (
+                <button className="rb-btn w-fit" onClick={() => setAdding(true)}>
+                  <Plus className="size-3.5" /> Connect a repository
                 </button>
-              )}
-            </div>
-          </form>
+              ))}
+            <p className="text-xs text-faint">
+              {authLabel}
+              {tokenSource ? `, read from the ${tokenSource}` : ""}. The token is never sent to the browser.
+            </p>
+          </Card>
 
-          {error && (
-            <div className="rounded-lg border border-warn-border bg-warn-bg p-3 text-[12px] text-warn-fg">
-              {error}
-            </div>
-          )}
-          {result && (
-            <div className="rounded-lg bg-success-bg p-3 text-[12px] text-success-fg">
-              {result}
-            </div>
-          )}
-        </div>
+          <Card title="Appearance" icon={<Palette className="size-4" />}>
+            <Segmented
+              value={choice}
+              onChange={setChoice}
+              options={[
+                { value: "system", label: <><Monitor className="size-3.5" /> System</> },
+                { value: "light", label: <><Sun className="size-3.5" /> Light</> },
+                { value: "dark", label: <><Moon className="size-3.5" /> Dark</> },
+              ]}
+            />
+          </Card>
 
-        {accessGranted && data.repository && (
-          <div className="rb-card flex max-w-[620px] flex-col gap-2 p-4">
-            <span className="text-[14px] font-semibold text-ink">
-              Repository status
-            </span>
-            <dl className="grid grid-cols-2 gap-1 text-[12px]">
-              <dt className="text-muted">owner / name</dt>
-              <dd className="text-ink">
-                {data.repository.owner}/{data.repository.name}
-              </dd>
-              <dt className="text-muted">default branch</dt>
-              <dd className="text-ink">{data.repository.defaultBranch}</dd>
-              <dt className="text-muted">visibility</dt>
-              <dd className="text-ink">{data.repository.visibility}</dd>
-              <dt className="text-muted">latest sync</dt>
-              <dd className="text-ink">
-                {data.repository.lastSyncAt
-                  ? new Date(data.repository.lastSyncAt).toLocaleString()
-                  : "never"}
-              </dd>
-              <dt className="text-muted">markdown source</dt>
-              <dd className="text-ink">
-                {data.markdownSource?.path ?? "not selected"}
-              </dd>
+          <Card
+            title="AI agents"
+            icon={<Bot className="size-4" />}
+            description={
+              <>
+                Agents work with the same board and checklists you see. They can read and change cards through the MCP
+                server, and edit the files in <code className="font-mono text-xs">.repoboard/</code> in their own copy of
+                the repository. They cannot commit through RepoBoard — writes to GitHub always go through your review.
+              </>
+            }
+          >
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-muted">Claude Code</p>
+              <CopyLine text={mcpCommand} />
+              <p className="text-xs font-medium text-muted">Any other MCP client (stdio)</p>
+              <CopyLine text={`node "${paths.mcpServer}"`} />
+            </div>
+            <p className="text-sm text-muted">
+              The rules agents follow — never tick an item themselves, mark it <code className="font-mono text-xs">[?]</code> and
+              say how to verify it — are in <code className="font-mono text-xs">.repoboard/README.md</code>, which RepoBoard
+              creates with the workspace.
+            </p>
+          </Card>
+
+          <Card title="Your data" icon={<HardDrive className="size-4" />} description="Everything RepoBoard stores lives in two files on this computer. Back them up by copying the folder.">
+            <dl className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt className="text-muted">Board</dt>
+              <dd className="min-w-0 truncate font-mono text-xs text-ink">{paths.database}</dd>
+              <dt className="text-muted">Tokens</dt>
+              <dd className="min-w-0 truncate font-mono text-xs text-ink">{paths.credentials}</dd>
             </dl>
-          </div>
-        )}
+            {activeRepo && (
+              <p className="text-xs text-faint">
+                Card order, checklists and links can also be kept in the repository itself (Board → Save to repo), so a
+                teammate who connects the same repository sees them.
+              </p>
+            )}
+          </Card>
+        </div>
       </div>
     </>
   );

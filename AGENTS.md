@@ -5,90 +5,99 @@ on this repository, sometimes at the same time.
 
 ## What this is
 
-A local-first project board for **one** GitHub repository. Next.js + SQLite,
-runs on the user's machine, talks only to github.com. GitHub is the source of
-truth for branches, commits, pull requests, issues and file contents; SQLite
-holds only the board's own state.
+A local-first planning tool for GitHub repositories: a board, checklists that
+must not get lost (release, privacy policy, licences…), notes and decisions —
+all kept as markdown in the repository itself, under `.repoboard/`. Next.js +
+SQLite, runs on the user's machine, talks only to github.com.
 
-Single user, single repository. There are no accounts, no workspaces, no
-sharing. Do not add them.
+GitHub is the source of truth for branches, commits, pull requests, issues and
+file contents; SQLite holds only RepoBoard's own state (cards, links, the last
+parsed copy of each document). Several repositories can be connected, one
+active at a time, each with its own token. There are no accounts, no server,
+no sharing beyond what the repository itself shares. Do not add them.
+
+The file format is specified in [docs/FORMAT.md](docs/FORMAT.md). Keep that
+file, `lib/markdown/format.ts` and `WORKSPACE_README` in `lib/templates.ts` in
+step.
 
 ## Hard rules — breaking these breaks the product
 
-1. **Never write to the user's repository without a preview.** Every
-   board→GitHub markdown write goes through `MarkdownWriteDialog`, which
-   re-fetches the file, compares its SHA against the one the edit was based on,
-   and shows a diff. If the remote SHA moved, the write is refused until the
-   user resolves it. Do not add a code path that calls the Contents API
-   directly.
-2. **Card moves have one path.** Dragging, the tick on a card, and the column
-   selector in the detail panel all call `commitMove` in `KanbanBoard.tsx`, so
-   a markdown-backed card always reaches the preview. Do not bypass it.
+1. **Never write to the user's repository without a reviewed diff.** Every
+   write goes through a dialog that re-fetches the file, shows the diff and
+   commits with the SHA it was computed on: `MarkdownWriteDialog` (board ↔
+   markdown), `DocWriteDialog` (documents), the workspace setup preview, and
+   the "Save to repo" confirmation for `board.json`. If the remote SHA moved,
+   the write is refused until the user decides. Do not add a code path that
+   calls the Contents or Git Data API from anywhere else.
+2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),
+   the list view and the detail panel all call `commitMove` in
+   `KanbanBoard.tsx`, so a markdown-backed card always joins the queue of
+   reviewed changes. Do not bypass it.
 3. **The UI talks to the server only through `lib/client/api.ts`.** No `fetch`
    to `/api/...` inside a component.
-4. **Dates and times go through `RelativeTime` / `formatDate`**
+4. **Dates and times go through `RelativeTime` / `DueLabel` / `formatDate`**
    (`components/ui`). Calling `toLocaleDateString()` directly renders
-   differently on the server and in the browser and makes React throw away the
-   hydrated page.
+   differently on the server and in the browser and breaks hydration.
 5. **Drag is enabled only after mount** (the `interactive` flag in
-   `KanbanBoard`). dnd-kit numbers its accessibility ids per render, which
-   otherwise causes the same hydration failure.
-6. **Colours come from the tokens in `tailwind.config.ts`**, never as hex in a
-   component. The palette is deliberately small: ink, muted, border, pill,
-   canvas, plus success/warn/danger for state only.
-7. **The server never sends the GitHub token to the browser.** It lives in
-   `~/.repoboard/credentials.json` or the environment, and only route handlers
-   read it.
-8. **One nav entry per destination.** The repository screen owns its own tabs
-   for branches / commits / pull requests / issues — do not also list those in
-   the sidebar. That duplication was removed once already.
+   `KanbanBoard`). dnd-kit numbers its accessibility ids per render.
+6. **Colours are tokens**: CSS variables in `app/globals.css` (light and
+   `.dark`), exposed through `tailwind.config.ts`. Never a hex in a component.
+   Colour means state: the five item states (todo, doing, review, done,
+   cancelled) plus danger. `StatusIcon` and `ProgressBar` are the only
+   vocabulary for progress — use them.
+7. **Tokens never reach the browser.** They live in
+   `~/.repoboard/credentials.json` (0600) or the environment; only route
+   handlers and server components read them. Until GitHub accepts the active
+   token, pages and APIs expose no cached board data (`lib/page-context.ts`,
+   `lib/github/access.ts`).
+8. **One nav entry per destination.** The Code screen owns its tabs (graph,
+   branches, commits, pull requests, issues); the sidebar does not repeat them.
+9. **Agents propose, people verify.** Nothing an agent does may set a
+   document item to `[x]`; the MCP server has no GitHub write tool.
 
 ## Where things live
 
 ```
-app/                routes; pages are server components that read the database
-  api/              route handlers: repo, board, github, markdown, activity
-components/         all screens and UI; every screen is a client component that
-                    receives data/header/connected as props
-components/ui/      toasts, skeletons, modal, RelativeTime, Segmented
-lib/client/api.ts   the only client→server surface, plus the useResource hook
-lib/board-service.ts   board + markdown + GitHub orchestration
-lib/markdown/       remark parser, stable task ids, move, diff, conflict rules
-lib/github/         AuthProvider abstraction and the Octokit client
-db/schema.ts        Drizzle schema; migrations in drizzle/ run on boot
-scripts/            doctor and the native-binary fetcher
-tests/              parser, conflict and full sync-pipeline tests
+app/                   routes; pages are server components reading the database
+  api/                 repo (projects), board, docs, github (read-only proxy), markdown, activity
+components/
+  shell/               sidebar, project switcher, command menu, theme, shortcuts
+  docs/                documents index, document screen, checklist view
+  ui/                  primitives: toasts, menus, modal, sheet, glyphs (StatusIcon, ProgressBar)
+  *.tsx                screens: Overview, Board (+ list, calendar, card panel), Repository (Code), Activity, Settings
+lib/
+  client/              api.ts, filters (board query language), hotkeys, graph layout
+  markdown/            parser (board), document (checklists), format (the conventions), sync (diff, SHA rules)
+  github/              auth (projects + tokens), access (verification cache), Octokit client
+  board-service.ts     board, cards, milestones, board ↔ markdown, board.json
+  docs-service.ts      tracked documents, edits, workspace setup
+  templates.ts         .repoboard templates and README
+db/schema.ts           Drizzle schema; migrations in drizzle/ run on boot
+scripts/               mcp-server, demo + fake GitHub, doctor, native-binary fetcher, stop
+demo/                  the made-up "Lumen" project used by npm run demo
+tests/                 parser, documents, filters, graph, conflicts, sync pipeline, scoping
 ```
 
 ## Screens
 
-Overview · Board · Repository (tabs: branches, commits, pull requests, issues) ·
-Markdown sync · Activity · Settings.
+Overview · Board (board, list, calendar) · Documents · Code (graph, branches,
+commits, pull requests, issues) · Activity · Settings.
 
-If you remove or rename a screen, update the sidebar in `components/Sidebar.tsx`
-and this list in the same change.
+If you remove or rename a screen, update `components/shell/Sidebar.tsx`, the
+command menu in `components/shell/CommandPalette.tsx`, the `G` shortcuts in
+`AppShell.tsx` and this list in the same change.
 
 ## Working in parallel
 
-Two agents share this repository through separate git worktrees, so neither
-sees the other's unsaved work and git never has to merge two people editing the
-same file at the same moment:
+Two git worktrees exist so two agents never edit the same checkout:
 
 | Folder | Branch | For |
 | ------ | ------ | --- |
-| `RepoBoard/` | `main` | backend, API, database, MCP |
-| `RepoBoard-design/` | `design` | visual work |
+| `RepoBoard/` | `main` / feature branches | everything by default |
+| `RepoBoard-design/` | `design` | a second agent doing visual work, when there is one |
 
-Each folder has its own `node_modules` and runs on its own port
-(`npm run dev` on 3000, `npx next dev -p 3001` for the second one). Both share
-one board database in `~/.repoboard/`, so the same cards appear in both.
-
-Work only in your own folder. When a piece is finished, commit on your branch;
-the owner merges. To pick up the other side's finished work:
-
-```bash
-git fetch && git merge origin/main      # from the design branch
-```
+Each folder has its own `node_modules`. Two dev servers in one folder must use
+different build directories: `NEXT_DIST_DIR=.next-x npx next dev -p 3005`.
 
 ## Who is doing what right now
 
@@ -96,59 +105,25 @@ Update this section when you start and when you finish. Date + what you own.
 
 | Since | Agent | Owns | Notes |
 | ----- | ----- | ---- | ----- |
-| 2026-09-25 | Claude (Opus), `main` in `RepoBoard/` | `lib/`, `app/api/`, `db/`, `drizzle/`, `scripts/`, `packages/` | Building an MCP server so agents can drive the board directly |
-| 2026-09-25 | design agent, `design` in `RepoBoard-design/` | `components/`, `app/globals.css`, `tailwind.config.ts` | Visual work |
+| 2026-09-25 | Claude (Opus), branch `product` in `RepoBoard/` | everything | Turning the MVP into the product: projects, documents, overview, graph |
 
-Rules while this table has two entries:
+Rules while more than one entry is in this table:
 
-- Stay inside the files you own. If you need a change outside them, write it
-  under "Requests" below instead of making it.
-- `app/*/page.tsx` files are shared and tiny — touch them only if you must, and
-  say so here.
+- Stay inside the files you own; ask under "Requests" for changes elsewhere.
 - Run `npx tsc --noEmit` and `npm test` before you finish. Both must pass.
 - Do not reformat files you did not otherwise change.
 
 ## Requests between agents
 
-Leave a line here instead of editing someone else's area. Delete it once done.
-
 - _(none)_
-
-## Ideas worth taking later (for whoever does the visual work)
-
-Borrowed in spirit from Linear and Kan, ranked by what this app would actually
-gain. Ideas only — write your own implementation.
-
-1. **Command palette does actions, not just navigation.** ⌘K already searches;
-   the win is running things from it: move a card, assign, add a label, open a
-   branch. Linear's whole speed story is that you never reach for the mouse.
-2. **Keyboard on the board.** Arrows move the selection between cards,
-   `Enter` opens, `E` edits the title inline, `X` marks done, `1–4` sends the
-   selected card to that column. Nothing here needs new backend work.
-3. **Optimistic everything with an undo toast.** Every destructive or
-   surprising action shows "Deleted · Undo" for a few seconds instead of a
-   confirmation dialog. Needs soft delete in the schema — ask before relying
-   on it.
-4. **Card peek.** Hovering or pressing space shows the card's detail in a
-   popover without leaving the board.
-5. **Filter as a first-class bar**, not two dropdowns: a single input that
-   accepts `label:bug assignee:me is:done`, with chips for what is active.
-6. **Empty states that do the next thing**, not that describe the problem —
-   the board's empty state already imports issues; apply the same idea to the
-   other screens.
-7. **One motion language.** Cards lift on grab, drop with a short spring,
-   panels slide from the edge they belong to. Durations stay under 200ms;
-   nothing loops.
-
-Do not add: avatars for people who do not exist, charts nobody reads,
-onboarding tours, or a second navigation layer.
 
 ## MCP server
 
-`scripts/mcp-server.mjs` exposes the board to AI clients over stdio. It talks
-to SQLite directly — no HTTP, no running web app required. It deliberately has
-no tool that writes to GitHub: markdown commits go through the app's preview.
-
+`scripts/mcp-server.mjs` exposes the board and documents to AI clients over
+stdio: overview, cards (create, move, update, checklist, comment), documents
+(list, read from GitHub), the needs-check queue and activity. It resolves its
+paths from its own location, not the caller's directory. It has no tool that
+writes to GitHub — agents edit `.repoboard/` files in their own checkout.
 If you add a tool, keep that boundary.
 
 ## Checks
@@ -156,16 +131,18 @@ If you add a tool, keep that boundary.
 ```bash
 npm run doctor    # environment problems, in plain words
 npx tsc --noEmit  # types
-npm test          # 29 unit + integration tests
+npm test          # unit + integration tests
 npm run build     # production build, writes to .next-build
+npm run demo      # the app against a fake GitHub, no token needed
 ```
 
 ## Design notes
 
-The board is meant to read as a board: columns are visible containers on a
-textured surface, cards carry a title, colour-coded labels and small
-indicators, and nothing else. Resist putting more on the card — every link
-already has a home in the detail panel.
+Calm, dense but not cramped. IBM Plex Sans for the interface, Plex Mono only
+for things that are code (SHAs, branches, paths, RB-n). Neutral surfaces; the
+state colours are the only colour. Cards carry a title, labels and small
+indicators — details belong in the panel. Screens with reading content
+(Overview, Documents, Settings) are a centred column with generous spacing;
+work surfaces (Board, Code) use the full width.
 
-Density is deliberate: 12–13px type, tight spacing, thin borders, colour only
-where it carries meaning (green = in sync, amber = conflict or behind).
+Motion answers actions only, under 200 ms; respect reduced motion.

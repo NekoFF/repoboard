@@ -33,7 +33,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const list = listProjects();
   const stats = projectSummaries(list.map((p) => p.repo));
-  const projects = list.map((p) => ({ ...p, ...stats.get(p.repo.toLowerCase()) }));
+  // Without a verified token only the names are sent (so a broken project can
+  // be switched away from or disconnected); counts are board data.
+  const projects = list.map((p) => (verified ? { ...p, ...stats.get(p.repo.toLowerCase()) } : p));
 
   // Only once GitHub has accepted the token: nothing about a repository is
   // shown to someone who cannot currently open it.
