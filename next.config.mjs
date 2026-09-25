@@ -9,6 +9,10 @@ const nextConfig = {
     process.env.NEXT_DIST_DIR ?? (process.env.NODE_ENV === "production" ? ".next-build" : ".next"),
   experimental: {
     serverComponentsExternalPackages: ["better-sqlite3"],
+    // Every page reads the local database, so a page the browser kept from an
+    // earlier visit is out of date — a new board missing from Boards for up to
+    // 30 seconds. Always ask the server again.
+    staleTimes: { dynamic: 0 },
   },
 };
 
