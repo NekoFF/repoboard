@@ -67,7 +67,7 @@ export function ToastHost({ children }: { children: ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="rb-pop pointer-events-auto flex items-start gap-2.5 rounded-lg border border-border bg-raised px-3 py-2.5 shadow-pop"
+            className="rb-pop rb-glass-strong pointer-events-auto flex items-start gap-2.5 rounded-xl px-3 py-2.5"
           >
             <span className="mt-px">
               {toast.kind === "error" ? (
@@ -295,14 +295,14 @@ export function Modal({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="rb-fade-in fixed inset-0 z-[80] bg-black/30 backdrop-blur-[1px] dark:bg-black/50" />
+        <Dialog.Overlay className="rb-fade-in rb-scrim fixed inset-0 z-[80]" />
         <Dialog.Content
-          className={`rb-pop fixed left-1/2 top-[8vh] z-[81] flex max-h-[84vh] w-[calc(100vw-24px)] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-raised shadow-pop focus:outline-none ${
+          className={`rb-pop rb-glass-strong fixed left-1/2 top-[8vh] z-[81] flex max-h-[84vh] w-[calc(100vw-24px)] -translate-x-1/2 flex-col overflow-hidden rounded-2xl focus:outline-none ${
             wide ? "max-w-[920px]" : "max-w-[560px]"
           }`}
           aria-describedby={undefined}
         >
-          <div className="flex items-start gap-3 border-b border-border px-4 py-3">
+          <div className="flex items-start gap-3 px-5 pb-2 pt-4">
             <div className="min-w-0 flex-1">
               <Dialog.Title className="text-md font-semibold text-ink">{title}</Dialog.Title>
               {description && <Dialog.Description className="mt-0.5 text-sm text-muted">{description}</Dialog.Description>}
@@ -311,8 +311,8 @@ export function Modal({
               <X className="size-4" />
             </Dialog.Close>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
-          {footer && <div className="flex items-center gap-2 border-t border-border bg-surface px-4 py-3">{footer}</div>}
+          <div className="min-h-0 flex-1 overflow-auto px-5 py-3">{children}</div>
+          {footer && <div className="flex items-center gap-2 px-5 pb-4 pt-3">{footer}</div>}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -334,9 +334,9 @@ export function Sheet({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="rb-fade-in fixed inset-0 z-[60] bg-black/20 dark:bg-black/45" />
+        <Dialog.Overlay className="rb-fade-in rb-scrim fixed inset-0 z-[60]" />
         <Dialog.Content
-          className="rb-sheet-in fixed inset-y-0 right-0 z-[61] flex w-full flex-col overflow-hidden border-l border-border bg-surface shadow-panel focus:outline-none sm:inset-y-2 sm:right-2 sm:w-[calc(100vw-16px)] sm:rounded-xl sm:border"
+          className="rb-sheet-in rb-glass-strong fixed inset-y-0 right-0 z-[61] flex w-full flex-col overflow-hidden focus:outline-none sm:inset-y-3 sm:right-3 sm:w-[calc(100vw-24px)] sm:rounded-[22px]"
           style={{ maxWidth: width }}
           aria-describedby={undefined}
           tabIndex={-1}

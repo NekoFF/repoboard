@@ -27,6 +27,11 @@
     --rail: 234 236 240;
     --accent: 72 118 224;
     --on-accent: 255 255 255;
+    /* Glass: the tint, how much of it, and the lit edge along the top. */
+    --glass: 255 255 255;
+    --glass-alpha: 0.62;
+    --glass-edge: 255 255 255;
+    --glass-edge-alpha: 0.85;
 
     --state-todo: 152 158 168;
     --state-doing: 204 138 32;
@@ -60,6 +65,10 @@
     --rail: 40 43 49;
     --accent: 116 154 245;
     --on-accent: 16 20 32;
+    --glass: 34 36 42;
+    --glass-alpha: 0.58;
+    --glass-edge: 255 255 255;
+    --glass-edge-alpha: 0.07;
 
     --state-todo: 124 130 142;
     --state-doing: 230 170 70;
@@ -206,7 +215,14 @@
 
   /* ---------------------------------------------------------------- menus -- */
   .rb-menu {
-    @apply z-[90] min-w-[200px] overflow-hidden rounded-lg border border-border bg-raised p-1 text-sm text-ink shadow-pop;
+    @apply z-[90] min-w-[200px] overflow-hidden rounded-xl p-1 text-sm text-ink;
+    background-color: rgb(var(--raised) / 0.78);
+    -webkit-backdrop-filter: blur(22px) saturate(1.8);
+    backdrop-filter: blur(22px) saturate(1.8);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      0 0 0 1px rgb(var(--ink) / 0.07),
+      0 18px 50px -12px rgb(var(--shadow) / 0.3);
     animation: rb-pop-sm 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .rb-menu-item {
@@ -221,18 +237,56 @@
   }
 
   /* --------------------------------------------------------------- board -- */
-  /* The desk: a quiet dot grid behind the floating panels. */
+  /* The desk: a quiet dot grid with two soft washes of colour, so the glass
+     panels on top have something to blur. */
   .rb-desk {
     background-color: rgb(var(--desk));
-    background-image: radial-gradient(rgb(var(--ink) / 0.08) 1px, transparent 1.2px);
-    background-size: 22px 22px;
+    background-image:
+      radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1.2px),
+      radial-gradient(60% 55% at 8% 0%, rgb(var(--accent) / 0.13), transparent 70%),
+      radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.1), transparent 70%);
+    background-size: 22px 22px, 100% 100%, 100% 100%;
+    background-attachment: fixed;
   }
+
+  /* Glass, the way Apple draws it: a translucent tint, heavy blur with a bit
+     of extra saturation, a lit edge along the top and a soft drop shadow. */
+  .rb-glass {
+    background-color: rgb(var(--glass) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(24px) saturate(1.8);
+    backdrop-filter: blur(24px) saturate(1.8);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      inset 0 0 0 1px rgb(var(--glass-edge) / calc(var(--glass-edge-alpha) * 0.35)),
+      0 0 0 1px rgb(var(--ink) / 0.05),
+      0 16px 40px -22px rgb(var(--shadow) / 0.28);
+  }
+  /* Glass for things that float over the page: dialogs, sheets, the command
+     menu, toasts. More opaque, so text on it always reads. */
+  .rb-glass-strong {
+    background-color: rgb(var(--raised) / 0.84);
+    -webkit-backdrop-filter: blur(28px) saturate(1.8);
+    backdrop-filter: blur(28px) saturate(1.8);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      0 0 0 1px rgb(var(--ink) / 0.07),
+      0 24px 64px -16px rgb(var(--shadow) / 0.32);
+  }
+  .rb-scrim {
+    background-color: rgb(var(--shadow) / 0.16);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+
+  /* Glass laid over content inside a panel: lighter, no drop shadow. */
+  .rb-glass-bar {
+    background-color: rgb(var(--surface) / 0.72);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    backdrop-filter: blur(20px) saturate(1.8);
+  }
+
   .rb-panel-back {
     border-radius: 22px;
-    background-color: rgb(var(--panel-back));
-    box-shadow:
-      0 12px 36px -24px rgb(var(--shadow) / 0.16),
-      0 0 0 1px rgb(var(--ink) / 0.035);
   }
   .rb-panel-main {
     border-radius: 22px;
@@ -259,6 +313,20 @@
   }
   .rb-task[data-selected="true"] {
     @apply border-accent/60 ring-2 ring-accent/15;
+  }
+
+  /* ----------------------------------------------------------- headers -- */
+  /* Page headers float over the page as glass; what scrolls passes under them.
+     The scroll area after a header reserves its height with .rb-under-header. */
+  .rb-page {
+    --rb-header-h: 56px;
+  }
+  .rb-page:has(> .rb-header[data-rows="2"]) {
+    --rb-header-h: 100px;
+  }
+  .rb-under-header {
+    padding-top: var(--rb-header-h);
+    scroll-padding-top: var(--rb-header-h);
   }
 
   /* ---------------------------------------------------- rendered markdown -- */

@@ -123,7 +123,7 @@ export function SettingsScreen({
         </header>
       )}
 
-      <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+      <div className={`rb-scroll-thin min-h-0 flex-1 overflow-y-auto ${connected ? "rb-under-header" : ""}`}>
         <div className="mx-auto flex max-w-[760px] flex-col gap-6 px-6 pb-20 pt-8 sm:px-10">
           <Card
             title="Projects"

@@ -104,14 +104,14 @@ export function CommandPalette({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="rb-fade-in fixed inset-0 z-[85] bg-black/25 dark:bg-black/50" />
+        <Dialog.Overlay className="rb-fade-in rb-scrim fixed inset-0 z-[85]" />
         <Dialog.Content
-          className="rb-pop fixed left-1/2 top-[12vh] z-[86] w-[calc(100vw-24px)] max-w-[640px] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-raised shadow-pop focus:outline-none"
+          className="rb-pop rb-glass-strong fixed left-1/2 top-[12vh] z-[86] w-[calc(100vw-24px)] max-w-[640px] -translate-x-1/2 overflow-hidden rounded-2xl focus:outline-none"
           aria-describedby={undefined}
         >
           <Dialog.Title className="sr-only">Command menu</Dialog.Title>
           <Command label="Command menu" loop>
-            <div className="flex items-center gap-2 border-b border-border px-3.5">
+            <div className="flex items-center gap-2 border-b border-ink/[0.06] px-4">
               <Command.Input
                 autoFocus
                 value={search}
@@ -279,7 +279,7 @@ export function CommandPalette({
                 </Command.Group>
               )}
             </Command.List>
-            <div className="flex items-center gap-3 border-t border-border px-3.5 py-2 text-2xs text-faint">
+            <div className="flex items-center gap-3 border-t border-ink/[0.06] px-4 py-2 text-2xs text-faint">
               <span><span className="rb-kbd">↑</span> <span className="rb-kbd">↓</span> to move</span>
               <span><span className="rb-kbd">↵</span> to open</span>
               <span><span className="rb-kbd">esc</span> to close</span>

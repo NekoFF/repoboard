@@ -249,7 +249,7 @@ export function BoardScreen({
         <FilterBar ref={filterRef} data={data} query={query} onChange={setQuery} matches={matches} />
       </PageHeader>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="rb-under-header flex min-h-0 flex-1 flex-col">
         <KanbanBoard
           data={data}
           filter={filter}

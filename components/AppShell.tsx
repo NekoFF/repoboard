@@ -57,14 +57,14 @@ function MobileBar({ onSearch }: { onSearch: () => void }) {
   const pathname = usePathname();
   useEffect(() => setOpen(false), [pathname]);
   return (
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-canvas px-3 md:hidden">
+    <div className="rb-glass flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Trigger className="rb-icon-btn" aria-label="Open navigation">
           <MenuIcon className="size-5" />
         </Dialog.Trigger>
         <Dialog.Portal>
           <Dialog.Overlay className="rb-fade-in fixed inset-0 z-[70] bg-black/30" />
-          <Dialog.Content className="rb-sheet-in fixed inset-y-0 left-0 z-[71] flex bg-panel-back shadow-pop focus:outline-none" aria-describedby={undefined}>
+          <Dialog.Content className="rb-sheet-in rb-glass fixed inset-y-0 left-0 z-[71] flex focus:outline-none" aria-describedby={undefined}>
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
             <Suspense>
               <Sidebar />
@@ -190,15 +190,17 @@ export function AppShell({
                 // floating over it, tools in a pill on the right edge.
                 <div className="rb-desk flex h-[100dvh] w-full flex-col overflow-hidden md:flex-row md:p-3">
                   <MobileBar onSearch={() => openPalette()} />
-                  <div className="rb-panel-back hidden pr-6 md:flex">
+                  <div className="rb-panel-back rb-glass hidden pr-6 md:flex">
                     <Suspense>
                       <Sidebar />
                     </Suspense>
                   </div>
-                  <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-6">
-                    <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
-                    <ToolRail />
+                  {/* Square on the left where it lies over the navigation, so the
+                      top and bottom edges run on as one straight line. */}
+                  <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-6 md:rounded-l-none">
+                    <main className="rb-page relative flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
                   </div>
+                  <ToolRail />
                 </div>
               ) : showingSettings ? (
                 <main className="flex h-screen min-w-0 flex-col overflow-auto bg-canvas">{children}</main>

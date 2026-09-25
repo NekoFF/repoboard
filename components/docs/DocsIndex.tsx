@@ -448,7 +448,7 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
           ]}
         />
       </PageHeader>
-      <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+      <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[960px] flex-col gap-10 px-6 pb-20 pt-9 sm:px-10">
           {!workspaceExists && !syncing && <WorkspaceSetup onCreated={sync} />}
 

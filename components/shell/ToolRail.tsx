@@ -24,7 +24,7 @@ function RailButton({
       <button
         onClick={onClick}
         aria-label={label}
-        className="grid size-9 place-items-center rounded-full text-muted transition-colors duration-100 hover:bg-surface hover:text-ink hover:shadow-card"
+        className="grid size-9 place-items-center rounded-full text-muted transition-[background-color,color,box-shadow] duration-150 hover:bg-surface/80 hover:text-ink hover:shadow-card"
       >
         {children}
       </button>
@@ -33,7 +33,7 @@ function RailButton({
 }
 
 /**
- * The pill on the right edge of the main panel: the actions you want from
+ * The glass pill beside the main panel: the actions you want from
  * anywhere, one press away, without crowding each screen's own header.
  */
 export function ToolRail() {
@@ -44,7 +44,7 @@ export function ToolRail() {
   return (
     <aside
       aria-label="Tools"
-      className="my-2 mr-2 hidden w-11 shrink-0 flex-col items-center gap-1 rounded-full bg-rail py-1.5 lg:flex"
+      className="rb-glass ml-2 hidden w-12 shrink-0 flex-col items-center gap-1 rounded-full py-2 lg:flex"
     >
       <RailButton label="Search and commands" shortcut={`${modKey()}K`} onClick={() => openPalette()}>
         <Search className="size-4" />

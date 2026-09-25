@@ -95,7 +95,7 @@ export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; 
           ]}
         />
       </PageHeader>
-      <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+      <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-6 pb-20 pt-8 sm:px-10">
           {events.loading && <RowSkeleton rows={8} />}
           {!events.loading && rows.length === 0 && (
@@ -103,7 +103,7 @@ export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; 
           )}
           {days.map(([day, list]) => (
             <section key={day} className="mb-8">
-              <h2 className="sticky top-0 z-[1] bg-surface/95 py-2 text-xs font-medium text-faint backdrop-blur">
+              <h2 className="rb-glass-bar sticky top-[var(--rb-header-h)] z-[1] -mx-2 rounded-lg px-2 py-2 text-xs font-medium text-faint">
                 {formatDate(Date.parse(day), { weekday: "long", day: "numeric", month: "long" })}
               </h2>
               <ol className="flex flex-col">

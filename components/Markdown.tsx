@@ -11,6 +11,14 @@ import { STATUS_LABEL } from "@/lib/status";
 
 /** [[docs/PRIVACY.md]] → a link to that document inside RepoBoard. */
 function linkify(text: string): string {
+  // Only outside code: `RB-4` in backticks is an example, not a link.
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, index) => (index % 2 === 1 ? part : linkifyProse(part)))
+    .join("");
+}
+
+function linkifyProse(text: string): string {
   return text
     .replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_m, target: string, label?: string) =>
       `[${(label ?? target).trim()}](/docs?path=${encodeURIComponent(resolveLink(target))})`,

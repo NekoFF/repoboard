@@ -296,7 +296,7 @@ export function RepositoryScreen({
         )}
       </PageHeader>
 
-      <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+      <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
         {!connected && <EmptyState title="Not connected" body="Connect a repository in Settings to see its code." />}
 
         {tab === "graph" && connected && (

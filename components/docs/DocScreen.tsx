@@ -292,7 +292,7 @@ export function DocScreen({ path }: { path: string }) {
         )}
       </PageHeader>
 
-      <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+      <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
         {doc.loading && (
           <div className="mx-auto flex max-w-[860px] flex-col gap-4 px-6 py-10">
             <Skeleton className="h-8 w-1/2" />
