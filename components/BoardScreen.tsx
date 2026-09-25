@@ -27,6 +27,7 @@ export function BoardScreen({
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // What the board says that the markdown file does not say yet. Moves pile up
   // here instead of committing one at a time.
@@ -34,11 +35,17 @@ export function BoardScreen({
     enabled: connected && Boolean(data.markdownSource),
   });
 
+  // How far the board has drifted from the copy stored in the repository.
+  const boardState = useResource(api.boardStatus, [], { enabled: connected });
+
   useEffect(() => {
-    const onChanged = () => pending.reload();
+    const onChanged = () => {
+      pending.reload();
+      boardState.reload();
+    };
     window.addEventListener("rb:pending-changed", onChanged);
     return () => window.removeEventListener("rb:pending-changed", onChanged);
-  }, [pending]);
+  }, [pending, boardState]);
 
   // Live repository signal, refreshed on a slow poll so the board reflects
   // what GitHub says without the user pressing anything.
@@ -116,6 +123,8 @@ export function BoardScreen({
     }
     setSyncing(true);
     try {
+      // Take the repository's copy of the board first, then the roadmap file.
+      await api.boardPull().catch(() => null);
       const result = await api.markdownAction<{
         created: number;
         updated: number;
@@ -131,6 +140,7 @@ export function BoardScreen({
             ? ` · ${result.idsAssigned} task id(s) written back`
             : ""),
       });
+      boardState.reload();
       router.refresh();
     } catch (error) {
       toast.push({
@@ -164,6 +174,36 @@ export function BoardScreen({
               {syncing ? <Spinner /> : null}
               {syncing ? "Syncing" : "Sync"}
             </button>
+            {(boardState.data?.changes.length ?? 0) > 0 && (
+              <button
+                className="rb-btn"
+                disabled={saving}
+                title="Commit the board itself to the repository so everyone with access sees it"
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const result = await api.boardPush();
+                    toast.push({
+                      kind: "success",
+                      message: `Board saved to GitHub`,
+                      detail: `${result.changes.length} change${result.changes.length === 1 ? "" : "s"} committed`,
+                    });
+                    boardState.reload();
+                  } catch (error) {
+                    toast.push({
+                      kind: "error",
+                      message: "Could not save the board",
+                      detail: (error as Error).message,
+                    });
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? <Spinner /> : null}
+                Save board ({boardState.data!.changes.length})
+              </button>
+            )}
             {(pending.data?.moves.length ?? 0) > 0 && (
               <button
                 className="rb-btn border-warn-border bg-warn-bg text-warn-fg hover:bg-warn-bg"

@@ -26,6 +26,15 @@ import {
   parseMarkdown,
 } from "@/lib/markdown/parser";
 import {
+  BOARD_STATE_PATH,
+  describeChanges,
+  mergeBoardState,
+  parseBoardState,
+  serialiseBoardState,
+  type BoardState,
+  type BoardStateCard,
+} from "@/lib/board-state";
+import {
   buildDiff,
   checkWriteSafety,
   commitMessageForMove,
@@ -43,7 +52,7 @@ export interface MarkdownGitHub {
   putFile(args: {
     path: string;
     content: string;
-    expectedSha: string;
+    expectedSha?: string;
     message: string;
   }): Promise<{ commitSha: string; contentSha: string }>;
 }
@@ -933,6 +942,209 @@ export async function commitMarkdownMove(
   });
 
   return { ...written, summary: moved.summary };
+}
+
+/* ------------------------------------------- the board as a repository file -- */
+
+function localBoardState(): BoardState {
+  const data = getBoardData();
+  const columnById = new Map(data.columns.map((c) => [c.id, c.name]));
+
+  // Deleted cards are included so the deletion travels; the board filters them.
+  const rows = db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.boardId, data.boardId ?? ""))
+    .all();
+
+  const labels = db.select().from(taskLabels).all();
+  const branches = db.select().from(taskBranchLinks).all();
+  const prs = db.select().from(taskPullRequestLinks).all();
+  const issues = db.select().from(taskIssueLinks).all();
+
+  return {
+    version: 1,
+    columns: data.columns.map((c) => c.name),
+    cards: rows.map((t) => ({
+      id: t.id,
+      number: t.cardNumber,
+      column: columnById.get(t.columnId) ?? data.columns[0]?.name ?? "Todo",
+      position: t.position,
+      title: t.title,
+      description: t.description,
+      assignee: t.assignee,
+      dueDate: t.dueDate?.getTime() ?? null,
+      checklist: t.checklist ?? [],
+      labels: labels.filter((l) => l.taskId === t.id).map((l) => l.label),
+      branches: branches.filter((b) => b.taskId === t.id).map((b) => b.branchName),
+      pullRequests: prs.filter((p) => p.taskId === t.id).map((p) => p.prNumber),
+      issues: issues.filter((i) => i.taskId === t.id).map((i) => i.issueNumber),
+      markdownTaskId: t.markdownTaskId,
+      updatedAt: t.updatedAt.getTime(),
+      deletedAt: t.deletedAt?.getTime() ?? null,
+    })),
+  };
+}
+
+function writeCards(cards: BoardStateCard[]): void {
+  const data = getBoardData();
+  if (!data.boardId) return;
+  const columnByName = new Map(data.columns.map((c) => [c.name, c.id]));
+
+  for (const card of cards) {
+    const columnId = columnByName.get(card.column) ?? data.columns[0]?.id;
+    if (!columnId) continue;
+
+    const existing = db.select().from(tasks).where(eq(tasks.id, card.id)).get();
+    const values = {
+      boardId: data.boardId,
+      columnId,
+      position: card.position,
+      title: card.title,
+      description: card.description,
+      assignee: card.assignee,
+      dueDate: card.dueDate ? new Date(card.dueDate) : null,
+      checklist: card.checklist,
+      markdownTaskId: card.markdownTaskId,
+      cardNumber: card.number,
+      updatedAt: new Date(card.updatedAt),
+      deletedAt: card.deletedAt ? new Date(card.deletedAt) : null,
+    };
+
+    if (existing) {
+      db.update(tasks).set(values).where(eq(tasks.id, card.id)).run();
+    } else {
+      db.insert(tasks)
+        .values({ id: card.id, createdAt: new Date(card.updatedAt), ...values })
+        .run();
+    }
+
+    db.delete(taskLabels).where(eq(taskLabels.taskId, card.id)).run();
+    for (const label of card.labels) {
+      db.insert(taskLabels).values({ id: randomUUID(), taskId: card.id, label }).run();
+    }
+    db.delete(taskBranchLinks).where(eq(taskBranchLinks.taskId, card.id)).run();
+    for (const branch of card.branches) {
+      db.insert(taskBranchLinks)
+        .values({ id: randomUUID(), taskId: card.id, branchName: branch })
+        .run();
+    }
+    db.delete(taskPullRequestLinks)
+      .where(eq(taskPullRequestLinks.taskId, card.id))
+      .run();
+    for (const pr of card.pullRequests) {
+      db.insert(taskPullRequestLinks)
+        .values({ id: randomUUID(), taskId: card.id, prNumber: pr })
+        .run();
+    }
+    db.delete(taskIssueLinks).where(eq(taskIssueLinks.taskId, card.id)).run();
+    for (const issue of card.issues) {
+      db.insert(taskIssueLinks)
+        .values({ id: randomUUID(), taskId: card.id, issueNumber: issue })
+        .run();
+    }
+  }
+}
+
+export interface BoardStateStatus {
+  tracked: boolean;
+  changes: string[];
+  sha: string | null;
+}
+
+/** What pushing the board would change in the repository, in words. */
+export async function boardStateStatus(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<BoardStateStatus> {
+  const gh = await clientFactory();
+  let remoteCards: BoardStateCard[] = [];
+  let sha: string | null = null;
+  let tracked = false;
+
+  try {
+    const file = await gh.getFile(BOARD_STATE_PATH);
+    sha = file.sha;
+    tracked = true;
+    remoteCards = parseBoardState(file.content)?.cards ?? [];
+  } catch {
+    // Not in the repository yet — the first push creates it.
+  }
+
+  return {
+    tracked,
+    sha,
+    changes: describeChanges(localBoardState().cards, remoteCards),
+  };
+}
+
+/** Repository → this machine. Newer edits win per card. */
+export async function pullBoardState(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ added: number; updated: number } | null> {
+  const data = getBoardData();
+  if (!data.repository) return null;
+
+  const gh = await clientFactory();
+  let remote: BoardState | null = null;
+  try {
+    remote = parseBoardState((await gh.getFile(BOARD_STATE_PATH)).content);
+  } catch {
+    return null;
+  }
+  if (!remote) return null;
+
+  const merged = mergeBoardState(localBoardState().cards, remote.cards);
+  writeCards(merged.cards);
+
+  if (merged.added || merged.updated) {
+    logActivity({
+      repositoryId: data.repository.id,
+      type: "board_pulled",
+      message: `Board pulled from GitHub: ${merged.added} new, ${merged.updated} updated`,
+    });
+  }
+  return { added: merged.added, updated: merged.updated };
+}
+
+/** This machine → repository, merging first so a colleague's newer edit survives. */
+export async function pushBoardState(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; changes: string[] }> {
+  const data = getBoardData();
+  if (!data.repository) throw new Error("Not connected");
+
+  const gh = await clientFactory();
+  let remoteCards: BoardStateCard[] = [];
+  let sha: string | undefined;
+  try {
+    const file = await gh.getFile(BOARD_STATE_PATH);
+    sha = file.sha;
+    remoteCards = parseBoardState(file.content)?.cards ?? [];
+  } catch {
+    /* first push creates the file */
+  }
+
+  const local = localBoardState();
+  const changes = describeChanges(local.cards, remoteCards);
+  if (changes.length === 0) return { commitSha: "", changes: [] };
+
+  const merged = mergeBoardState(local.cards, remoteCards);
+  writeCards(merged.cards);
+
+  const written = await gh.putFile({
+    path: BOARD_STATE_PATH,
+    content: serialiseBoardState({ ...local, cards: merged.cards }),
+    expectedSha: sha,
+    message: `RepoBoard: update board (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+  });
+
+  logActivity({
+    repositoryId: data.repository.id,
+    type: "board_pushed",
+    message: `Board pushed: ${changes.slice(0, 3).join("; ")}${changes.length > 3 ? "…" : ""}`,
+  });
+
+  return { commitSha: written.commitSha, changes };
 }
 
 export function getActivity(limit = 50) {

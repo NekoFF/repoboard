@@ -8,6 +8,9 @@ import {
   importIssues,
   reorderColumn,
   restoreTask,
+  boardStateStatus,
+  pullBoardState,
+  pushBoardState,
   linkTask,
   logActivity,
   moveTaskLocally,
@@ -89,6 +92,11 @@ const commentSchema = z.object({
   message: z.string().min(1),
 });
 
+// Literal per option: a discriminated union needs a literal discriminator.
+const boardStatusSchema = z.object({ action: z.literal("board-status") });
+const boardPullSchema = z.object({ action: z.literal("board-pull") });
+const boardPushSchema = z.object({ action: z.literal("board-push") });
+
 const importSchema = z.object({
   action: z.literal("import-issues"),
   numbers: z.array(z.number().int()),
@@ -106,6 +114,9 @@ const bodySchema = z.discriminatedUnion("action", [
   importSchema,
   restoreSchema,
   commentSchema,
+  boardStatusSchema,
+  boardPullSchema,
+  boardPushSchema,
 ]);
 
 export async function POST(request: Request) {
@@ -198,6 +209,12 @@ export async function POST(request: Request) {
       });
       return NextResponse.json(result);
     }
+    case "board-status":
+      return NextResponse.json(await boardStateStatus());
+    case "board-pull":
+      return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
+    case "board-push":
+      return NextResponse.json(await pushBoardState());
     case "restore": {
       restoreTask(body.taskId);
       logActivity({
