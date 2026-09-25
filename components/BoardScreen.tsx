@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { TopBar } from "@/components/TopBar";
 import { ImportIssuesDialog } from "@/components/ImportIssuesDialog";
-import { RelativeTime, Spinner, useToast } from "@/components/ui";
-import { api, useResource } from "@/lib/client/api";
+import { Spinner, useToast } from "@/components/ui";
+import { api } from "@/lib/client/api";
+
+const displayLabel = (label: string) => label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
 
 export function BoardScreen({
   data,
@@ -23,19 +25,12 @@ export function BoardScreen({
   const [search, setSearch] = useState("");
   const [labelFilter, setLabelFilter] = useState<string | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
+  const [dueFilter, setDueFilter] = useState<"all" | "overdue" | "upcoming" | "none">("all");
+  const [view, setView] = useState<"board" | "calendar">("board");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
-
-  // Live repository signal, refreshed on a slow poll so the board reflects
-  // what GitHub says without the user pressing anything.
-  const pulls = useResource(api.pulls, [], {
-    enabled: connected,
-    pollMs: 90_000,
-  });
-  const branches = useResource(api.branches, [], {
-    enabled: connected,
-    pollMs: 90_000,
-  });
 
   const labels = useMemo(
     () =>
@@ -56,15 +51,23 @@ export function BoardScreen({
     [data.tasks],
   );
 
-  const doneCount = useMemo(() => {
-    const done = data.columns.find((c) => c.name === "Done");
-    return done ? data.tasks.filter((t) => t.columnId === done.id).length : 0;
-  }, [data]);
+  const activeFilterCount = Number(Boolean(labelFilter)) + Number(Boolean(assigneeFilter)) + Number(dueFilter !== "all");
 
-  const openPrs = (pulls.data?.pulls ?? []).filter((p) => p.state === "open");
-  const staleBranches = (branches.data?.branches ?? []).filter(
-    (b) => b.behind > 0 && !b.protected,
-  );
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!filterRef.current?.contains(event.target as Node)) setFiltersOpen(false);
+    };
+    const closeEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeEscape);
+    };
+  }, [filtersOpen]);
 
   useEffect(() => {
     // "s" syncs, matching the Sync button — muscle memory beats hunting a button.
@@ -78,7 +81,8 @@ export function BoardScreen({
       ) {
         return;
       }
-      if (event.key.toLowerCase() === "s" && !event.metaKey && !event.ctrlKey) {
+      if (event.metaKey || event.ctrlKey || event.altKey || document.querySelector('[role="dialog"]')) return;
+      if (event.key.toLowerCase() === "s" && !filtersOpen) {
         event.preventDefault();
         sync();
       }
@@ -129,7 +133,7 @@ export function BoardScreen({
     }
   };
 
-  const filtersActive = Boolean(search || labelFilter || assigneeFilter);
+  const filtersActive = Boolean(search || activeFilterCount);
 
   return (
     <>
@@ -139,124 +143,68 @@ export function BoardScreen({
         defaultBranch={header.defaultBranch}
         lastSyncAt={header.lastSyncAt}
         connected={connected}
-        actions={
-          <>
-            <button
-              className="rb-btn"
-              onClick={sync}
-              disabled={syncing}
-              title="Pull the markdown source and reconcile cards (s)"
-            >
-              {syncing ? <Spinner /> : null}
-              {syncing ? "Syncing" : "Sync"}
-            </button>
-            <button
-              className="rb-btn-primary"
-              onClick={() =>
-                window.dispatchEvent(new CustomEvent("rb:new-card"))
-              }
-            >
-              + New card <span className="rb-kbd ml-1">n</span>
-            </button>
-          </>
-        }
       />
 
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto p-[22px]">
-        <div className="flex w-full flex-wrap items-start gap-3">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.01em] text-ink">
-              Project board
-            </h1>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
-              <span>
-                {data.tasks.length} card{data.tasks.length === 1 ? "" : "s"} ·{" "}
-                {doneCount} done
-              </span>
-              {connected && (
-                <>
-                  <span aria-hidden>·</span>
-                  <span>
-                    {branches.loading
-                      ? "loading branches…"
-                      : `${branches.data?.branches.length ?? 0} branches`}
-                  </span>
-                  <span aria-hidden>·</span>
-                  <span>{openPrs.length} open PRs</span>
-                  {staleBranches.length > 0 && (
-                    <>
-                      <span aria-hidden>·</span>
-                      <span className="text-warn-fg">
-                        {staleBranches.length} behind {header.defaultBranch}
-                      </span>
-                    </>
-                  )}
-                </>
-              )}
-              {data.markdownSource && (
-                <>
-                  <span aria-hidden>·</span>
-                  <span className="font-mono text-[11px]">
-                    {data.markdownSource.path}
-                  </span>
-                </>
-              )}
+      <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto bg-canvas p-4 lg:p-5">
+        <div className="flex flex-wrap items-center gap-3 px-1">
+          <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
+            <h1 className="text-[21px] font-semibold tracking-[-0.025em] text-ink">Board</h1>
+            <p className="mt-0.5 truncate text-[12px] text-muted">
+              {data.tasks.length} cards · {data.columns.length} lists
             </p>
           </div>
+          <button className="rb-btn" onClick={sync} disabled={syncing} title="Sync markdown (s)">
+            {syncing && <Spinner />}{syncing ? "Syncing" : "Sync markdown"}
+          </button>
+          <button className="rb-btn-primary" onClick={() => window.dispatchEvent(new CustomEvent("rb:new-card"))}>
+            <span aria-hidden>+</span> New card
+          </button>
+        </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <select
-              className="rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-medium text-ink outline-none transition-colors hover:border-ink/25"
-              value={assigneeFilter ?? ""}
-              onChange={(event) => setAssigneeFilter(event.target.value || null)}
-            >
-              <option value="">All assignees</option>
-              {assignees.map((assignee) => (
-                <option key={assignee} value={assignee}>
-                  {assignee}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-medium text-ink outline-none transition-colors hover:border-ink/25"
-              value={labelFilter ?? ""}
-              onChange={(event) => setLabelFilter(event.target.value || null)}
-            >
-              <option value="">All labels</option>
-              {labels.map(({ label, count }) => (
-                <option key={label} value={label}>
-                  {label} ({count})
-                </option>
-              ))}
-            </select>
-
-            <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1.5 transition-colors focus-within:border-ink">
-              <span className="text-[11px] text-muted" aria-hidden>
-                ⌕
-              </span>
-              <input
-                className="w-32 bg-transparent text-[11.5px] text-ink outline-none placeholder:text-muted/70"
-                placeholder="Filter cards"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              <span className="rb-kbd">/</span>
-            </div>
-
-            {filtersActive && (
-              <button
-                className="rb-btn-ghost"
-                onClick={() => {
-                  setSearch("");
-                  setLabelFilter(null);
-                  setAssigneeFilter(null);
-                }}
-              >
-                Clear
-              </button>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+          <div className="inline-flex rounded-md bg-pill p-0.5" aria-label="Board view">
+            <button className={`rb-view-tab ${view === "board" ? "rb-view-tab-active" : ""}`} aria-pressed={view === "board"} onClick={() => setView("board")}>Board</button>
+            <button className={`rb-view-tab ${view === "calendar" ? "rb-view-tab-active" : ""}`} aria-pressed={view === "calendar"} onClick={() => setView("calendar")}>Calendar</button>
+          </div>
+          <div className="relative" ref={filterRef}>
+            <button className={`rb-btn ${activeFilterCount ? "border-ink/30" : ""}`} onClick={() => setFiltersOpen(!filtersOpen)} aria-expanded={filtersOpen} aria-controls="board-filters">
+              <span aria-hidden>☷</span> Filter {activeFilterCount > 0 && <span className="rounded bg-pill px-1.5 tabular-nums">{activeFilterCount}</span>}
+            </button>
+            {filtersOpen && (
+              <div id="board-filters" className="absolute left-0 top-[calc(100%+8px)] z-20 w-[264px] rounded-lg border border-border bg-surface p-3 shadow-pop">
+                <p className="mb-3 text-[12px] font-semibold text-ink">Filter cards</p>
+                <label className="rb-filter-field">Assignee
+                  <select className="rb-input mt-1" value={assigneeFilter ?? ""} onChange={(event) => setAssigneeFilter(event.target.value || null)}>
+                    <option value="">Anyone</option>
+                    {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
+                  </select>
+                </label>
+                <label className="rb-filter-field">Label
+                  <select className="rb-input mt-1" value={labelFilter ?? ""} onChange={(event) => setLabelFilter(event.target.value || null)}>
+                    <option value="">Any label</option>
+                    {labels.map(({ label, count }) => <option key={label} value={label}>{displayLabel(label)} ({count})</option>)}
+                  </select>
+                </label>
+                <label className="rb-filter-field">Due date
+                  <select className="rb-input mt-1" value={dueFilter} onChange={(event) => setDueFilter(event.target.value as typeof dueFilter)}>
+                    <option value="all">Any date</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="none">No due date</option>
+                  </select>
+                </label>
+                <div className="mt-3 flex justify-between border-t border-border pt-2">
+                  <button className="rb-btn-ghost" onClick={() => { setLabelFilter(null); setAssigneeFilter(null); setDueFilter("all"); }}>Clear filters</button>
+                  <button className="rb-btn-ghost text-ink" onClick={() => setFiltersOpen(false)}>Done</button>
+                </div>
+              </div>
             )}
           </div>
+          <div className="ml-auto flex min-w-[180px] flex-1 items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-[7px] sm:max-w-[260px]">
+            <span className="text-muted" aria-hidden>⌕</span>
+            <input className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-muted/70" placeholder="Search cards" aria-label="Search cards" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </div>
+          {filtersActive && <button className="rb-btn-ghost" onClick={() => { setSearch(""); setLabelFilter(null); setAssigneeFilter(null); setDueFilter("all"); }}>Clear all</button>}
         </div>
 
         {data.columns.length === 0 ? (
@@ -272,34 +220,12 @@ export function BoardScreen({
             search={search}
             labelFilter={labelFilter}
             assigneeFilter={assigneeFilter}
+            dueFilter={dueFilter}
+            view={view}
+            connected={connected}
             onImportIssues={connected ? () => setImporting(true) : undefined}
           />
         )}
-
-        <div className="flex items-center gap-2 pt-1 text-[11px] text-muted">
-          {connected && (
-            <>
-              <span>
-                GitHub data{" "}
-                {branches.refreshing ? (
-                  "refreshing…"
-                ) : (
-                  <RelativeTime value={branches.updatedAt} />
-                )}
-              </span>
-              <span aria-hidden>·</span>
-            </>
-          )}
-          <span>
-            Last markdown sync <RelativeTime value={header.lastSyncAt} />
-          </span>
-          <div className="flex-1" />
-          <span className="flex items-center gap-1">
-            <span className="rb-kbd">⌘K</span> search
-            <span className="rb-kbd ml-2">n</span> new card
-            <span className="rb-kbd ml-2">s</span> sync
-          </span>
-        </div>
       </div>
 
       {importing && data.columns[0] && (

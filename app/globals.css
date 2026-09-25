@@ -22,6 +22,12 @@
       "cv04" 1,
       "tnum" 0;
   }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
   * {
     @apply border-border;
   }
@@ -62,15 +68,15 @@
   }
 
   .rb-card {
-    @apply rounded-xl border border-border bg-surface;
+    @apply rounded-lg border border-border bg-surface;
   }
 
   .rb-btn {
-    @apply inline-flex select-none items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-[7px] text-[12px] font-medium text-ink transition-all duration-150
+    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-[7px] text-[12px] font-medium text-ink transition-colors duration-150
       hover:bg-pill active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
   }
   .rb-btn-primary {
-    @apply inline-flex select-none items-center gap-1.5 rounded-md bg-active px-[13px] py-[7px] text-[12px] font-medium text-white transition-all duration-150
+    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-md bg-active px-[13px] py-[7px] text-[12px] font-medium text-white transition-colors duration-150
       hover:bg-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
   }
   .rb-btn-ghost {
@@ -97,23 +103,33 @@
   /* The board reads as a board because the columns are visible containers
      sitting on a textured surface, not cards floating on white. */
   .rb-board-canvas {
-    background-color: #f7f7f6;
+    background-color: #fff;
     background-image: radial-gradient(
-      rgba(18, 18, 19, 0.07) 1px,
+      rgba(32, 33, 36, 0.08) 1px,
       transparent 1px
     );
-    background-size: 22px 22px;
+    background-size: 16px 16px;
   }
 
   .rb-column {
-    @apply flex min-w-0 flex-col rounded-xl border border-border/70 bg-surface/70 backdrop-blur-[1px];
+    @apply flex min-w-0 flex-col rounded-lg border border-border bg-pill;
   }
 
   .rb-task {
-    @apply w-full rounded-[10px] border border-border bg-surface p-3 text-left shadow-card transition-all duration-150;
+    @apply w-full rounded-md border border-border bg-surface p-3 text-left shadow-card transition-[border-color,box-shadow] duration-150;
   }
   .rb-task:hover {
-    @apply -translate-y-px border-ink/15 shadow-lift;
+    @apply border-ink/25 shadow-card;
+  }
+
+  .rb-view-tab {
+    @apply rounded-[5px] px-3 py-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink;
+  }
+  .rb-view-tab-active {
+    @apply bg-surface text-ink shadow-card;
+  }
+  .rb-filter-field {
+    @apply mb-3 block text-[11px] font-medium text-muted;
   }
 }
 

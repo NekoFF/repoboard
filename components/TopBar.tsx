@@ -27,8 +27,6 @@ export function TopBar({
     setPulling(true);
     try {
       router.refresh();
-      // Give the refresh a beat so the button state reads as a real action.
-      await new Promise((resolve) => setTimeout(resolve, 400));
       toast.push({ kind: "info", message: "Refreshed from GitHub" });
     } finally {
       setPulling(false);
@@ -36,18 +34,17 @@ export function TopBar({
   };
 
   return (
-    <header className="flex h-[68px] w-full shrink-0 items-center gap-2.5 border-b border-border bg-surface/95 px-[18px] backdrop-blur">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
-          {owner ?? "RepoBoard"}
-        </span>
-        <span className="text-[14px] text-muted">/</span>
-        <span className="truncate text-[14px] font-medium text-ink">
-          {repo ?? "no repository"}
-        </span>
+    <header className="flex h-[58px] w-full shrink-0 items-center gap-2.5 border-b border-border bg-surface px-5">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-[12px] text-muted">{owner ?? "Local"}</span>
+        <span className="text-[12px] text-muted/60">/</span>
+        <span className="truncate text-[12px] font-semibold text-ink">{repo ?? "No repository"}</span>
         {defaultBranch && (
-          <span className="rb-pill font-mono">{defaultBranch}</span>
+          <span className="rb-pill ml-1 hidden font-mono sm:inline-flex">{defaultBranch}</span>
         )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
         {connected ? (
           <span className="rb-pill-ok" title="Token accepted by GitHub">
             <span aria-hidden>✓</span>
@@ -60,20 +57,19 @@ export function TopBar({
             )}
           </span>
         ) : (
-          <span className="rb-pill-warn">Not connected</span>
+          <span className="rb-pill-warn hidden sm:inline-flex">Not connected</span>
         )}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          className="rb-btn"
-          onClick={pull}
-          disabled={pulling}
-          title="Re-read live GitHub data"
-        >
-          {pulling ? <Spinner /> : null}
-          {pulling ? "Pulling" : "Pull"}
-        </button>
+        {connected && (
+          <button
+            className="rb-btn-ghost"
+            onClick={pull}
+            disabled={pulling}
+            title="Re-read live GitHub data"
+          >
+            {pulling ? <Spinner /> : null}
+            {pulling ? "Pulling" : "Pull"}
+          </button>
+        )}
         {actions}
       </div>
     </header>

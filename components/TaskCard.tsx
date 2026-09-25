@@ -40,34 +40,37 @@ function ChecklistRing({ done, total }: { done: number; total: number }) {
 
 export function TaskCardBody({ task }: { task: BoardTask }) {
   const doneItems = task.checklist.filter((c) => c.done).length;
+  const displayLabel = (label: string) => label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
   const hasFooter =
     Boolean(task.description) ||
     task.checklist.length > 0 ||
     task.branches.length > 0 ||
     task.pullRequests.length > 0 ||
-    task.issues.length > 0 ||
     Boolean(task.assignee) ||
     Boolean(task.dueDate);
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[13.5px] leading-snug text-ink">{task.title}</p>
+      {task.issues.length > 0 && <span className="text-[10.5px] font-medium text-muted">Issue #{task.issues[0]}</span>}
+      <p className="text-[13px] font-medium leading-[1.4] text-ink">{task.title}</p>
 
       {task.labels.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {task.labels.map((label) => (
+          {task.labels.slice(0, 2).map((label) => (
             <span
               key={label}
-              className="inline-flex items-center gap-1.5 rounded-full bg-pill px-2 py-[3px] text-[11px] font-medium text-ink"
+              title={label}
+              className="inline-flex items-center gap-1.5 rounded-md bg-pill px-1.5 py-[3px] text-[10.5px] font-medium capitalize text-ink"
             >
               <span
                 className="size-[6px] shrink-0 rounded-full"
                 style={{ backgroundColor: labelColor(label) }}
                 aria-hidden
               />
-              {label}
+              {displayLabel(label)}
             </span>
           ))}
+          {task.labels.length > 2 && <span className="self-center text-[10px] text-muted">+{task.labels.length - 2}</span>}
         </div>
       )}
 
@@ -80,12 +83,7 @@ export function TaskCardBody({ task }: { task: BoardTask }) {
           )}
 
           {task.branches.length > 0 && (
-            <span className="inline-flex min-w-0 items-center gap-1" title={task.branches[0]}>
-              <span aria-hidden>⑂</span>
-              <span className="max-w-[120px] truncate font-mono text-[10.5px]">
-                {task.branches[0]}
-              </span>
-            </span>
+            <span title={`Branch: ${task.branches[0]}`}>⑂ branch</span>
           )}
 
           {task.pullRequests.map((pr) => (
@@ -93,12 +91,6 @@ export function TaskCardBody({ task }: { task: BoardTask }) {
               ↗ #{pr}
             </span>
           ))}
-          {task.issues.map((issue) => (
-            <span key={`issue-${issue}`} title={`Issue #${issue}`}>
-              ○ #{issue}
-            </span>
-          ))}
-
           {task.dueDate && (
             <span className={task.dueDate < Date.now() ? "text-danger-fg" : ""}>
               {formatDate(task.dueDate)}
@@ -136,6 +128,7 @@ export function StaticTaskCard({
       role="button"
       tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}
       className={`rb-task cursor-pointer pr-8 ${isDone ? "opacity-70" : ""}`}
     >
       <TaskCardBody task={task} />
@@ -179,7 +172,7 @@ export function SortableTaskCard({
           ${
             isDone
               ? "border-success-fg/40 bg-success-bg text-success-fg opacity-100"
-              : "border-border bg-surface text-muted opacity-0 hover:border-success-fg/50 hover:text-success-fg group-hover/card:opacity-100"
+              : "border-border bg-surface text-muted opacity-0 hover:border-success-fg/50 hover:text-success-fg group-hover/card:opacity-100 focus-visible:opacity-100"
           }`}
       >
         ✓

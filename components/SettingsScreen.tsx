@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { TopBar } from "@/components/TopBar";
+import { useConnection } from "@/components/ConnectionState";
 import { useToast } from "@/components/ui";
 
 export function SettingsScreen({
@@ -12,7 +13,6 @@ export function SettingsScreen({
   connected,
   authLabel,
   tokenSource,
-  repoSlug,
 }: {
   data: BoardData;
   header: RepoHeader;
@@ -23,8 +23,10 @@ export function SettingsScreen({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { status, retry } = useConnection();
+  const accessGranted = status === "connected";
   const [token, setToken] = useState("");
-  const [repo, setRepo] = useState(repoSlug);
+  const [repo, setRepo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export function SettingsScreen({
       });
       setToken("");
       router.refresh();
+      retry();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -72,11 +75,11 @@ export function SettingsScreen({
   return (
     <>
       <TopBar
-        owner={header.owner}
-        repo={header.name}
-        defaultBranch={header.defaultBranch}
-        lastSyncAt={header.lastSyncAt}
-        connected={connected}
+        owner={accessGranted ? header.owner : null}
+        repo={accessGranted ? header.name : null}
+        defaultBranch={accessGranted ? header.defaultBranch : null}
+        lastSyncAt={accessGranted ? header.lastSyncAt : null}
+        connected={accessGranted}
       />
 
       <div className="flex min-h-0 w-full flex-1 flex-col gap-[18px] overflow-y-auto p-[22px]">
@@ -94,12 +97,12 @@ export function SettingsScreen({
             <span className="text-[14px] font-semibold text-ink">
               GitHub connection
             </span>
-            {connected ? (
+            {accessGranted ? (
               <span className="inline-flex items-center rounded-sm bg-success-bg px-2 py-1 text-[11px] font-medium text-success-fg">
                 connected
               </span>
             ) : (
-              <span className="rb-pill">not connected</span>
+              <span className="rb-pill">{status === "checking" ? "checking" : status === "error" ? "needs attention" : "not connected"}</span>
             )}
           </div>
 
@@ -166,7 +169,7 @@ export function SettingsScreen({
           )}
         </div>
 
-        {data.repository && (
+        {accessGranted && data.repository && (
           <div className="rb-card flex max-w-[620px] flex-col gap-2 p-4">
             <span className="text-[14px] font-semibold text-ink">
               Repository status

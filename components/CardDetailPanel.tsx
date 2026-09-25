@@ -16,12 +16,11 @@ function Section({
   action?: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+        <h3 className="text-[13px] font-semibold text-ink">
           {title}
         </h3>
-        <div className="h-px flex-1 bg-border" />
         {action}
       </div>
       {children}
@@ -32,16 +31,20 @@ function Section({
 export function CardDetailPanel({
   task,
   columns,
+  connected,
   markdownPath,
   onClose,
   onChange,
+  onMove,
   onDelete,
 }: {
   task: BoardTask;
   columns: { id: string; name: string }[];
+  connected: boolean;
   markdownPath: string | null;
   onClose: () => void;
   onChange: (task: BoardTask) => void;
+  onMove: (task: BoardTask, columnId: string) => Promise<void>;
   onDelete: (taskId: string) => void;
 }) {
   const router = useRouter();
@@ -50,6 +53,7 @@ export function CardDetailPanel({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newItem, setNewItem] = useState("");
+  const [checklistOpen, setChecklistOpen] = useState(false);
   const [labelDraft, setLabelDraft] = useState("");
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -67,14 +71,14 @@ export function CardDetailPanel({
 
   const branch = draft.branches[0] ?? null;
   const activity = useResource(() => api.activity(120), [task.id]);
-  const branches = useResource(api.branches, []);
-  const pulls = useResource(api.pulls, []);
-  const issues = useResource(api.issues, []);
+  const branches = useResource(api.branches, [], { enabled: connected });
+  const pulls = useResource(api.pulls, [], { enabled: connected });
+  const issues = useResource(api.issues, [], { enabled: connected });
   // Commits for the linked branch — the card's real development history.
   const commits = useResource(
     () => api.commits(branch ?? undefined),
     [branch],
-    { enabled: Boolean(branch) },
+    { enabled: Boolean(branch) && connected },
   );
 
   const branchInfo = branches.data?.branches.find((b) => b.name === branch);
@@ -88,7 +92,7 @@ export function CardDetailPanel({
   const cardEvents = useMemo(
     () =>
       (activity.data?.events ?? []).filter(
-        (event) => event.taskId === task.id || event.taskId === null,
+        (event) => event.taskId === task.id,
       ),
     [activity.data, task.id],
   );
@@ -166,39 +170,97 @@ export function CardDetailPanel({
   };
 
   const checklistDone = draft.checklist.filter((c) => c.done).length;
+  const linkedCount = draft.branches.length + draft.pullRequests.length + draft.issues.length;
+  const displayLabel = (label: string) => label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
+
+  const metadata = (
+    <div className="flex flex-col gap-5">
+      <h3 className="text-[12px] font-semibold text-ink">Details</h3>
+      <label className="flex flex-col gap-1.5 text-[11px] font-medium text-muted">
+        List
+        <select
+          className="rb-input py-1.5 text-[12px]"
+          value={draft.columnId}
+          onChange={async (event) => {
+            const columnId = event.target.value;
+            setDraft({ ...draft, columnId });
+            await onMove(task, columnId);
+          }}
+        >
+          {columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1.5 text-[11px] font-medium text-muted">
+        Assignee
+        <input className="rb-input py-1.5 text-[12px]" placeholder="Unassigned" value={draft.assignee ?? ""} onChange={(event) => setDraft({ ...draft, assignee: event.target.value })} onBlur={() => save({ assignee: draft.assignee })} />
+      </label>
+      <label className="flex flex-col gap-1.5 text-[11px] font-medium text-muted">
+        Due date
+        <input type="date" className="rb-input py-1.5 text-[12px]" value={draft.dueDate ? new Date(draft.dueDate).toISOString().slice(0, 10) : ""} onChange={(event) => save({ dueDate: event.target.value ? new Date(event.target.value).getTime() : null })} />
+      </label>
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-muted">Labels</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {draft.labels.map((label) => (
+            <button key={label} className="rb-pill group/label capitalize hover:bg-warn-bg hover:text-warn-fg" onClick={() => save({ labels: draft.labels.filter((item) => item !== label) })} title={`Remove ${label}`}>
+              {displayLabel(label)} <span className="opacity-0 group-hover/label:opacity-100">×</span>
+            </button>
+          ))}
+          <input className="rb-input py-1.5 text-[12px]" placeholder="Add a label and press Enter" aria-label="Add label" value={labelDraft} onChange={(event) => setLabelDraft(event.target.value)} onKeyDown={(event) => {
+            if (event.key === "Enter" && labelDraft.trim()) {
+              event.preventDefault();
+              save({ labels: [...new Set([...draft.labels, labelDraft.trim()])] });
+              setLabelDraft("");
+            }
+          }} />
+        </div>
+      </div>
+      {draft.markdownTaskId && markdownPath && <p className="border-t border-border pt-3 text-[11px] leading-relaxed text-muted">Source: <span className="break-all font-mono">{markdownPath}</span></p>}
+    </div>
+  );
+
+  const activityBody = (
+    <div className="flex flex-col gap-1">
+      {activity.loading && <><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></>}
+      {!activity.loading && cardEvents.length === 0 && <p className="text-[12px] text-muted">No changes to this card yet.</p>}
+      {cardEvents.map((event) => (
+        <div key={event.id} className="border-b border-border py-2.5 last:border-b-0">
+          <p className="text-[12px] leading-snug text-ink">{event.message}</p>
+          <p className="mt-1 text-[11px] text-muted"><RelativeTime value={event.createdAt} /></p>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <>
       <div
-        className="rb-fade-in fixed inset-0 z-30 bg-ink/10"
+        className="rb-fade-in fixed inset-0 z-30 bg-ink/25"
         onClick={onClose}
       />
-      <aside className="rb-panel-in fixed inset-y-0 right-0 z-40 flex w-full max-w-[880px] border-l border-border bg-surface shadow-panel">
+      <aside role="dialog" aria-modal="true" aria-label={`Card: ${draft.title}`} className="rb-pop fixed inset-3 z-40 mx-auto flex w-[calc(100%-24px)] max-w-[1060px] overflow-hidden rounded-xl border border-border bg-surface shadow-pop sm:inset-y-5 sm:w-[calc(100%-40px)]">
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface/95 px-5 py-3 backdrop-blur">
-            <span className="rb-pill">{status}</span>
-            {draft.markdownTaskId && markdownPath && (
-              <span className="rb-pill" title={`rb:${draft.markdownTaskId}`}>
-                {markdownPath}
-              </span>
-            )}
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface/95 px-6 py-3 backdrop-blur">
+            <button className="text-[12px] text-muted hover:text-ink" onClick={onClose}>Board</button>
+            <span className="text-[12px] text-muted/50">/</span>
+            <span className="text-[12px] font-medium text-ink">{status}</span>
             <div className="flex-1" />
             {saving && (
               <span className="flex items-center gap-1.5 text-[11px] text-muted">
                 <Spinner /> Saving
               </span>
             )}
-            <button className="rb-btn-ghost" onClick={onClose}>
-              Close <span className="rb-kbd ml-1">esc</span>
+            <button className="rb-btn-ghost" onClick={onClose} aria-label="Close card">
+              × <span className="rb-kbd ml-1">esc</span>
             </button>
           </div>
 
-          <div className="flex flex-col gap-6 p-5">
-            <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-7 p-6 sm:p-8">
+            <div className="flex flex-col gap-3">
               <textarea
                 ref={titleRef}
                 rows={1}
-                className="w-full resize-none bg-transparent text-[20px] font-semibold leading-tight text-ink outline-none"
+                className="w-full resize-none bg-transparent text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink outline-none"
                 value={draft.title}
                 onChange={(event) => {
                   setDraft({ ...draft, title: event.target.value });
@@ -209,7 +271,7 @@ export function CardDetailPanel({
               />
 
               <textarea
-                className="min-h-[60px] w-full resize-y rounded-lg border border-transparent bg-transparent p-2 text-[13px] leading-relaxed text-muted outline-none transition-colors hover:border-border focus:border-border focus:bg-canvas"
+                className="min-h-[112px] w-full resize-y rounded-lg border border-transparent bg-transparent px-0 py-2 text-[13px] leading-relaxed text-ink outline-none transition-colors placeholder:text-muted hover:border-border hover:px-2 focus:border-border focus:bg-canvas focus:px-2"
                 placeholder="Add a description…"
                 value={draft.description ?? ""}
                 onChange={(event) =>
@@ -219,101 +281,7 @@ export function CardDetailPanel({
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted">Assignee</span>
-                <input
-                  className="rb-input py-1.5 text-[12px]"
-                  placeholder="unassigned"
-                  value={draft.assignee ?? ""}
-                  onChange={(event) =>
-                    setDraft({ ...draft, assignee: event.target.value })
-                  }
-                  onBlur={() => save({ assignee: draft.assignee })}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted">Due</span>
-                <input
-                  type="date"
-                  className="rb-input py-1.5 text-[12px]"
-                  value={
-                    draft.dueDate
-                      ? new Date(draft.dueDate).toISOString().slice(0, 10)
-                      : ""
-                  }
-                  onChange={(event) =>
-                    save({
-                      dueDate: event.target.value
-                        ? new Date(event.target.value).getTime()
-                        : null,
-                    })
-                  }
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted">Column</span>
-                <select
-                  className="rb-input py-1.5 text-[12px]"
-                  value={draft.columnId}
-                  onChange={async (event) => {
-                    const columnId = event.target.value;
-                    setDraft({ ...draft, columnId });
-                    await api.boardAction({
-                      action: "move",
-                      taskId: task.id,
-                      columnId,
-                      position: 0,
-                    });
-                    onChange({ ...draft, columnId });
-                    router.refresh();
-                  }}
-                >
-                  {columns.map((column) => (
-                    <option key={column.id} value={column.id}>
-                      {column.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <Section title="Labels">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {draft.labels.map((label) => (
-                  <button
-                    key={label}
-                    className="rb-pill group/label hover:bg-warn-bg hover:text-warn-fg"
-                    onClick={() =>
-                      save({ labels: draft.labels.filter((l) => l !== label) })
-                    }
-                    title="Remove label"
-                  >
-                    {label}
-                    <span className="opacity-0 transition-opacity group-hover/label:opacity-100">
-                      ×
-                    </span>
-                  </button>
-                ))}
-                <input
-                  className="w-28 rounded-sm bg-pill px-2 py-1 text-[11px] outline-none placeholder:text-muted/70"
-                  placeholder="add label"
-                  value={labelDraft}
-                  onChange={(event) => setLabelDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && labelDraft.trim()) {
-                      event.preventDefault();
-                      save({
-                        labels: [
-                          ...new Set([...draft.labels, labelDraft.trim()]),
-                        ],
-                      });
-                      setLabelDraft("");
-                    }
-                  }}
-                />
-              </div>
-            </Section>
+            <div className="md:hidden">{metadata}</div>
 
             <Section
               title="Checklist"
@@ -367,9 +335,10 @@ export function CardDetailPanel({
                     </button>
                   </label>
                 ))}
-                <input
+                {(draft.checklist.length > 0 || checklistOpen) ? <input
                   className="rb-input py-1.5 text-[12.5px]"
-                  placeholder="Add an item and press ↵"
+                  placeholder="Add a checklist item and press Enter"
+                  aria-label="Add checklist item"
                   value={newItem}
                   onChange={(event) => setNewItem(event.target.value)}
                   onKeyDown={(event) => {
@@ -388,12 +357,18 @@ export function CardDetailPanel({
                       setNewItem("");
                     }
                   }}
-                />
+                /> : <button className="rb-btn-ghost w-fit text-ink" onClick={() => setChecklistOpen(true)}>+ Add checklist item</button>}
               </div>
             </Section>
 
-            <Section title="Linked development">
-              <div className="flex flex-col gap-2">
+            <details className="group rounded-lg border border-border">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-ink marker:hidden">
+                <span aria-hidden>⑂</span> Linked development
+                {linkedCount > 0 && <span className="rb-pill">{linkedCount}</span>}
+                {draft.markdownTaskId && markdownPath && <span className="max-w-[180px] truncate text-[11px] font-normal text-muted" title={markdownPath}>{markdownPath}</span>}
+                <span className="ml-auto text-muted transition-transform group-open:rotate-180" aria-hidden>⌄</span>
+              </summary>
+              <div className="flex flex-col gap-2 border-t border-border p-3">
                 {branch && (
                   <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
                     <div className="flex items-center gap-2">
@@ -584,7 +559,9 @@ export function CardDetailPanel({
                   </select>
                 </div>
               </div>
-            </Section>
+            </details>
+
+            <Section title="Activity">{activityBody}</Section>
 
             <div className="flex items-center gap-2 border-t border-border pt-4">
               {confirmDelete ? (
@@ -612,32 +589,8 @@ export function CardDetailPanel({
           </div>
         </div>
 
-        <aside className="flex w-[320px] shrink-0 flex-col gap-2 overflow-y-auto border-l border-border bg-canvas/40 p-4">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-            Activity
-          </h3>
-          {activity.loading && (
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          )}
-          {!activity.loading && cardEvents.length === 0 && (
-            <p className="text-[12px] text-muted">Nothing recorded yet.</p>
-          )}
-          {cardEvents.map((event) => (
-            <div key={event.id} className="rounded-lg px-1 py-1.5">
-              <p className="text-[12px] leading-snug text-ink">
-                {event.message}
-              </p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
-                <span className="rb-pill px-1.5 py-0.5 text-[10px]">
-                  {event.type.replace(/_/g, " ")}
-                </span>
-                <RelativeTime value={event.createdAt} />
-              </p>
-            </div>
-          ))}
+        <aside className="hidden w-[280px] shrink-0 flex-col overflow-y-auto border-l border-border bg-pill/40 p-5 md:flex">
+          {metadata}
         </aside>
       </aside>
     </>

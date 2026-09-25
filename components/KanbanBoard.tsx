@@ -28,6 +28,7 @@ import {
   TaskCardBody,
 } from "@/components/TaskCard";
 import { CardDetailPanel } from "@/components/CardDetailPanel";
+import { BoardCalendar } from "@/components/BoardCalendar";
 import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
 import { EmptyState, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
@@ -184,12 +185,18 @@ export function KanbanBoard({
   search,
   labelFilter,
   assigneeFilter,
+  dueFilter,
+  view,
+  connected,
   onImportIssues,
 }: {
   data: BoardData;
   search: string;
   labelFilter: string | null;
   assigneeFilter: string | null;
+  dueFilter: "all" | "overdue" | "upcoming" | "none";
+  view: "board" | "calendar";
+  connected: boolean;
   onImportIssues?: () => void;
 }) {
   const router = useRouter();
@@ -254,6 +261,8 @@ export function KanbanBoard({
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const today = new Date();
+    const startOfToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
     return tasks.filter((task) => {
       if (
         query &&
@@ -265,9 +274,12 @@ export function KanbanBoard({
       }
       if (labelFilter && !task.labels.includes(labelFilter)) return false;
       if (assigneeFilter && task.assignee !== assigneeFilter) return false;
+      if (dueFilter === "none" && task.dueDate != null) return false;
+      if (dueFilter === "overdue" && (task.dueDate == null || task.dueDate >= startOfToday)) return false;
+      if (dueFilter === "upcoming" && (task.dueDate == null || task.dueDate < startOfToday)) return false;
       return true;
     });
-  }, [tasks, search, labelFilter, assigneeFilter]);
+  }, [tasks, search, labelFilter, assigneeFilter, dueFilter]);
 
   const byColumn = useCallback(
     (columnId: string) =>
@@ -476,7 +488,9 @@ export function KanbanBoard({
           setTasks(data.tasks);
         }}
       >
-        <div className="rb-board-canvas flex min-h-0 w-full flex-1 gap-3 overflow-x-auto rounded-xl border border-border p-3">
+        {view === "calendar" ? (
+          <BoardCalendar tasks={visible} columns={data.columns} onOpen={(task) => setOpenTaskId(task.id)} />
+        ) : <div className="rb-board-canvas flex min-h-[440px] w-full flex-1 gap-3 overflow-x-auto rounded-xl border border-border p-3">
           {data.columns.map((column) => (
             <Column
               key={column.id}
@@ -517,7 +531,7 @@ export function KanbanBoard({
               />
             </div>
           )}
-        </div>
+        </div>}
 
         <DragOverlay
           dropAnimation={{ duration: 180, easing: "cubic-bezier(0.22,1,0.36,1)" }}
@@ -534,6 +548,7 @@ export function KanbanBoard({
         <CardDetailPanel
           task={openTask}
           columns={data.columns}
+          connected={connected}
           markdownPath={data.markdownSource?.path ?? null}
           onClose={closePanel}
           onChange={(updated) =>
@@ -541,6 +556,11 @@ export function KanbanBoard({
               prev.map((t) => (t.id === updated.id ? updated : t)),
             )
           }
+          onMove={async (task, columnId) => {
+            const ordered = [...byColumn(columnId).map((item) => item.id), task.id];
+            setTasks((prev) => prev.map((item) => item.id === task.id ? { ...item, columnId, position: ordered.length - 1 } : item));
+            await commitMove(task.id, columnId, ordered);
+          }}
           onDelete={(taskId) => {
             setTasks((prev) => prev.filter((t) => t.id !== taskId));
             closePanel();

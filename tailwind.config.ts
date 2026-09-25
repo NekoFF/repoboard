@@ -1,19 +1,18 @@
 import type { Config } from "tailwindcss";
 
-// Tokens extracted directly from the RepoBoard Figma file
-// (figma.com/design/xUVcoqZ9kKqiwv2sEEJAwk) — do not invent new colors here.
+// One restrained neutral palette. Status colours only communicate state.
 export default {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        canvas: "#fbfbfa",
+        canvas: "#fafafa",
         surface: "#ffffff",
-        border: "#e0e0de",
-        ink: "#121213",
-        muted: "#66666b",
-        pill: "#f4f4f2",
-        active: "#1a1a1c",
+        border: "#e6e7e8",
+        ink: "#202124",
+        muted: "#686b70",
+        pill: "#f4f5f6",
+        active: "#202124",
         success: { bg: "#edf7f0", fg: "#2e7847" },
         warn: { bg: "#fcf2e0", fg: "#b8731a", border: "#e8c785" },
         danger: { fg: "#ad332e" },
