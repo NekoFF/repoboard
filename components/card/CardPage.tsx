@@ -52,6 +52,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ChecklistTree } from "@/components/card/ChecklistTree";
 import { progress } from "@/lib/checklist";
 import { orderAfterMove, useCommitMove } from "@/lib/client/moves";
+import { setCurrentBoard } from "@/lib/client/current-board";
 import { useHotkeys } from "@/lib/client/hotkeys";
 
 function Section({ title, count, action, children }: { title: string; count?: ReactNode; action?: ReactNode; children: ReactNode }) {
@@ -83,6 +84,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   const commitMove = useCommitMove(data);
   const boardHref = data.board ? boardLink(data.board) : "/board";
   const onClose = () => router.push(boardHref);
+  useEffect(() => setCurrentBoard(boardHref), [boardHref]);
   const onChange = (_next: BoardTask) => {};
   const onMove = async (card: BoardTask, columnId: string) => {
     await commitMove(card.id, columnId, orderAfterMove(data, card.id, columnId));

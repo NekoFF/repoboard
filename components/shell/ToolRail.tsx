@@ -7,6 +7,7 @@ import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Tooltip } from "@/components/ui";
 import { modKey } from "@/lib/client/hotkeys";
+import { newCardHref } from "@/lib/client/current-board";
 
 function RailButton({
   label,
@@ -49,7 +50,7 @@ export function ToolRail() {
       <RailButton label="Search and commands" shortcut={`${modKey()}K`} onClick={() => openPalette()}>
         <Search className="size-4" />
       </RailButton>
-      <RailButton label="New card" shortcut="C" onClick={() => router.push("/board?new=1")}>
+      <RailButton label="New card" shortcut="C" onClick={() => router.push(newCardHref())}>
         <Plus className="size-4" />
       </RailButton>
       <RailButton label="New document" onClick={() => router.push("/docs?new=1")}>

@@ -22,6 +22,7 @@ import {
   GitCommitHorizontal,
 } from "lucide-react";
 import { api, useResource } from "@/lib/client/api";
+import { newCardHref } from "@/lib/client/current-board";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
@@ -128,7 +129,7 @@ export function CommandPalette({
               </Command.Empty>
 
               <Command.Group heading="Actions" className={groupClass}>
-                <Item value="New card" keywords={["create", "add", "task"]} icon={<Plus className="size-4" />} hint="C" onSelect={go("/board?new=1")}>
+                <Item value="New card" keywords={["create", "add", "task"]} icon={<Plus className="size-4" />} hint="C" onSelect={() => go(newCardHref())()}>
                   New card
                 </Item>
                 <Item value="New document" keywords={["create", "markdown", "file", "policy", "checklist"]} icon={<FilePlus2 className="size-4" />} onSelect={go("/docs?new=1")}>

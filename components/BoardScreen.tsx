@@ -31,6 +31,7 @@ import { Menu, MenuItem, MenuSeparator, Modal, Segmented, Spinner, Tooltip, useT
 import { api, ApiError, useResource } from "@/lib/client/api";
 import { applyFilter, parseFilter } from "@/lib/client/filters";
 import { useHotkeys } from "@/lib/client/hotkeys";
+import { setCurrentBoard } from "@/lib/client/current-board";
 import { statusOfColumn } from "@/lib/status";
 
 const VIEW_KEY = "rb-board-view";
@@ -72,6 +73,8 @@ export function BoardScreen({
       /* not remembered, still switched */
     }
   };
+
+  useEffect(() => setCurrentBoard(pathname), [pathname]);
 
   // Deep links: ?new=1 opens the form, ?ref=12 opens card RB-12, ?q= filters.
   useEffect(() => {
