@@ -13,7 +13,7 @@ import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/s
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
 import { Logo, ToastHost, TooltipProvider } from "@/components/ui";
-import { api, type ProjectInfo } from "@/lib/client/api";
+import { api, useResource, type ProjectInfo } from "@/lib/client/api";
 import { useHotkeys } from "@/lib/client/hotkeys";
 
 function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: () => void }) {
@@ -165,10 +165,20 @@ export function AppShell({
     { enabled: unlocked },
   );
 
+  const collaborators = useResource(api.people, [repo], { enabled: unlocked });
+  const people = useMemo(
+    () =>
+      Array.from(
+        new Set([...(viewer ? [viewer] : []), ...(collaborators.data?.people ?? []).map((p) => p.login)].map((l) => l.toLowerCase())),
+      ),
+    [viewer, collaborators.data],
+  );
+
   const shell = useMemo(
     () => ({
       repo,
       viewer,
+      people,
       connected: unlocked,
       projects,
       docs,
@@ -177,7 +187,7 @@ export function AppShell({
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, unlocked, projects, docs, boards, managedByEnvironment, openPalette, openShortcuts],
+    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
+import { useShell } from "@/components/shell/ShellContext";
 
 /** Agents write their name the way their MCP client reports it; show it nicely. */
 export function agentLabel(name: string): string {
@@ -16,9 +17,11 @@ export function agentLabel(name: string): string {
 }
 
 /**
- * A person's GitHub avatar, or a mark for an AI agent. GitHub serves avatars
- * for any login at github.com/<login>.png, so no API call is needed; if it
- * fails (offline, unknown name) the initials show instead.
+ * A person's GitHub avatar, or a mark for an AI agent. The photo comes from
+ * github.com/<login>.png, but only for people who work on the repository (see
+ * `people` in the shell): any other name — typed for a board or a card — would
+ * otherwise show a stranger's photo, since almost every short name is someone's
+ * login. Everyone else, and a failed load, gets their initials.
  */
 export function ActorAvatar({
   name,
@@ -30,6 +33,7 @@ export function ActorAvatar({
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
+  const { people } = useShell();
   if (kind === "agent") {
     return (
       <span
@@ -42,7 +46,7 @@ export function ActorAvatar({
     );
   }
   const login = name.replace(/^@/, "");
-  if (failed || !/^[A-Za-z0-9-]+$/.test(login)) {
+  if (failed || !/^[A-Za-z0-9-]+$/.test(login) || !people.includes(login.toLowerCase())) {
     return (
       <span
         title={login}
