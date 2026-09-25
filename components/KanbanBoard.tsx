@@ -87,7 +87,7 @@ function Column({
   return (
     <section
       aria-label={name}
-      className={`rb-column w-[292px] shrink-0 transition-[background-color,box-shadow] duration-100 ${
+      className={`rb-column min-w-[240px] flex-1 basis-0 transition-[background-color,box-shadow] duration-100 ${
         isOver ? "bg-pill ring-1 ring-inset ring-border-strong" : ""
       }`}
     >
@@ -487,7 +487,7 @@ export function KanbanBoard({
   return (
     <>
       {empty ? (
-        <div className="rb-board-canvas flex flex-1 items-center justify-center">
+        <div className="rb-board-canvas flex flex-1 items-center justify-center" style={{ paddingRight: "var(--rb-rail)" }}>
           <EmptyState
             title="Nothing on the board yet"
             body="Start from what already exists — your GitHub issues or a checklist in a markdown file — or write the first card yourself."
@@ -536,7 +536,11 @@ export function KanbanBoard({
             setTasks(data.tasks);
           }}
         >
-          <div className="rb-board-canvas flex min-h-0 w-full flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4">
+          <div
+            className="rb-board-canvas flex min-h-0 w-full flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4"
+            // The background runs behind the rail; the columns stop short of it.
+            style={{ paddingRight: "calc(var(--rb-rail) + 16px)" }}
+          >
             {data.columns.map((column) => (
               <Column
                 key={column.id}

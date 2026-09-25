@@ -34,7 +34,7 @@ export function BoardList({
   const milestones = new Map(data.milestones.map((m) => [m.id, m]));
 
   return (
-    <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+    <div className="rb-scroll-thin rb-clear-rail min-h-0 flex-1 overflow-y-auto">
       {data.columns.map((column) => {
         const status = statusOfColumn(column.name);
         const rows = tasks

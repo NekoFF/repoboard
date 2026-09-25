@@ -359,6 +359,11 @@
   .rb-header {
     padding-right: var(--rb-rail);
   }
+  /* The board's background runs to the panel's edge, behind the rail, so no
+     strip of white shows there; the columns themselves stop short of it. */
+  .rb-under-header.rb-full-bleed {
+    padding-right: 0;
+  }
 
   /* ---------------------------------------------------- rendered markdown -- */
   .rb-prose {

@@ -45,7 +45,7 @@ export function BoardCalendar({
   }, [tasks]);
 
   return (
-    <div className="rb-scroll-thin min-h-0 flex-1 overflow-auto">
+    <div className="rb-scroll-thin rb-clear-rail min-h-0 flex-1 overflow-auto">
       <div className="flex items-center gap-2 px-4 py-3 lg:px-5">
         <h2 className="text-md font-semibold text-ink">
           {new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(month)}
