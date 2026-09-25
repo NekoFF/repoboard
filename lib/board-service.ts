@@ -671,6 +671,154 @@ export interface PendingChange {
   };
 }
 
+export interface PendingMove {
+  taskId: string;
+  markdownTaskId: string;
+  title: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * Everything the board says that the markdown file does not say yet.
+ *
+ * Moves accumulate instead of committing one at a time: dragging five cards
+ * should be one commit a human reviewed once, not five interruptions and five
+ * lines of history.
+ */
+export async function pendingMarkdownMoves(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ moves: PendingMove[]; baseSha: string; conflict: boolean } | null> {
+  const data = getBoardData();
+  if (!data.repository || !data.markdownSource) return null;
+
+  const linked = data.tasks.filter((t) => t.markdownTaskId);
+  if (linked.length === 0) {
+    return { moves: [], baseSha: "", conflict: false };
+  }
+
+  const gh = await clientFactory();
+  const file = await gh.getFile(data.markdownSource.path);
+  const parsed = parseMarkdown(file.content);
+  const columnById = new Map(data.columns.map((c) => [c.id, c.name]));
+
+  const moves: PendingMove[] = [];
+  for (const task of linked) {
+    const inFile = parsed.tasks.find((t) => t.id === task.markdownTaskId);
+    if (!inFile) continue;
+    const boardColumn = columnById.get(task.columnId);
+    if (boardColumn && boardColumn !== inFile.heading) {
+      moves.push({
+        taskId: task.id,
+        markdownTaskId: task.markdownTaskId!,
+        title: task.title,
+        from: inFile.heading,
+        to: boardColumn,
+      });
+    }
+  }
+
+  const safety = checkWriteSafety(data.markdownSource.lastKnownSha, file.sha);
+  return { moves, baseSha: file.sha, conflict: !safety.ok };
+}
+
+/** One preview and one commit for every pending move at once. */
+export async function previewAllPending(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<PendingChange | null> {
+  const data = getBoardData();
+  if (!data.repository || !data.markdownSource) return null;
+
+  const pending = await pendingMarkdownMoves(clientFactory);
+  if (!pending || pending.moves.length === 0) return null;
+
+  const gh = await clientFactory();
+  const file = await gh.getFile(data.markdownSource.path);
+
+  let content = file.content;
+  const summaries: string[] = [];
+  for (const move of pending.moves) {
+    const result = moveTaskInMarkdown(content, move.markdownTaskId, move.to);
+    if (result.changed) {
+      content = result.content;
+      summaries.push(`${move.title} → ${move.to}`);
+    }
+  }
+
+  const summary =
+    pending.moves.length === 1
+      ? `Move "${pending.moves[0].title}" to ${pending.moves[0].to}`
+      : `Update ${data.markdownSource.path}: ${summaries.length} task(s) moved`;
+
+  return {
+    taskId: "",
+    markdownTaskId: "",
+    targetHeading: "",
+    summary,
+    changedSomething: summaries.length > 0,
+    diff: buildDiff(file.content, content),
+    before: file.content,
+    after: content,
+    baseSha: file.sha,
+    conflict: pending.conflict
+      ? {
+          expectedSha: data.markdownSource.lastKnownSha,
+          currentSha: file.sha,
+          remoteContent: file.content,
+        }
+      : null,
+  };
+}
+
+export async function commitAllPending(
+  args: { expectedSha: string; force?: boolean },
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; contentSha: string; summary: string }> {
+  const data = getBoardData();
+  if (!data.repository || !data.markdownSource) {
+    throw new Error("No markdown source configured");
+  }
+
+  const gh = await clientFactory();
+  const file = await gh.getFile(data.markdownSource.path);
+
+  if (!args.force && file.sha !== args.expectedSha) {
+    logActivity({
+      repositoryId: data.repository.id,
+      type: "conflict_detected",
+      message: `Remote ${data.markdownSource.path} changed (${args.expectedSha} → ${file.sha})`,
+    });
+    const error = new Error("Remote file changed since preview");
+    (error as Error & { code?: string }).code = "CONFLICT";
+    throw error;
+  }
+
+  const preview = await previewAllPending(clientFactory);
+  if (!preview || !preview.changedSomething) {
+    return { commitSha: "", contentSha: file.sha, summary: "Nothing to commit" };
+  }
+
+  const written = await gh.putFile({
+    path: data.markdownSource.path,
+    content: preview.after,
+    expectedSha: file.sha,
+    message: commitMessageForMove(preview.summary),
+  });
+
+  db.update(markdownSources)
+    .set({ lastKnownSha: written.contentSha })
+    .where(eq(markdownSources.id, data.markdownSource.id))
+    .run();
+
+  logActivity({
+    repositoryId: data.repository.id,
+    type: "markdown_changed",
+    message: commitMessageForMove(preview.summary),
+  });
+
+  return { ...written, summary: preview.summary };
+}
+
 /**
  * Board → GitHub, step 1: fetch the file fresh, verify the SHA we based our
  * edit on, and return a preview. Nothing is written here.

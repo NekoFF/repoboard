@@ -104,6 +104,27 @@ export const api = {
       body: JSON.stringify({ action: "preview", taskId, targetHeading }),
     }),
 
+  pending: () =>
+    request<{
+      moves: {
+        taskId: string;
+        title: string;
+        from: string;
+        to: string;
+      }[];
+      baseSha: string;
+      conflict: boolean;
+    }>("/api/markdown", {
+      method: "POST",
+      body: JSON.stringify({ action: "pending" }),
+    }),
+
+  previewAll: () =>
+    request<PendingChange>("/api/markdown", {
+      method: "POST",
+      body: JSON.stringify({ action: "preview-all" }),
+    }),
+
   importIssues: (numbers: number[], columnId: string) =>
     request<{ created: number; skipped: number }>("/api/board", {
       method: "POST",

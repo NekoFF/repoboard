@@ -6,6 +6,7 @@ import type { BoardData, RepoHeader } from "@/lib/board-service";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { TopBar } from "@/components/TopBar";
 import { ImportIssuesDialog } from "@/components/ImportIssuesDialog";
+import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
 import { RelativeTime, Spinner, useToast } from "@/components/ui";
 import { api, useResource } from "@/lib/client/api";
 
@@ -25,6 +26,19 @@ export function BoardScreen({
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [committing, setCommitting] = useState(false);
+
+  // What the board says that the markdown file does not say yet. Moves pile up
+  // here instead of committing one at a time.
+  const pending = useResource(api.pending, [], {
+    enabled: connected && Boolean(data.markdownSource),
+  });
+
+  useEffect(() => {
+    const onChanged = () => pending.reload();
+    window.addEventListener("rb:pending-changed", onChanged);
+    return () => window.removeEventListener("rb:pending-changed", onChanged);
+  }, [pending]);
 
   // Live repository signal, refreshed on a slow poll so the board reflects
   // what GitHub says without the user pressing anything.
@@ -150,6 +164,15 @@ export function BoardScreen({
               {syncing ? <Spinner /> : null}
               {syncing ? "Syncing" : "Sync"}
             </button>
+            {(pending.data?.moves.length ?? 0) > 0 && (
+              <button
+                className="rb-btn border-warn-border bg-warn-bg text-warn-fg hover:bg-warn-bg"
+                onClick={() => setCommitting(true)}
+                title="Write the queued moves to the markdown file in one commit"
+              >
+                {pending.data!.moves.length} to commit
+              </button>
+            )}
             <button
               className="rb-btn-primary"
               onClick={() =>
@@ -301,6 +324,18 @@ export function BoardScreen({
           </span>
         </div>
       </div>
+
+      {committing && (
+        <MarkdownWriteDialog
+          all
+          onDiscard={() => setCommitting(false)}
+          onDone={() => {
+            setCommitting(false);
+            pending.reload();
+            router.refresh();
+          }}
+        />
+      )}
 
       {importing && data.columns[0] && (
         <ImportIssuesDialog

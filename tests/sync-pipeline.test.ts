@@ -286,3 +286,52 @@ describe("conflicts", () => {
     expect(github.content).toContain("somebody else");
   });
 });
+
+describe("batched moves", () => {
+  it("collects every divergence between the board and the file", async () => {
+    await service.syncFromMarkdown(factory);
+    const board = service.getBoardData();
+    const done = board.columns.find((c) => c.name === "Done")!;
+    const review = board.columns.find((c) => c.name === "Review")!;
+
+    const a = board.tasks.find((t) => t.title === "Phone input pairing")!;
+    const b = board.tasks.find(
+      (t) => t.title === "Private mode cookie isolation",
+    )!;
+    service.moveTaskLocally(a.id, done.id, 0);
+    service.moveTaskLocally(b.id, review.id, 0);
+
+    const pending = await service.pendingMarkdownMoves(factory);
+    expect(pending!.moves).toHaveLength(2);
+    expect(pending!.moves.map((m) => m.to).sort()).toEqual(["Done", "Review"]);
+  });
+
+  it("writes several moves as one commit", async () => {
+    await service.syncFromMarkdown(factory);
+    const board = service.getBoardData();
+    const done = board.columns.find((c) => c.name === "Done")!;
+    const commitsBefore = github.commits.length;
+
+    for (const title of ["Phone input pairing", "Private mode cookie isolation"]) {
+      const card = board.tasks.find((t) => t.title === title)!;
+      service.moveTaskLocally(card.id, done.id, 0);
+    }
+
+    const preview = await service.previewAllPending(factory);
+    expect(preview!.summary).toContain("2 task(s) moved");
+    expect(github.commits).toHaveLength(commitsBefore); // preview writes nothing
+
+    await service.commitAllPending({ expectedSha: preview!.baseSha }, factory);
+
+    expect(github.commits).toHaveLength(commitsBefore + 1);
+    const doneSection = github.content.split("## Done")[1];
+    expect(doneSection).toContain("- [x] Phone input pairing");
+    expect(doneSection).toContain("- [x] Private mode cookie isolation");
+  });
+
+  it("reports nothing pending once the file matches the board", async () => {
+    await service.syncFromMarkdown(factory);
+    const pending = await service.pendingMarkdownMoves(factory);
+    expect(pending!.moves).toHaveLength(0);
+  });
+});

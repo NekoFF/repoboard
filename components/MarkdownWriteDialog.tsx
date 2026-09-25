@@ -15,11 +15,14 @@ type Resolution = "local" | "remote" | "manual";
 export function MarkdownWriteDialog({
   taskId,
   targetHeading,
+  all,
   onDiscard,
   onDone,
 }: {
-  taskId: string;
-  targetHeading: string;
+  taskId?: string;
+  targetHeading?: string;
+  /** Commit every pending move in one go instead of a single card's move. */
+  all?: boolean;
   onDiscard: () => void;
   onDone: () => void;
 }) {
@@ -32,28 +35,31 @@ export function MarkdownWriteDialog({
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .preview(taskId, targetHeading)
+    (all ? api.previewAll() : api.preview(taskId!, targetHeading!))
       .then((value) => !cancelled && setPreview(value))
       .catch((err: Error) => !cancelled && setError(err.message))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [taskId, targetHeading]);
+  }, [taskId, targetHeading, all]);
 
   const commit = async (force: boolean) => {
     if (!preview) return;
     setBusy(true);
     setError(null);
     try {
-      await api.markdownAction({
-        action: "commit",
-        taskId,
-        targetHeading,
-        expectedSha: preview.baseSha,
-        force,
-      });
+      await api.markdownAction(
+        all
+          ? { action: "commit-all", expectedSha: preview.baseSha, force }
+          : {
+              action: "commit",
+              taskId,
+              targetHeading,
+              expectedSha: preview.baseSha,
+              force,
+            },
+      );
       toast.push({
         kind: "success",
         message: "Committed to GitHub",
@@ -66,7 +72,10 @@ export function MarkdownWriteDialog({
       if (apiError.conflict) {
         // Somebody wrote between preview and commit: re-fetch so the diff on
         // screen describes the file as it is now, not as it was.
-        const fresh = await api.preview(taskId, targetHeading).catch(() => null);
+        const fresh = await (all
+          ? api.previewAll()
+          : api.preview(taskId!, targetHeading!)
+        ).catch(() => null);
         if (fresh) setPreview(fresh);
       }
     } finally {
@@ -117,7 +126,7 @@ export function MarkdownWriteDialog({
       footer={
         <>
           <button className="rb-btn" onClick={onDiscard} disabled={busy}>
-            Discard move
+            {all ? "Not now" : "Discard move"}
           </button>
           <div className="flex-1" />
           {preview?.conflict && resolution === "remote" ? (

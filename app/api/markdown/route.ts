@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  commitAllPending,
   commitMarkdownMove,
+  pendingMarkdownMoves,
+  previewAllPending,
   getBoardData,
   previewMarkdownMove,
   setMarkdownSource,
@@ -64,6 +67,13 @@ export async function GET() {
 const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("set-source"), path: z.string().min(1) }),
   z.object({ action: z.literal("sync") }),
+  z.object({ action: z.literal("pending") }),
+  z.object({ action: z.literal("preview-all") }),
+  z.object({
+    action: z.literal("commit-all"),
+    expectedSha: z.string(),
+    force: z.boolean().optional(),
+  }),
   z.object({
     action: z.literal("preview"),
     taskId: z.string(),
@@ -105,6 +115,19 @@ export async function POST(request: Request) {
       }
       case "sync":
         return NextResponse.json(await syncFromMarkdown());
+      case "pending":
+        return NextResponse.json(
+          (await pendingMarkdownMoves()) ?? { moves: [], baseSha: "", conflict: false },
+        );
+      case "preview-all": {
+        const preview = await previewAllPending();
+        if (!preview) {
+          return NextResponse.json({ error: "Nothing pending" }, { status: 404 });
+        }
+        return NextResponse.json(preview);
+      }
+      case "commit-all":
+        return NextResponse.json(await commitAllPending(body));
       case "preview":
         return NextResponse.json(
           await previewMarkdownMove(body.taskId, body.targetHeading),
