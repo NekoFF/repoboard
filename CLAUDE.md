@@ -152,8 +152,9 @@ Layout: panels on a desk. Navigation is glass (`rb-glass`)
 over a dotted desk with two soft colour washes; the main panel is opaque and
 fully rounded, level with the navigation, and the navigation reaches 60px
 under it so its own rounded corner is hidden and the top edges read as one.
-The tool rail is a raised pill inside the main panel's right edge, lit on top
-with its shadow falling outwards. Page
+The main panel throws a wide soft shadow to the left, onto the navigation.
+The tool rail is a flat frosted pill inside the main panel's right edge — no
+highlight, no shadow. Page
 headers are glass bars floating over the page (`PageHeader` is absolute; the
 scroll area after it adds `rb-under-header`), with no rules under them.
 Dialogs, sheets, the command menu, menus and toasts use `rb-glass-strong` /
