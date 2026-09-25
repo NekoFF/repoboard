@@ -20,7 +20,7 @@ import {
 } from "@/db/schema";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
-import { normalise, type ChecklistItem } from "@/lib/checklist";
+import { normalise, progress, type ChecklistItem } from "@/lib/checklist";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
@@ -108,6 +108,24 @@ export interface BoardMilestone {
   position: number;
 }
 
+export interface BoardInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  owner: string | null;
+  /** The primary board follows the markdown file and board.json. */
+  primary: boolean;
+}
+
+export interface BoardSummary extends BoardInfo {
+  open: number;
+  done: number;
+  /** Items in the cards' checklists, at every depth. */
+  items: { done: number; total: number };
+  updatedAt: number | null;
+}
+
 export interface BoardData {
   repository: {
     id: string;
@@ -118,6 +136,8 @@ export interface BoardData {
     lastSyncAt: number | null;
   } | null;
   boardId: string | null;
+  /** The board being shown; null only before a repository is connected. */
+  board: BoardInfo | null;
   columns: { id: string; name: string; position: number }[];
   tasks: BoardTask[];
   milestones: BoardMilestone[];
@@ -204,7 +224,7 @@ export function ensureBootstrap(repo: {
 
   if (!existingBoard) {
     db.insert(boards)
-      .values({ id: boardId, repositoryId, name: "Project board" })
+      .values({ id: boardId, repositoryId, name: "Main board", position: 0, createdAt: now() })
       .run();
     DEFAULT_COLUMN_HEADINGS.forEach((name, index) => {
       db.insert(columns)
@@ -278,12 +298,41 @@ export function boardSource(repositoryId: string) {
     .get();
 }
 
-export function getBoardData(): BoardData {
+export const primaryBoardId = (repositoryId: string) => `board_${repositoryId}`;
+
+function boardInfo(board: typeof boards.$inferSelect): BoardInfo {
+  return {
+    id: board.id,
+    name: board.name,
+    description: board.description ?? null,
+    color: board.color ?? null,
+    owner: board.owner ?? null,
+    primary: board.id === primaryBoardId(board.repositoryId),
+  };
+}
+
+/** The repository's boards, primary first, then in the order they were made. */
+function repositoryBoards(repositoryId: string) {
+  return db
+    .select()
+    .from(boards)
+    .where(and(eq(boards.repositoryId, repositoryId), isNull(boards.archivedAt)))
+    .orderBy(asc(boards.position), asc(boards.createdAt))
+    .all()
+    .sort((a, b) => Number(b.id === primaryBoardId(repositoryId)) - Number(a.id === primaryBoardId(repositoryId)));
+}
+
+/**
+ * A board of the active repository: the one asked for, or the primary one.
+ * A board id from another repository is never returned.
+ */
+export function getBoardData(boardId?: string | null): BoardData {
   const repository = activeRepository();
   if (!repository) {
     return {
       repository: null,
       boardId: null,
+      board: null,
       columns: [],
       tasks: [],
       milestones: [],
@@ -291,11 +340,8 @@ export function getBoardData(): BoardData {
     };
   }
 
-  const board = db
-    .select()
-    .from(boards)
-    .where(eq(boards.repositoryId, repository.id))
-    .get();
+  const all = repositoryBoards(repository.id);
+  const board = (boardId ? all.find((b) => b.id === boardId) : undefined) ?? (boardId ? undefined : all[0]);
 
   if (!board) {
     return {
@@ -308,6 +354,7 @@ export function getBoardData(): BoardData {
         lastSyncAt: repository.lastSyncAt?.getTime() ?? null,
       },
       boardId: null,
+      board: null,
       columns: [],
       tasks: [],
       milestones: [],
@@ -348,6 +395,7 @@ export function getBoardData(): BoardData {
       lastSyncAt: repository.lastSyncAt?.getTime() ?? null,
     },
     boardId: board.id,
+    board: boardInfo(board),
     columns: cols.map((c) => ({
       id: c.id,
       name: c.name,
@@ -402,13 +450,141 @@ export function taskBelongsToBoard(taskId: string, boardId: string): boolean {
 }
 
 /** Next free number on this board; numbers are never reused. */
+/**
+ * Next free number in the repository — across all its boards, so RB-12 in a
+ * commit message always means one card. Numbers are never reused.
+ */
 function nextCardNumber(boardId: string): number {
+  const owner = db.select({ repositoryId: boards.repositoryId }).from(boards).where(eq(boards.id, boardId)).get();
+  const ids = owner
+    ? db.select({ id: boards.id }).from(boards).where(eq(boards.repositoryId, owner.repositoryId)).all().map((b) => b.id)
+    : [boardId];
   const row = db
     .select({ max: sql<number>`coalesce(max(${tasks.cardNumber}), 0)` })
     .from(tasks)
-    .where(eq(tasks.boardId, boardId))
+    .where(inArray(tasks.boardId, ids))
     .get();
   return (row?.max ?? 0) + 1;
+}
+
+/* ---------------------------------------------------------------- boards -- */
+
+export function listBoards(): BoardSummary[] {
+  const repository = activeRepository();
+  if (!repository) return [];
+  return repositoryBoards(repository.id).map((board) => {
+    const done = db
+      .select({ id: columns.id, name: columns.name })
+      .from(columns)
+      .where(eq(columns.boardId, board.id))
+      .all()
+      .filter((c) => /^(done|complete|completed|shipped|closed)$/i.test(c.name.trim()))
+      .map((c) => c.id);
+    const rows = db
+      .select({ columnId: tasks.columnId, checklist: tasks.checklist, updatedAt: tasks.updatedAt })
+      .from(tasks)
+      .where(and(eq(tasks.boardId, board.id), isNull(tasks.deletedAt)))
+      .all();
+    const doneCount = rows.filter((r) => done.includes(r.columnId)).length;
+    const items = rows.reduce(
+      (acc, r) => {
+        const p = progress(normalise(r.checklist));
+        return { done: acc.done + p.done, total: acc.total + p.total };
+      },
+      { done: 0, total: 0 },
+    );
+    const updatedAt = rows.reduce((m, r) => Math.max(m, r.updatedAt.getTime()), 0);
+    return {
+      ...boardInfo(board),
+      open: rows.length - doneCount,
+      done: doneCount,
+      items,
+      updatedAt: updatedAt || null,
+    };
+  });
+}
+
+export function createBoard(args: {
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  owner?: string | null;
+}): string {
+  const repository = activeRepository();
+  if (!repository) throw new Error("Connect a repository first");
+  const id = `board_${randomUUID()}`;
+  const position = repositoryBoards(repository.id).length;
+  db.insert(boards)
+    .values({
+      id,
+      repositoryId: repository.id,
+      name: args.name,
+      description: args.description ?? null,
+      color: args.color ?? null,
+      owner: args.owner ?? null,
+      position,
+      createdAt: now(),
+    })
+    .run();
+  DEFAULT_COLUMN_HEADINGS.forEach((name, index) => {
+    db.insert(columns).values({ id: `col_${id}_${index}`, boardId: id, name, position: index }).run();
+  });
+  logActivity({ repositoryId: repository.id, type: "board_created", message: `created the board ${args.name}` });
+  return id;
+}
+
+function ownBoard(boardId: string) {
+  const repository = activeRepository();
+  const board = repository
+    ? db.select().from(boards).where(and(eq(boards.id, boardId), eq(boards.repositoryId, repository.id))).get()
+    : undefined;
+  if (!repository || !board) throw new Error("That board is not in this project");
+  return { repository, board };
+}
+
+export function updateBoard(
+  boardId: string,
+  patch: { name?: string; description?: string | null; color?: string | null; owner?: string | null },
+): void {
+  const { repository, board } = ownBoard(boardId);
+  const values: Record<string, unknown> = {};
+  for (const key of ["name", "description", "color", "owner"] as const) {
+    if (patch[key] !== undefined) values[key] = patch[key];
+  }
+  if (Object.keys(values).length === 0) return;
+  db.update(boards).set(values).where(eq(boards.id, boardId)).run();
+  if (patch.name && patch.name !== board.name) {
+    logActivity({ repositoryId: repository.id, type: "board_updated", message: `renamed the board ${board.name} to ${patch.name}` });
+  }
+}
+
+/** Archived, not deleted: its cards stay in the database and it can come back. */
+export function archiveBoard(boardId: string): void {
+  const { repository, board } = ownBoard(boardId);
+  if (board.id === primaryBoardId(repository.id)) throw new Error("The primary board cannot be archived");
+  db.update(boards).set({ archivedAt: now() }).where(eq(boards.id, boardId)).run();
+  logActivity({ repositoryId: repository.id, type: "board_archived", message: `archived the board ${board.name}` });
+}
+
+/** Which board of the active repository a card (id or number) is on. */
+export function findCardBoard(ref: string): { boardId: string; taskId: string } | null {
+  const repository = activeRepository();
+  if (!repository) return null;
+  const ids = repositoryBoards(repository.id).map((b) => b.id);
+  if (ids.length === 0) return null;
+  const number = ref.match(/^(?:rb-)?(\d+)$/i)?.[1];
+  const row = db
+    .select({ id: tasks.id, boardId: tasks.boardId })
+    .from(tasks)
+    .where(
+      and(
+        inArray(tasks.boardId, ids),
+        isNull(tasks.deletedAt),
+        number ? eq(tasks.cardNumber, Number(number)) : eq(tasks.id, ref),
+      ),
+    )
+    .get();
+  return row ? { boardId: row.boardId, taskId: row.id } : null;
 }
 
 export function createTask(args: {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardData, PendingChange } from "@/lib/board-service";
+import type { BoardData, BoardSummary, PendingChange } from "@/lib/board-service";
 import type { DocChange, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type {
@@ -124,7 +124,14 @@ export const api = {
   graph: () => request<{ commits: GraphCommit[] }>("/api/github?resource=graph"),
   people: () => request<{ people: { login: string; avatarUrl: string }[] }>("/api/github?resource=people"),
 
-  board: () => request<BoardData>("/api/board"),
+  board: (boardId?: string | null) =>
+    request<BoardData>(`/api/board${boardId ? `?board=${encodeURIComponent(boardId)}` : ""}`),
+  boards: () => request<{ boards: BoardSummary[] }>("/api/board?list=1"),
+  createBoard: (fields: { name: string; description?: string | null; color?: string | null; owner?: string | null }) =>
+    post<{ id: string }>("/api/board", { action: "board-create", ...fields }),
+  updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; owner?: string | null }) =>
+    post<{ ok: true }>("/api/board", { action: "board-update", boardId, ...fields }),
+  archiveBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-archive", boardId }),
 
   boardAction: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/api/board", {
@@ -224,10 +231,10 @@ export const api = {
       body: JSON.stringify({ action: "preview-all" }),
     }),
 
-  importIssues: (numbers: number[], columnId: string) =>
+  importIssues: (numbers: number[], columnId: string, boardId?: string | null) =>
     request<{ created: number; skipped: number }>("/api/board", {
       method: "POST",
-      body: JSON.stringify({ action: "import-issues", numbers, columnId }),
+      body: JSON.stringify({ action: "import-issues", numbers, columnId, boardId }),
     }),
 };
 

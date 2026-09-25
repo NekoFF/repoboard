@@ -20,11 +20,13 @@ import { ProjectSwitcher } from "@/components/shell/ProjectSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Kbd, ProgressRing, Tooltip, percent } from "@/components/ui";
+import { ActorAvatar } from "@/components/Actor";
+import { boardColor, boardHref } from "@/components/labelColor";
 import { modKey } from "@/lib/client/hotkeys";
 
 const NAV: { href: string; label: string; icon: ReactNode; keys: string }[] = [
   { href: "/", label: "Overview", icon: <Home className="size-4" />, keys: "G then O" },
-  { href: "/board", label: "Board", icon: <SquareKanban className="size-4" />, keys: "G then B" },
+  { href: "/boards", label: "Boards", icon: <SquareKanban className="size-4" />, keys: "G then B" },
   { href: "/docs", label: "Documents", icon: <FileText className="size-4" />, keys: "G then D" },
   { href: "/repository", label: "Code", icon: <GitBranch className="size-4" />, keys: "G then C" },
   { href: "/activity", label: "Activity", icon: <Activity className="size-4" />, keys: "G then A" },
@@ -62,7 +64,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
-  const { docs, openPalette, openShortcuts } = useShell();
+  const { docs, boards, openPalette, openShortcuts } = useShell();
   const { resolved, toggle } = useTheme();
   const currentDoc = pathname.startsWith("/docs") ? params.get("path") : null;
 
@@ -85,8 +87,7 @@ export function Sidebar() {
 
       <nav className="flex flex-col gap-px px-2.5 pt-3" aria-label="Main">
         {NAV.map((item) => {
-          const active =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const active = item.href === "/" ? pathname === "/" : pathname === item.href;
           return (
             <NavLink key={item.href} href={item.href} active={active && !currentDoc} icon={item.icon}>
               {item.label}
@@ -94,6 +95,45 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {boards.length > 0 && (
+        <div className="mt-5 flex flex-col">
+          <div className="flex items-center px-4 pb-1">
+            <Link href="/boards" className="flex-1 text-xs font-medium text-faint hover:text-muted">
+              Boards
+            </Link>
+            <Tooltip content="New board">
+              <button className="rb-icon-btn size-6" aria-label="New board" onClick={() => router.push("/boards?new=1")}>
+                <Plus className="size-3.5" />
+              </button>
+            </Tooltip>
+          </div>
+          <div className="flex flex-col gap-px px-2.5">
+            {boards.map((b) => {
+              const href = boardHref(b);
+              return (
+                <NavLink
+                  key={b.id}
+                  href={href}
+                  active={pathname === href}
+                  icon={
+                    b.owner ? (
+                      <ActorAvatar name={b.owner} size={16} />
+                    ) : (
+                      <span className="grid size-4 place-items-center rounded-[4px] text-[9px] font-semibold text-white" style={{ backgroundColor: boardColor(b.color, b.name) }}>
+                        {b.name.charAt(0).toUpperCase()}
+                      </span>
+                    )
+                  }
+                  trailing={b.open > 0 ? <span className="text-2xs tabular-nums text-faint">{b.open}</span> : null}
+                >
+                  {b.name}
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col">
         <div className="flex items-center px-4 pb-1">

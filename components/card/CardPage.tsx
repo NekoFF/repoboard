@@ -29,7 +29,7 @@ import { api, useResource } from "@/lib/client/api";
 import { Markdown } from "@/components/Markdown";
 import { Avatar, LabelChip } from "@/components/TaskCard";
 import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
-import { displayLabel, labelColor } from "@/components/labelColor";
+import { boardHref as boardLink, displayLabel, labelColor } from "@/components/labelColor";
 import {
   DueLabel,
   Menu,
@@ -81,12 +81,13 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   const router = useRouter();
   const toast = useToast();
   const commitMove = useCommitMove(data);
-  const onClose = () => router.push("/board");
+  const boardHref = data.board ? boardLink(data.board) : "/board";
+  const onClose = () => router.push(boardHref);
   const onChange = (_next: BoardTask) => {};
   const onMove = async (card: BoardTask, columnId: string) => {
     await commitMove(card.id, columnId, orderAfterMove(data, card.id, columnId));
   };
-  const onDelete = () => router.push("/board");
+  const onDelete = () => router.push(boardHref);
   // The same order the board shows: column by column, top to bottom.
   const order = data.columns.flatMap((c) =>
     data.tasks.filter((t) => t.columnId === c.id).sort((a, b) => a.position - b.position).map((t) => t.id),
@@ -162,6 +163,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
     setSaving(true);
     try {
       await api.boardAction({
+        boardId: data.boardId,
         action: "update",
         taskId: task.id,
         title: next.title,
@@ -184,7 +186,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
 
   const link = async (payload: Record<string, unknown>, label: string) => {
     try {
-      await api.boardAction({ action: "link", taskId: task.id, ...payload });
+      await api.boardAction({ boardId: data.boardId, action: "link", taskId: task.id, ...payload });
       const next = { ...draft };
       if (payload.branch) next.branches = [...next.branches, payload.branch as string];
       if (payload.pullRequest) next.pullRequests = [...next.pullRequests, payload.pullRequest as number];
@@ -199,7 +201,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   };
 
   const unlink = async (payload: Record<string, unknown>, label: string) => {
-    await api.boardAction({ action: "unlink", taskId: task.id, ...payload });
+    await api.boardAction({ boardId: data.boardId, action: "unlink", taskId: task.id, ...payload });
     const next = { ...draft };
     if (payload.branch) next.branches = next.branches.filter((b) => b !== payload.branch);
     if (payload.pullRequest) next.pullRequests = next.pullRequests.filter((p) => p !== payload.pullRequest);
@@ -211,7 +213,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   };
 
   const remove = async () => {
-    await api.boardAction({ action: "delete", taskId: task.id });
+    await api.boardAction({ boardId: data.boardId, action: "delete", taskId: task.id });
     // Deleting is reversible, so offer the way back instead of asking first.
     toast.push({
       kind: "info",
@@ -220,7 +222,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
       action: {
         label: "Undo",
         run: async () => {
-          await api.boardAction({ action: "restore", taskId: task.id });
+          await api.boardAction({ boardId: data.boardId, action: "restore", taskId: task.id });
           router.refresh();
         },
       },
@@ -232,7 +234,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
     const message = commentDraft.trim();
     if (!message) return;
     setCommentDraft("");
-    await api.boardAction({ action: "comment", taskId: task.id, message });
+    await api.boardAction({ boardId: data.boardId, action: "comment", taskId: task.id, message });
     activity.reload();
   };
 
@@ -248,7 +250,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
     if (!name) return;
     setMilestoneDraft("");
     try {
-      const { id } = (await api.boardAction({ action: "milestone-create", name })) as { id: string };
+      const { id } = (await api.boardAction({ boardId: data.boardId, action: "milestone-create", name })) as { id: string };
       await save({ milestoneId: id });
     } catch (error) {
       toast.push({ kind: "error", message: "Could not create the milestone", detail: (error as Error).message });
@@ -499,8 +501,12 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
         icon={<StatusIcon status={status} />}
         title={
           <span className="flex min-w-0 items-center gap-1.5">
-            <Link href="/board" className="text-muted hover:text-ink">
-              Board
+            <Link href="/boards" className="hidden text-muted hover:text-ink sm:inline">
+              Boards
+            </Link>
+            <span className="hidden text-faint sm:inline">/</span>
+            <Link href={boardHref} className="max-w-[160px] truncate text-muted hover:text-ink">
+              {data.board?.name ?? "Board"}
             </Link>
             <span className="text-faint">/</span>
             {ref && (
@@ -571,7 +577,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
                 Delete card
               </MenuItem>
             </Menu>
-            <Tooltip content="Back to the board" shortcut="Esc">
+            <Tooltip content={`Back to ${data.board?.name ?? "the board"}`} shortcut="Esc">
               <button className="rb-icon-btn" onClick={onClose} aria-label="Back to the board">
                 <X className="size-4" />
               </button>

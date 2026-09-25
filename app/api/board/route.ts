@@ -12,6 +12,10 @@ import {
   getBoardData,
   importIssues,
   createMilestone,
+  createBoard,
+  updateBoard,
+  archiveBoard,
+  listBoards,
   updateMilestone,
   deleteMilestone,
   reorderColumn,
@@ -29,12 +33,30 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/** GET ?board=<id> for one board (the primary one by default), ?list=1 for all of them. */
+export async function GET(request: Request) {
   if (!await getVerifiedRepository()) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
   }
-  return NextResponse.json(getBoardData());
+  const url = new URL(request.url);
+  if (url.searchParams.get("list")) return NextResponse.json({ boards: listBoards() });
+  const boardId = url.searchParams.get("board");
+  const data = getBoardData(boardId);
+  if (boardId && !data.boardId) return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
+  return NextResponse.json(data);
 }
+
+const boardFields = {
+  name: z.string().trim().min(1).max(80),
+  description: z.string().max(2000).nullish(),
+  color: z.string().max(20).nullish(),
+  owner: z.string().max(100).nullish(),
+};
+const boardSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("board-create"), ...boardFields }),
+  z.object({ action: z.literal("board-update"), boardId: z.string(), ...boardFields, name: boardFields.name.optional() }),
+  z.object({ action: z.literal("board-archive"), boardId: z.string() }),
+]);
 
 /** One checklist item and, recursively, its sub-items (lib/checklist.ts). */
 const checklistItem: z.ZodType<ChecklistItem> = z.lazy(() =>
@@ -191,6 +213,25 @@ async function handlePost(request: Request) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
   }
   const raw = await request.json().catch(() => null);
+
+  // Managing the boards themselves.
+  if (typeof raw?.action === "string" && raw.action.startsWith("board-") && !["board-status", "board-pull", "board-push"].includes(raw.action)) {
+    const managed = boardSchema.safeParse(raw);
+    if (!managed.success) return NextResponse.json({ error: managed.error.issues[0].message }, { status: 400 });
+    try {
+      const b = managed.data;
+      if (b.action === "board-create") return NextResponse.json({ id: createBoard(b) });
+      if (b.action === "board-update") {
+        updateBoard(b.boardId, b);
+        return NextResponse.json({ ok: true });
+      }
+      archiveBoard(b.boardId);
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
+  }
+
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
@@ -199,7 +240,12 @@ async function handlePost(request: Request) {
     );
   }
 
-  const data = getBoardData();
+  // Every card action names the board it is about; without one, the primary board.
+  const requestedBoard = typeof raw?.boardId === "string" ? raw.boardId : null;
+  const data = getBoardData(requestedBoard);
+  if (requestedBoard && !data.boardId) {
+    return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
+  }
   if (!data.repository || !data.boardId) {
     return NextResponse.json(
       { error: "Connect a repository first" },

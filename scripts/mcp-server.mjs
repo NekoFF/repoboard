@@ -85,14 +85,32 @@ function activeProject() {
   return { repo, token, id: `repo_${repo.replace("/", "_")}`.toLowerCase() };
 }
 
-function requireBoard() {
+/** The project's boards, the primary one (board_<repo>) first. */
+function boardsOf(repoId) {
+  return db
+    .prepare("SELECT * FROM boards WHERE repository_id = ? AND archived_at IS NULL ORDER BY position, created_at")
+    .all(repoId)
+    .sort((a, b) => Number(b.id === `board_${repoId}`) - Number(a.id === `board_${repoId}`));
+}
+
+/**
+ * The project and one of its boards: the one named (by name or id), or the
+ * primary board. A project has a board per person or per area of work.
+ */
+function requireBoard(boardName) {
   const project = activeProject();
   const repo = project ? db.prepare("SELECT * FROM repositories WHERE id = ?").get(project.id) : null;
-  const board = repo ? db.prepare("SELECT * FROM boards WHERE repository_id = ?").get(repo.id) : null;
-  if (!repo || !board) {
+  const all = repo ? boardsOf(repo.id) : [];
+  if (!repo || all.length === 0) {
     throw new Error("No board yet. Open RepoBoard and connect a GitHub repository first.");
   }
-  return { project, repo, board };
+  let board = all[0];
+  if (boardName) {
+    const wanted = String(boardName).toLowerCase();
+    board = all.find((b) => b.id === boardName || b.name.toLowerCase() === wanted || (b.owner ?? "").toLowerCase() === wanted);
+    if (!board) throw new Error(`No board "${boardName}". Boards: ${all.map((b) => b.name).join(", ")}`);
+  }
+  return { project, repo, board, boards: all };
 }
 
 function columns(boardId) {
@@ -121,12 +139,15 @@ function resolveMilestone(boardId, name) {
 
 /** Accepts the card's id or its reference ("RB-12" or 12). */
 function cardOf(ref) {
-  const { board } = requireBoard();
+  // Card numbers are unique across the project's boards, so RB-12 needs no board.
+  const { boards } = requireBoard();
+  const ids = boards.map((b) => b.id);
+  const marks = ids.map(() => "?").join(",");
   const number = String(ref).match(/^(?:rb-)?(\d+)$/i)?.[1];
   const task = number
-    ? db.prepare("SELECT * FROM tasks WHERE card_number = ? AND board_id = ? AND deleted_at IS NULL").get(Number(number), board.id)
-    : db.prepare("SELECT * FROM tasks WHERE id = ? AND board_id = ? AND deleted_at IS NULL").get(ref, board.id);
-  if (!task) throw new Error(`No card ${ref} on this board`);
+    ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks}) AND deleted_at IS NULL`).get(Number(number), ...ids)
+    : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks}) AND deleted_at IS NULL`).get(ref, ...ids);
+  if (!task) throw new Error(`No card ${ref} in this project`);
   return task;
 }
 
@@ -150,10 +171,12 @@ function serialiseCard(task) {
   const milestone = task.milestone_id
     ? db.prepare("SELECT name FROM milestones WHERE id = ?").get(task.milestone_id)
     : null;
+  const board = db.prepare("SELECT name FROM boards WHERE id = ?").get(task.board_id);
   return {
     id: task.id,
     ref: task.card_number != null ? `RB-${task.card_number}` : null,
     title: task.title,
+    board: board?.name ?? null,
     column: column?.name ?? null,
     priority: PRIORITY[task.priority ?? 0],
     milestone: milestone?.name ?? null,
@@ -186,7 +209,11 @@ function logActivity(repositoryId, taskId, type, message) {
 }
 
 function nextCardNumber(boardId) {
-  return db.prepare("SELECT COALESCE(MAX(card_number), 0) + 1 AS n FROM tasks WHERE board_id = ?").get(boardId).n;
+  return db
+    .prepare(
+      "SELECT COALESCE(MAX(card_number), 0) + 1 AS n FROM tasks WHERE board_id IN (SELECT id FROM boards WHERE repository_id = (SELECT repository_id FROM boards WHERE id = ?))",
+    )
+    .get(boardId).n;
 }
 
 function priorityValue(word) {
@@ -258,13 +285,20 @@ const tools = [
   {
     name: "get_overview",
     description:
-      "Start here. Where the project stands: overall progress, every checklist with its progress, what needs a person's check, milestones and the board's columns.",
+      "Start here. Where the project stands: overall progress, every checklist with its progress, what needs a person's check, milestones, the main board's columns and the other boards (per person or area).",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_boards",
+    description:
+      "The project's boards — one per person (owner set) or per area of work — with how many cards are open and done on each.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "get_board",
-    description: "Every card on the board by column, with labels, priority, milestone, links and checklist.",
-    inputSchema: { type: "object", properties: {} },
+    description:
+      "Every card on a board by column, with labels, priority, milestone, links and checklist. Without `board`, the main board.",
+    inputSchema: { type: "object", properties: { board: { type: "string", description: "Board name, owner or id" } } },
   },
   {
     name: "search_cards",
@@ -285,6 +319,7 @@ const tools = [
         priority: { type: "string", enum: PRIORITY },
         milestone: { type: "string", description: "Existing milestone name" },
         dueDate: { type: "string", description: "YYYY-MM-DD" },
+        board: { type: "string", description: "Board name, owner or id (default: the main board)" },
       },
       required: ["title", "column"],
     },
@@ -406,10 +441,10 @@ const tools = [
 
 const handlers = {
   get_overview() {
-    const { repo, board } = requireBoard();
+    const { repo, board, boards } = requireBoard();
     const cols = columns(board.id);
     const cards = db.prepare("SELECT column_id FROM tasks WHERE board_id = ? AND deleted_at IS NULL").all(board.id);
-    // The board's own source file is already counted as cards.
+    // The main board's own source file is already counted as cards.
     const docs = documents(repo.id).filter((d) => d.snap && d.snap.total > 0 && d.row.role !== "board");
     const milestones = db.prepare("SELECT * FROM milestones WHERE board_id = ? ORDER BY position").all(board.id);
     const doneCol = cols.find((c) => /^(done|complete|completed|shipped)$/i.test(c.name));
@@ -422,6 +457,8 @@ const handlers = {
       repository: `${repo.owner}/${repo.name}`,
       progress: { done, total, percent: total ? Math.round((done / total) * 100) : 0 },
       board: cols.map((c) => ({ column: c.name, cards: cards.filter((t) => t.column_id === c.id).length })),
+      // Other boards: one per person or area. Progress above counts the main board.
+      boards: boards.length > 1 ? handlers.list_boards() : undefined,
       checklists: docs.map((d) => ({
         path: d.row.path,
         title: d.snap.title,
@@ -444,14 +481,35 @@ const handlers = {
     };
   },
 
-  get_board() {
-    const { repo, board } = requireBoard();
+  list_boards() {
+    const { boards } = requireBoard();
+    return boards.map((b) => {
+      const cols = columns(b.id);
+      const done = cols.filter((c) => /^(done|complete|completed|shipped|closed)$/i.test(c.name)).map((c) => c.id);
+      const cards = db.prepare("SELECT column_id FROM tasks WHERE board_id = ? AND deleted_at IS NULL").all(b.id);
+      const doneCount = cards.filter((c) => done.includes(c.column_id)).length;
+      return {
+        name: b.name,
+        owner: b.owner ?? null,
+        description: b.description ?? null,
+        main: b.id === boards[0].id,
+        open: cards.length - doneCount,
+        done: doneCount,
+        columns: cols.map((c) => c.name),
+      };
+    });
+  },
+
+  get_board({ board: boardName } = {}) {
+    const { repo, board } = requireBoard(boardName);
     const cols = columns(board.id);
     const cards = db
       .prepare("SELECT * FROM tasks WHERE board_id = ? AND deleted_at IS NULL ORDER BY position")
       .all(board.id);
     return {
       repository: `${repo.owner}/${repo.name}`,
+      board: board.name,
+      owner: board.owner ?? null,
       defaultBranch: repo.default_branch,
       milestones: db.prepare("SELECT name FROM milestones WHERE board_id = ? ORDER BY position").all(board.id).map((m) => m.name),
       columns: cols.map((c) => ({
@@ -462,11 +520,12 @@ const handlers = {
   },
 
   search_cards({ query }) {
-    const { board } = requireBoard();
+    const { boards } = requireBoard();
     const q = String(query).toLowerCase();
+    const ids = boards.map((b) => b.id);
     return db
-      .prepare("SELECT * FROM tasks WHERE board_id = ? AND deleted_at IS NULL")
-      .all(board.id)
+      .prepare(`SELECT * FROM tasks WHERE board_id IN (${ids.map(() => "?").join(",")}) AND deleted_at IS NULL`)
+      .all(...ids)
       .map(serialiseCard)
       .filter(
         (c) =>
@@ -478,8 +537,8 @@ const handlers = {
       );
   },
 
-  create_card({ title, column, description, labels = [], assignee, priority, milestone, dueDate }) {
-    const { repo, board } = requireBoard();
+  create_card({ title, column, description, labels = [], assignee, priority, milestone, dueDate, board: boardName }) {
+    const { repo, board } = requireBoard(boardName);
     const col = resolveColumn(board.id, column);
     const id = randomUUID();
     const siblings = db
@@ -512,9 +571,9 @@ const handlers = {
   },
 
   move_card({ card, column }) {
-    const { repo, board } = requireBoard();
+    const { repo } = requireBoard();
     const task = cardOf(card);
-    const target = resolveColumn(board.id, column);
+    const target = resolveColumn(task.board_id, column);
     const from = db.prepare("SELECT name FROM columns WHERE id = ?").get(task.column_id);
     const position = db
       .prepare("SELECT COUNT(*) AS n FROM tasks WHERE column_id = ? AND deleted_at IS NULL")
@@ -535,8 +594,9 @@ const handlers = {
   },
 
   update_card({ card, title, description, assignee, labels, priority, milestone, dueDate }) {
-    const { repo, board } = requireBoard();
+    const { repo } = requireBoard();
     const task = cardOf(card);
+    const board = { id: task.board_id };
     db.prepare(
       `UPDATE tasks SET title = ?, description = ?, assignee = ?, priority = ?, milestone_id = ?, due_date = ?, updated_at = ?
        WHERE id = ?`,
@@ -645,11 +705,13 @@ const handlers = {
   },
 
   restore_card({ card }) {
-    const { repo, board } = requireBoard();
+    const { repo, boards } = requireBoard();
+    const ids = boards.map((b) => b.id);
+    const marks = ids.map(() => "?").join(",");
     const number = String(card).match(/^(?:rb-)?(\d+)$/i)?.[1];
     const task = number
-      ? db.prepare("SELECT * FROM tasks WHERE card_number = ? AND board_id = ?").get(Number(number), board.id)
-      : db.prepare("SELECT * FROM tasks WHERE id = ? AND board_id = ?").get(card, board.id);
+      ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks})`).get(Number(number), ...ids)
+      : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks})`).get(card, ...ids);
     if (!task) throw new Error(`No card ${card} on this board`);
     db.prepare("UPDATE tasks SET deleted_at = NULL, updated_at = ? WHERE id = ?").run(now(), task.id);
     logActivity(repo.id, task.id, "card_restored", `restored ${task.title}`);
@@ -693,21 +755,23 @@ const handlers = {
   },
 
   needs_check() {
-    const { repo, board } = requireBoard();
+    const { repo, boards } = requireBoard();
     const fromDocs = documents(repo.id).filter(({ row }) => row.role !== "board").flatMap(({ row, snap }) =>
       (snap?.items ?? [])
         .filter((i) => i.state === "review")
         .map((i) => ({ source: row.path, line: i.line + 1, item: i.title })),
     );
-    const review = columns(board.id).filter((c) => /review|qa|verify/i.test(c.name)).map((c) => c.id);
-    const fromBoard = review.length
-      ? db
-          .prepare(
-            `SELECT * FROM tasks WHERE board_id = ? AND deleted_at IS NULL AND column_id IN (${review.map(() => "?").join(",")})`,
-          )
-          .all(board.id, ...review)
-          .map((t) => ({ source: "board", card: t.card_number != null ? `RB-${t.card_number}` : t.id, item: t.title }))
-      : [];
+    const fromBoard = boards.flatMap((board) => {
+      const review = columns(board.id).filter((c) => /review|qa|verify/i.test(c.name)).map((c) => c.id);
+      return review.length
+        ? db
+            .prepare(
+              `SELECT * FROM tasks WHERE board_id = ? AND deleted_at IS NULL AND column_id IN (${review.map(() => "?").join(",")})`,
+            )
+            .all(board.id, ...review)
+            .map((t) => ({ source: `board ${board.name}`, card: t.card_number != null ? `RB-${t.card_number}` : t.id, item: t.title }))
+        : [];
+    });
     return [...fromDocs, ...fromBoard];
   },
 
@@ -730,7 +794,7 @@ const handlers = {
 
 /* --------------------------------------------------------------- server -- */
 
-server = new Server({ name: "repoboard", version: "0.3.0" }, { capabilities: { tools: {} } });
+server = new Server({ name: "repoboard", version: "0.4.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 

@@ -11,14 +11,36 @@ all kept as markdown in the repository itself, under `.repoboard/`. Next.js +
 SQLite, runs on the user's machine, talks only to github.com.
 
 GitHub is the source of truth for branches, commits, pull requests, issues and
-file contents; SQLite holds only RepoBoard's own state (cards, links, the last
-parsed copy of each document). Several repositories can be connected, one
+file contents; SQLite holds only RepoBoard's own state (boards, cards, links,
+the last parsed copy of each document). Several repositories can be connected, one
 active at a time, each with its own token. There are no accounts, no server,
 no sharing beyond what the repository itself shares. Do not add them.
 
 The file format is specified in [docs/FORMAT.md](docs/FORMAT.md). Keep that
 file, `lib/markdown/format.ts` and `WORKSPACE_README` in `lib/templates.ts` in
 step.
+
+## How work is organised
+
+```
+Project (a GitHub repository)
+└── Boards            one per person (owner set) or per area (Design, Core)
+    └── Cards         a topic: RB-n, unique across the whole project
+        └── Items     numbered steps 1, 1.1, 1.2 — notes, assignee, due, comments, sub-items
+```
+
+- The **main board** has the id `board_<repositoryId>`, lives at `/board` and
+  is the only one that follows the markdown board file and `board.json`
+  (sync, pending changes, "Save to repo"). Other boards live at
+  `/board/<boardId>` and exist only in SQLite. `boards.owner` makes a
+  person's board; without it the board is an area. Archiving keeps the cards.
+- A card lives at `/board/card/<RB-n or id>` whatever its board;
+  `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
+  counts every board of the repository — never number per board.
+- Every board action carries `boardId`; the route rejects an unknown one.
+  `getBoardData(boardId?)` without an id is the main board.
+- Items are a tree (`lib/checklist.ts`), stored as JSON on the card. Ticking an
+  item ticks its children and reopens its ancestors (`setDone`).
 
 ## Hard rules — breaking these breaks the product
 
@@ -60,7 +82,9 @@ step.
 
 ```
 app/                   routes; pages are server components reading the database
-  api/                 repo (projects), board, docs, github (read-only proxy), markdown, activity
+  api/                 repo (projects), board (+ board-create/update/archive), docs, github (read-only proxy), markdown, activity
+  boards/              every board of the project, grouped into areas and people
+  board/               the main board; board/[boardId] the others; board/card/[id] a card on any board
 components/
   shell/               sidebar, project switcher, command menu, theme, shortcuts
   docs/                documents index, document screen, checklist view
@@ -82,8 +106,10 @@ tests/                 parser, documents, filters, graph, conflicts, sync pipeli
 
 ## Screens
 
-Overview · Board (board, list, calendar) · Documents · Code (graph, branches,
-commits, pull requests, issues) · Activity · Settings.
+Overview · Boards → a board (board, list, calendar) → a card · Documents ·
+Code (graph, branches, commits, pull requests, issues) · Activity · Settings.
+The sidebar lists the boards under "Boards"; the command menu has a Boards
+group.
 
 If you remove or rename a screen, update `components/shell/Sidebar.tsx`, the
 command menu in `components/shell/CommandPalette.tsx`, the `G` shortcuts in
@@ -121,10 +147,12 @@ Rules while more than one entry is in this table:
 
 ## MCP server
 
-`scripts/mcp-server.mjs` exposes the board and documents to any MCP client
-over stdio (Claude Code, Codex, Cursor, Claude Desktop…): overview, cards
-(create, move, update, delete/restore, checklist, comment), documents (list,
-read from GitHub), the needs-check queue and activity. Every event it writes
+`scripts/mcp-server.mjs` exposes the boards and documents to any MCP client
+over stdio (Claude Code, Codex, Cursor, Claude Desktop…): overview, boards
+(`list_boards`; `get_board` and `create_card` take an optional `board` — name,
+owner or id — and default to the main board), cards (create, move, update,
+delete/restore, checklist, comment — found by RB-n on any board), documents
+(list, read from GitHub), the needs-check queue and activity. Every event it writes
 is attributed to the agent (`REPOBOARD_AGENT`, else the client's reported
 name) with `actor_kind = agent`; Settings shows per-client setup.
 

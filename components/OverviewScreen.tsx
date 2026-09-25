@@ -14,7 +14,8 @@ import {
   GitPullRequest,
   ListChecks,
 } from "lucide-react";
-import type { BoardData, RepoHeader } from "@/lib/board-service";
+import type { BoardData, BoardSummary, RepoHeader } from "@/lib/board-service";
+import { boardHref } from "@/components/labelColor";
 import type { TrackedDoc } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import { api, useResource } from "@/lib/client/api";
@@ -98,11 +99,14 @@ export function OverviewScreen({
   data,
   header,
   docs,
+  boards,
   connected,
 }: {
   data: BoardData;
   header: RepoHeader;
   docs: TrackedDoc[];
+  /** Every board with its cards, primary first. */
+  boards: { info: BoardSummary; data: BoardData }[];
   connected: boolean;
 }) {
   const router = useRouter();
@@ -124,29 +128,34 @@ export function OverviewScreen({
       .catch(() => null);
   }, [connected, router]);
 
-  const columnStatus = useMemo(
-    () => new Map(data.columns.map((c) => [c.id, statusOfColumn(c.name)])),
-    [data.columns],
+  // Every board of the project, each card with its board and state.
+  const cards = useMemo(
+    () =>
+      boards.flatMap(({ info, data: b }) => {
+        const status = new Map(b.columns.map((c) => [c.id, statusOfColumn(c.name)]));
+        const order = new Map(b.columns.map((c, i) => [c.id, i]));
+        return [...b.tasks]
+          .sort((x, y) => (order.get(x.columnId) ?? 0) - (order.get(y.columnId) ?? 0) || x.position - y.position)
+          .map((task) => ({ task, board: info, status: status.get(task.columnId) ?? ("todo" as Status) }));
+      }),
+    [boards],
   );
   const checklists = docs.filter((d) => d.total > 0 && d.role !== "board");
 
   const groups = useMemo<MapGroup[]>(() => {
-    const board: MapGroup = {
-      key: "board",
-      label: "Board",
-      href: "/board",
-      cells: data.columns.flatMap((col) =>
-        data.tasks
-          .filter((t) => t.columnId === col.id)
-          .sort((a, b) => a.position - b.position)
-          .map((t) => ({
-            key: t.id,
-            title: `${t.number != null ? `RB-${t.number} ` : ""}${t.title}`,
-            status: columnStatus.get(t.columnId) ?? "todo",
-            href: `/board/card/${t.id}`,
-          })),
-      ),
-    };
+    const fromBoards: MapGroup[] = boards.map(({ info }) => ({
+      key: info.id,
+      label: info.name,
+      href: boardHref(info),
+      cells: cards
+        .filter((c) => c.board.id === info.id)
+        .map(({ task, status }) => ({
+          key: task.id,
+          title: `${task.number != null ? `RB-${task.number} ` : ""}${task.title}`,
+          status,
+          href: `/board/card/${task.id}`,
+        })),
+    }));
     const fromDocs = checklists.map((doc) => ({
       key: doc.id,
       label: doc.title,
@@ -158,8 +167,8 @@ export function OverviewScreen({
         href: docHref(doc.path, item.line),
       })),
     }));
-    return [board, ...fromDocs].filter((g) => g.cells.length > 0);
-  }, [data, columnStatus, checklists]);
+    return [...fromBoards, ...fromDocs].filter((g) => g.cells.length > 0);
+  }, [boards, cards, checklists]);
 
   const all = groups.flatMap((g) => g.cells).filter((c) => c.status !== "cancelled");
   const count = (s: Status) => all.filter((c) => c.status === s).length;
@@ -172,16 +181,16 @@ export function OverviewScreen({
         .filter((i) => i.state === "review")
         .map((i) => ({ kind: "doc" as const, doc, item: i })),
     );
-    const cards = data.tasks
-      .filter((t) => columnStatus.get(t.columnId) === "review")
-      .map((t) => ({ kind: "card" as const, task: t }));
-    return [...items, ...cards];
-  }, [checklists, data.tasks, columnStatus]);
+    const inReview = cards
+      .filter((c) => c.status === "review")
+      .map((c) => ({ kind: "card" as const, task: c.task, board: c.board }));
+    return [...items, ...inReview];
+  }, [checklists, cards]);
 
   const upcoming = useMemo(() => {
-    const cards = data.tasks
-      .filter((t) => t.dueDate != null && columnStatus.get(t.columnId) !== "done")
-      .map((t) => ({ key: t.id, title: t.title, due: t.dueDate!, href: `/board/card/${t.id}`, source: "Board", priority: t.priority, status: columnStatus.get(t.columnId) ?? "todo" }));
+    const dueCards = cards
+      .filter((c) => c.task.dueDate != null && c.status !== "done")
+      .map(({ task: t, board, status }) => ({ key: t.id, title: t.title, due: t.dueDate!, href: `/board/card/${t.id}`, source: board.name, priority: t.priority, status }));
     const items = checklists.flatMap((doc) =>
       doc.items
         .filter((i) => i.due && i.state !== "done" && i.state !== "cancelled")
@@ -195,8 +204,8 @@ export function OverviewScreen({
           status: (i.state ?? "todo") as Status,
         })),
     );
-    return [...cards, ...items].filter((u) => daysUntil(u.due) <= 14).sort((a, b) => a.due - b.due).slice(0, 8);
-  }, [data.tasks, checklists, columnStatus]);
+    return [...dueCards, ...items].filter((u) => daysUntil(u.due) <= 14).sort((a, b) => a.due - b.due).slice(0, 8);
+  }, [cards, checklists]);
 
   const openPulls = (pulls.data?.pulls ?? []).filter((p) => p.state === "open");
   const openIssues = (issues.data?.issues ?? []).filter((i) => i.state === "open");
@@ -252,8 +261,8 @@ export function OverviewScreen({
                 <span className="text-[32px] text-faint">%</span>
               </p>
               <p className="text-md text-muted">
-                {totals.done} of {totals.total} things done, across the board and {checklists.length} checklist
-                {checklists.length === 1 ? "" : "s"}.
+                {totals.done} of {totals.total} things done, across {boards.length} board{boards.length === 1 ? "" : "s"} and{" "}
+                {checklists.length} checklist{checklists.length === 1 ? "" : "s"}.
               </p>
               <ProgressBar counts={totals} height={8} className="mt-1" />
               <div className="mt-1 flex flex-col gap-1.5 text-sm">
@@ -342,7 +351,10 @@ export function OverviewScreen({
                     <StatusIcon status="review" size={16} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base text-ink">{entry.task.title}</p>
-                      <p className="text-xs text-faint">Board{entry.task.number != null ? `, RB-${entry.task.number}` : ""}</p>
+                      <p className="text-xs text-faint">
+                        {entry.board.name}
+                        {entry.task.number != null ? `, RB-${entry.task.number}` : ""}
+                      </p>
                     </div>
                     <ArrowUpRight className="size-4 text-faint" />
                   </Link>

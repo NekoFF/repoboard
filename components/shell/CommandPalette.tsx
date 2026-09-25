@@ -27,6 +27,7 @@ import { useTheme } from "@/components/shell/ThemeProvider";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { Spinner, StatusIcon } from "@/components/ui";
 import { statusOfColumn } from "@/lib/status";
+import { boardHref } from "@/components/labelColor";
 
 function Item({
   value,
@@ -74,7 +75,7 @@ export function CommandPalette({
   initialQuery?: string;
 }) {
   const router = useRouter();
-  const { connected, projects, docs, openShortcuts } = useShell();
+  const { connected, projects, docs, boards, openShortcuts } = useShell();
   const { resolved, toggle } = useTheme();
   const [search, setSearch] = useState(initialQuery);
   useEffect(() => {
@@ -146,7 +147,7 @@ export function CommandPalette({
 
               <Command.Group heading="Go to" className={groupClass}>
                 <Item value="Overview" icon={<Home className="size-4" />} hint="G O" onSelect={go("/")}>Overview</Item>
-                <Item value="Board" icon={<SquareKanban className="size-4" />} hint="G B" onSelect={go("/board")}>Board</Item>
+                <Item value="Boards" icon={<SquareKanban className="size-4" />} hint="G B" onSelect={go("/boards")}>Boards</Item>
                 <Item value="Documents" icon={<FileText className="size-4" />} hint="G D" onSelect={go("/docs")}>Documents</Item>
                 <Item value="Branches" keywords={["code"]} icon={<GitBranch className="size-4" />} hint="G C" onSelect={go("/repository?tab=branches")}>Branches</Item>
                 <Item value="Commits" keywords={["code", "history"]} icon={<GitCommitHorizontal className="size-4" />} onSelect={go("/repository?tab=commits")}>Commits</Item>
@@ -155,6 +156,25 @@ export function CommandPalette({
                 <Item value="Activity" icon={<Activity className="size-4" />} hint="G A" onSelect={go("/activity")}>Activity</Item>
                 <Item value="Settings" icon={<Settings className="size-4" />} onSelect={go("/settings")}>Settings</Item>
               </Command.Group>
+
+              {boards.length > 0 && (
+                <Command.Group heading="Boards" className={groupClass}>
+                  {boards.map((b) => (
+                    <Item
+                      key={b.id}
+                      value={`board ${b.name} ${b.owner ?? ""}`}
+                      icon={<SquareKanban className="size-4" />}
+                      hint={b.open ? `${b.open} open` : undefined}
+                      onSelect={go(boardHref(b))}
+                    >
+                      {b.name}
+                    </Item>
+                  ))}
+                  <Item value="New board" keywords={["create", "person", "area"]} icon={<Plus className="size-4" />} onSelect={go("/boards?new=1")}>
+                    New board
+                  </Item>
+                </Command.Group>
+              )}
 
               {projects.length > 1 && (
                 <Command.Group heading="Switch project" className={groupClass}>

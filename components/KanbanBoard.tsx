@@ -351,7 +351,7 @@ export function KanbanBoard({
       ...prev,
     ]);
     try {
-      const { id } = (await api.boardAction({ action: "create", columnId, title })) as { id: string };
+      const { id } = (await api.boardAction({ boardId: data.boardId, action: "create", columnId, title })) as { id: string };
       setTasks((prev) => prev.map((task) => (task.id === optimisticId ? { ...task, id } : task)));
       router.refresh();
     } catch (error) {
@@ -435,7 +435,11 @@ export function KanbanBoard({
         <div className="rb-board-canvas flex flex-1 items-center justify-center" style={{ paddingRight: "var(--rb-rail)" }}>
           <EmptyState
             title="Nothing on the board yet"
-            body="Start from what already exists — your GitHub issues or a checklist in a markdown file — or write the first card yourself."
+            body={
+              data.board?.primary === false
+                ? `Write the first card for ${data.board.name}, or bring in issues from GitHub.`
+                : "Start from what already exists — your GitHub issues or a checklist in a markdown file — or write the first card yourself."
+            }
             action={
               <>
                 <button className="rb-btn-primary" onClick={onCreate}>
@@ -446,9 +450,11 @@ export function KanbanBoard({
                     Import GitHub issues
                   </button>
                 )}
-                <button className="rb-btn" onClick={() => router.push("/docs")}>
-                  Use a markdown file
-                </button>
+                {data.board?.primary !== false && (
+                  <button className="rb-btn" onClick={() => router.push("/docs")}>
+                    Use a markdown file
+                  </button>
+                )}
               </>
             }
           />

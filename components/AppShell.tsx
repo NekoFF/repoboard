@@ -9,7 +9,7 @@ import { Sidebar } from "@/components/shell/Sidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
-import { ShellContext, type SidebarDoc } from "@/components/shell/ShellContext";
+import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
 import { Logo, ToastHost, TooltipProvider } from "@/components/ui";
@@ -87,6 +87,7 @@ export function AppShell({
   connected,
   projects,
   docs,
+  boards,
   managedByEnvironment,
   children,
 }: {
@@ -95,6 +96,7 @@ export function AppShell({
   connected: boolean;
   projects: ProjectInfo[];
   docs: SidebarDoc[];
+  boards: SidebarBoard[];
   managedByEnvironment: boolean;
   children: ReactNode;
 }) {
@@ -154,7 +156,7 @@ export function AppShell({
       "mod+k": () => setPalette((p) => ({ open: !p.open, query: "" })),
       "?": openShortcuts,
       "g o": () => router.push("/"),
-      "g b": () => router.push("/board"),
+      "g b": () => router.push("/boards"),
       "g d": () => router.push("/docs"),
       "g c": () => router.push("/repository"),
       "g a": () => router.push("/activity"),
@@ -170,11 +172,12 @@ export function AppShell({
       connected: unlocked,
       projects,
       docs,
+      boards,
       managedByEnvironment,
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, unlocked, projects, docs, managedByEnvironment, openPalette, openShortcuts],
+    [repo, viewer, unlocked, projects, docs, boards, managedByEnvironment, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";

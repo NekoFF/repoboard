@@ -210,7 +210,7 @@ export function RepositoryScreen({
     if (!column) return;
     setImporting(number);
     try {
-      const result = await api.importIssues([number], column.id);
+      const result = await api.importIssues([number], column.id, data.boardId);
       toast.push({
         kind: "success",
         message: result.created ? `Issue #${number} is on the board` : `Issue #${number} was already on the board`,

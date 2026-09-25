@@ -28,3 +28,28 @@ export function labelColor(name: string): string {
 export function displayLabel(label: string): string {
   return label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
 }
+
+/** Board colours by name, so a board keeps its colour in both themes. */
+export const BOARD_COLORS: { key: string; value: string }[] = [
+  { key: "blue", value: "hsl(221 70% 58%)" },
+  { key: "violet", value: "hsl(262 56% 62%)" },
+  { key: "pink", value: "hsl(330 58% 60%)" },
+  { key: "orange", value: "hsl(24 78% 56%)" },
+  { key: "amber", value: "hsl(40 84% 50%)" },
+  { key: "green", value: "hsl(150 46% 42%)" },
+  { key: "teal", value: "hsl(184 58% 40%)" },
+  { key: "slate", value: "hsl(215 14% 50%)" },
+];
+
+export function boardColor(key: string | null | undefined, fallbackName = ""): string {
+  const found = BOARD_COLORS.find((c) => c.key === key);
+  if (found) return found.value;
+  let hash = 0;
+  for (const ch of fallbackName) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return BOARD_COLORS[hash % BOARD_COLORS.length].value;
+}
+
+/** Where a board lives: the primary board is /board, the others /board/<id>. */
+export function boardHref(board: { id: string; primary: boolean }): string {
+  return board.primary ? "/board" : `/board/${encodeURIComponent(board.id)}`;
+}

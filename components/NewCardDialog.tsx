@@ -44,6 +44,7 @@ export function NewCardDialog({
     setBusy(true);
     try {
       await api.boardAction({
+        boardId: data.boardId,
         action: "create",
         columnId,
         title: clean,

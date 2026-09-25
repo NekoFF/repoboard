@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { BoardDialog, BoardMark } from "@/components/BoardsScreen";
 import {
   CalendarDays,
   CloudUpload,
@@ -13,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Download,
+  Pencil,
   SquareKanban,
 } from "lucide-react";
 import type { BoardData, RepoHeader } from "@/lib/board-service";
@@ -42,6 +45,8 @@ export function BoardScreen({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  const pathname = usePathname();
+  const [editing, setEditing] = useState(false);
   const toast = useToast();
   const filterRef = useRef<FilterBarHandle>(null);
   const [query, setQuery] = useState("");
@@ -72,12 +77,12 @@ export function BoardScreen({
   useEffect(() => {
     if (params.get("new")) {
       setDialog("new");
-      router.replace("/board", { scroll: false });
+      router.replace(pathname, { scroll: false });
     }
     const ref = params.get("ref");
     if (ref) {
       const task = data.tasks.find((t) => t.number === Number(ref));
-      router.replace(task ? `/board/card/${task.id}` : "/board", { scroll: false });
+      router.replace(task ? `/board/card/${task.id}` : pathname, { scroll: false });
       if (!task) toast.push({ kind: "info", message: `RB-${ref} is not on this board` });
     }
     const q = params.get("q");
@@ -85,9 +90,11 @@ export function BoardScreen({
   }, [params, data.tasks, router, toast]);
 
   // What the board says that the markdown file does not say yet.
-  const pending = useResource(api.pending, [], { enabled: connected && Boolean(data.markdownSource) });
+  // The markdown file and board.json belong to the primary board only.
+  const primary = data.board?.primary ?? true;
+  const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
   // How far the board has drifted from the copy stored in the repository.
-  const boardState = useResource(api.boardStatus, [], { enabled: connected });
+  const boardState = useResource(api.boardStatus, [], { enabled: connected && primary });
   const refs = useResource(api.refs, [], { enabled: connected });
 
   useEffect(() => {
@@ -172,7 +179,7 @@ export function BoardScreen({
 
   useHotkeys({
     "/": () => filterRef.current?.focus(),
-    s: () => !syncing && sync(),
+    s: () => primary && !syncing && sync(),
     m: () => setDialog("milestones"),
   });
 
@@ -182,8 +189,16 @@ export function BoardScreen({
   return (
     <>
       <PageHeader
-        title="Board"
-        icon={<SquareKanban className="size-4" />}
+        title={
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Link href="/boards" className="text-muted hover:text-ink">
+              Boards
+            </Link>
+            <span className="text-faint">/</span>
+            <span className="truncate">{data.board?.name ?? "Board"}</span>
+          </span>
+        }
+        icon={data.board ? <BoardMark board={data.board} size={20} /> : <SquareKanban className="size-4" />}
         meta={`${counts.open} open, ${counts.done} done`}
         actions={
           <>
@@ -203,11 +218,13 @@ export function BoardScreen({
                 </button>
               </Tooltip>
             )}
+            {primary && (
             <Tooltip content={data.markdownSource ? `Sync with ${data.markdownSource.path}` : "Pull the board from the repository"} shortcut="S">
               <button className="rb-icon-btn" onClick={sync} disabled={syncing} aria-label="Sync">
                 {syncing ? <Spinner /> : <RefreshCw className="size-4" />}
               </button>
             </Tooltip>
+            )}
             <Menu
               align="end"
               trigger={
@@ -216,16 +233,19 @@ export function BoardScreen({
                 </button>
               }
             >
+              <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEditing(true)}>
+                Edit board
+              </MenuItem>
               <MenuItem icon={<Flag className="size-3.5" />} shortcut="M" onSelect={() => setDialog("milestones")}>
                 Milestones
               </MenuItem>
               <MenuItem icon={<Download className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("import")}>
                 Import GitHub issues
               </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon={<RefreshCw className="size-3.5" />} onSelect={() => router.push("/docs")}>
+              {primary && <MenuSeparator />}
+              {primary && <MenuItem icon={<RefreshCw className="size-3.5" />} onSelect={() => router.push("/docs")}>
                 {data.markdownSource ? `Board source: ${data.markdownSource.path}` : "Drive the board from a markdown file"}
-              </MenuItem>
+              </MenuItem>}
             </Menu>
             <Tooltip content="New card" shortcut="C">
               <button className="rb-btn-primary rb-btn-sm ml-1" onClick={() => setDialog("new")}>
@@ -262,6 +282,12 @@ export function BoardScreen({
       </div>
 
       {dialog === "new" && <NewCardDialog data={data} onClose={() => setDialog(null)} />}
+      {editing && data.board && (
+        <BoardDialog
+          board={{ ...data.board, open: counts.open, done: counts.done, items: { done: 0, total: 0 }, updatedAt: null }}
+          onClose={() => setEditing(false)}
+        />
+      )}
 
       {ids && (
         <DocWriteDialog
@@ -327,6 +353,7 @@ export function BoardScreen({
       {dialog === "import" && data.columns[0] && (
         <ImportIssuesDialog
           columns={data.columns}
+          boardId={data.boardId}
           linkedIssues={data.tasks.flatMap((t) => t.issues)}
           onClose={() => setDialog(null)}
           onDone={(created) => {

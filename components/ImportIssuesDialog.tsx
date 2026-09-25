@@ -10,11 +10,13 @@ import { Modal, RowSkeleton, Spinner } from "@/components/ui";
  */
 export function ImportIssuesDialog({
   columns,
+  boardId,
   linkedIssues,
   onClose,
   onDone,
 }: {
   columns: { id: string; name: string }[];
+  boardId?: string | null;
   linkedIssues: number[];
   onClose: () => void;
   onDone: (created: number) => void;
@@ -38,7 +40,7 @@ export function ImportIssuesDialog({
     setBusy(true);
     setError(null);
     try {
-      const result = await api.importIssues(selected, columnId);
+      const result = await api.importIssues(selected, columnId, boardId);
       onDone(result.created);
     } catch (err) {
       setError((err as Error).message);

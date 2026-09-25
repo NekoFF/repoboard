@@ -64,16 +64,16 @@ describe("repository selection", () => {
     }));
     expect(foreignCreate.status).toBe(404);
 
-    const response = await boardRoute.GET();
+    const response = await boardRoute.GET(new Request("http://localhost/api/board"));
     const visible = await response.json();
     expect(visible.repository.name).toBe("beta");
     expect(visible.tasks.map((task: { title: string }) => task.title)).toEqual(["Beta issue"]);
 
     access.valid = false;
-    const denied = await boardRoute.GET();
+    const denied = await boardRoute.GET(new Request("http://localhost/api/board"));
     expect(denied.status).toBe(401);
     expect(JSON.stringify(await denied.json())).not.toContain("Alpha only");
-    expect((await getPageContext()).data).toEqual({ repository: null, boardId: null, columns: [], tasks: [], milestones: [], markdownSource: null });
+    expect((await getPageContext()).data).toEqual({ repository: null, boardId: null, board: null, columns: [], tasks: [], milestones: [], markdownSource: null });
     expect((await boardRoute.POST(new Request("http://localhost/api/board", {
       method: "POST", body: JSON.stringify({ action: "create", columnId: beta.columns[0].id, title: "No access" }),
     }))).status).toBe(401);
@@ -93,5 +93,42 @@ describe("attribution", () => {
     expect(response.status).toBe(200);
     const event = service.getActivity().find((e) => e.message === "created Signed work");
     expect(event).toMatchObject({ actor: "tester", actorKind: "person" });
+  });
+});
+
+describe("several boards in one project", () => {
+  it("keeps cards per board, numbers them across the project, and guards board ids", async () => {
+    const primary = service.getBoardData();
+    const designId = service.createBoard({ name: "Design", owner: "dima" });
+    const design = service.getBoardData(designId);
+    expect(design.board).toMatchObject({ name: "Design", owner: "dima", primary: false });
+    expect(design.columns.map((c) => c.name)).toEqual(["Todo", "In Progress", "Review", "Done"]);
+
+    const before = Math.max(0, ...primary.tasks.map((t) => t.number ?? 0));
+    const card = service.createTask({
+      boardId: designId,
+      columnId: design.columns[0].id,
+      title: "Home screen",
+      repositoryId: design.repository!.id,
+    });
+    const after = service.getBoardData(designId).tasks.find((t) => t.id === card)!;
+    expect(after.number).toBe(before + 1);
+    expect(service.getBoardData().tasks.some((t) => t.id === card)).toBe(false);
+    expect(service.findCardBoard(`RB-${after.number}`)).toEqual({ boardId: designId, taskId: card });
+
+    const boards = service.listBoards();
+    expect(boards[0].primary).toBe(true);
+    expect(boards.find((b) => b.id === designId)).toMatchObject({ open: 1, done: 0 });
+
+    // A board of another project, or a made-up id, is not reachable.
+    expect(service.getBoardData("board_nope").boardId).toBeNull();
+    const response = await boardRoute.POST(new Request("http://localhost/api/board", {
+      method: "POST", body: JSON.stringify({ action: "create", boardId: "board_nope", columnId: "x", title: "Lost" }),
+    }));
+    expect(response.status).toBe(404);
+
+    expect(() => service.archiveBoard(primary.boardId!)).toThrow();
+    service.archiveBoard(designId);
+    expect(service.listBoards().some((b) => b.id === designId)).toBe(false);
   });
 });

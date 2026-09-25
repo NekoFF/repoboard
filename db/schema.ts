@@ -22,10 +22,21 @@ export const repositories = sqliteTable("repositories", {
   lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
 });
 
+// A project (repository) has several boards: one per person ("Dima",
+// "Intern") or per area ("Design", "Core"). The first one, board_<repo>, is
+// the primary board: the one the markdown file and board.json follow.
 export const boards = sqliteTable("boards", {
   id: text("id").primaryKey(),
   repositoryId: text("repository_id").notNull(),
   name: text("name").notNull(),
+  description: text("description"),
+  /** One of the label hues, by name — see components/labelColor.ts. */
+  color: text("color"),
+  /** A person the board belongs to, for per-person boards. */
+  owner: text("owner"),
+  position: integer("position").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }),
+  archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
 });
 
 export const columns = sqliteTable("columns", {

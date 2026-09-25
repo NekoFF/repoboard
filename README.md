@@ -7,7 +7,10 @@ to your code — as plain markdown in your GitHub repository. It runs on your
 own computer, talks only to github.com, and shows at a glance what is done,
 what is left, and what still needs your own eyes before it counts.
 
-- **Board** — cards in columns, a list and a calendar, filters like
+- **Boards** — one per person (Dima, Max, the intern) or per area (Design,
+  Core), all in one project. On a board, each card is a topic; inside a card,
+  numbered items (1, 1.1, 1.2…) are the steps, each with notes, an assignee
+  and comments. Columns, a list and a calendar, filters like
   `label:bug @me !high due:week`, keyboard for everything, milestones.
 - **Checklists that do not get lost** — a release, the privacy policy, the
   Impressum, font and dependency licences. Each item can say *why*, *what to
@@ -105,7 +108,7 @@ never tick an item themselves, set `[?]` and say how to verify.
 | Keys | Does |
 | ---- | ---- |
 | `⌘K` / `Ctrl K` | search everything, run any command |
-| `G` then `O` `B` `D` `C` `A` | overview, board, documents, code, activity |
+| `G` then `O` `B` `D` `C` `A` | overview, boards, documents, code, activity |
 | `C` | new card |
 | `/` | filter the board |
 | arrows, `J` `K`, `Enter` | move the selection, open |

@@ -26,7 +26,7 @@ export function MilestonesDialog({ data, onClose }: { data: BoardData; onClose: 
   const act = async (payload: Record<string, unknown>, message?: string) => {
     setBusy(true);
     try {
-      await api.boardAction(payload);
+      await api.boardAction({ boardId: data.boardId, ...payload });
       if (message) toast.push({ kind: "success", message });
       router.refresh();
     } catch (error) {

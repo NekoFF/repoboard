@@ -9,7 +9,7 @@ import { AppShell } from "@/components/AppShell";
 import { THEME_SCRIPT } from "@/components/shell/ThemeProvider";
 import { getVerifiedRepository, getViewer } from "@/lib/github/access";
 import { isEnvironmentConfigured, listProjects } from "@/lib/github/auth-provider";
-import { projectSummaries } from "@/lib/board-service";
+import { listBoards, projectSummaries } from "@/lib/board-service";
 import { listDocs } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +54,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         }))
     : [];
   const viewer = verified ? await getViewer() : null;
+  const boards = verified
+    ? listBoards().map((b) => ({ id: b.id, name: b.name, color: b.color, owner: b.owner, primary: b.primary, open: b.open }))
+    : [];
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -67,6 +70,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           connected={Boolean(verified)}
           projects={projects}
           docs={docs}
+          boards={boards}
           managedByEnvironment={isEnvironmentConfigured()}
         >
           {children}

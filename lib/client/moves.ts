@@ -32,13 +32,14 @@ export function useCommitMove(
       try {
         if (changedColumn) {
           await api.boardAction({
+            boardId: data.boardId,
             action: "move",
             taskId,
             columnId: targetColumnId,
             position: Math.max(orderedIds.indexOf(taskId), 0),
           });
         }
-        await api.boardAction({ action: "reorder", columnId: targetColumnId, orderedIds });
+        await api.boardAction({ boardId: data.boardId, action: "reorder", columnId: targetColumnId, orderedIds });
 
         if (changedColumn) {
           const heading = data.columns.find((c) => c.id === targetColumnId)?.name;
@@ -61,8 +62,8 @@ export function useCommitMove(
               run: () => {
                 undo?.(taskId, original.columnId);
                 void api
-                  .boardAction({ action: "move", taskId, columnId: original.columnId, position: original.position })
-                  .then(() => api.boardAction({ action: "reorder", columnId: original.columnId, orderedIds: back }))
+                  .boardAction({ boardId: data.boardId, action: "move", taskId, columnId: original.columnId, position: original.position })
+                  .then(() => api.boardAction({ boardId: data.boardId, action: "reorder", columnId: original.columnId, orderedIds: back }))
                   .finally(() => {
                     window.dispatchEvent(new CustomEvent("rb:pending-changed"));
                     router.refresh();

@@ -14,6 +14,15 @@ export interface SidebarDoc {
   review: number;
 }
 
+export interface SidebarBoard {
+  id: string;
+  name: string;
+  color: string | null;
+  owner: string | null;
+  primary: boolean;
+  open: number;
+}
+
 export interface ShellState {
   repo: string | null;
   /** GitHub login of the token's owner: the default author of notes, "@me" in filters. */
@@ -21,6 +30,7 @@ export interface ShellState {
   connected: boolean;
   projects: ProjectInfo[];
   docs: SidebarDoc[];
+  boards: SidebarBoard[];
   managedByEnvironment: boolean;
   openPalette: (query?: string) => void;
   openShortcuts: () => void;
@@ -32,6 +42,7 @@ export const ShellContext = createContext<ShellState>({
   connected: false,
   projects: [],
   docs: [],
+  boards: [],
   managedByEnvironment: false,
   openPalette: () => {},
   openShortcuts: () => {},

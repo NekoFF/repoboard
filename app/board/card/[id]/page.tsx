@@ -1,17 +1,15 @@
 import { notFound } from "next/navigation";
 import { CardPage } from "@/components/card/CardPage";
+import { findCardBoard } from "@/lib/board-service";
 import { getPageContext } from "@/lib/page-context";
 
 export const dynamic = "force-dynamic";
 
-/** /board/card/<id> or /board/card/RB-12 */
+/** /board/card/<id> or /board/card/RB-12, on whichever board the card is. */
 export default async function CardRoute({ params }: { params: { id: string } }) {
-  const { data, connected } = await getPageContext();
-  const ref = decodeURIComponent(params.id);
-  const number = ref.match(/^(?:rb-)?(\d+)$/i)?.[1];
-  const task = number
-    ? data.tasks.find((t) => t.number === Number(number))
-    : data.tasks.find((t) => t.id === ref);
+  const found = findCardBoard(decodeURIComponent(params.id));
+  const { data, connected } = await getPageContext(found?.boardId ?? null);
+  const task = found ? data.tasks.find((t) => t.id === found.taskId) : undefined;
   if (!task) notFound();
   return <CardPage key={task.id} task={task} data={data} connected={connected} />;
 }
