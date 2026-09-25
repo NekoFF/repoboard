@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Scale,
   SquareKanban,
+  Waypoints,
 } from "lucide-react";
 import type { TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import { api, useResource } from "@/lib/client/api";
@@ -27,11 +28,13 @@ import {
   ProgressBar,
   RelativeTime,
   RowSkeleton,
+  Segmented,
   Spinner,
   Tooltip,
   percent,
   useToast,
 } from "@/components/ui";
+import { DocsGraph } from "@/components/docs/DocsGraph";
 import { KIND_FOLDER, TEMPLATES, WORKSPACE_DIR, templatePath, type DocKind } from "@/lib/templates";
 
 const GROUPS: { kind: DocKind; title: string; blurb: string; icon: React.ReactNode }[] = [
@@ -376,6 +379,7 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
   const params = useSearchParams();
   const [docs, setDocs] = useState(initial);
   const [dialog, setDialog] = useState<null | "new" | "track">(null);
+  const [view, setView] = useState<"list" | "graph">("list");
   const [syncing, setSyncing] = useState(true);
   const [workspaceExists, setWorkspaceExists] = useState(initial.some((d) => d.path.startsWith(`${WORKSPACE_DIR}/`)));
 
@@ -433,12 +437,32 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
             </button>
           </>
         }
-      />
+      >
+        <Segmented
+          size="sm"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "list", label: <><ListChecks className="size-3.5" /> List</> },
+            { value: "graph", label: <><Waypoints className="size-3.5" /> Graph</>, title: "How documents link to each other" },
+          ]}
+        />
+      </PageHeader>
       <div className="rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[960px] flex-col gap-10 px-6 pb-20 pt-9 sm:px-10">
           {!workspaceExists && !syncing && <WorkspaceSetup onCreated={sync} />}
 
-          {grouped.map((group) =>
+          {view === "graph" && docs.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <DocsGraph docs={docs} />
+              <p className="text-sm text-muted">
+                Link documents with <code className="font-mono text-xs">[[notes/commands]]</code> anywhere in the text. A
+                dashed circle is a link to a file that does not exist yet.
+              </p>
+            </div>
+          )}
+
+          {view === "list" && grouped.map((group) =>
             group.docs.length === 0 ? null : (
               <section key={group.kind}>
                 <div className="mb-3 flex items-baseline gap-3">

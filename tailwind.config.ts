@@ -24,6 +24,9 @@ export default {
         faint: v("faint"),
         pill: v("pill"),
         hover: v("hover"),
+        desk: v("desk"),
+        "panel-back": v("panel-back"),
+        rail: v("rail"),
         active: v("ink"),
         "on-ink": v("on-ink"),
         state: {

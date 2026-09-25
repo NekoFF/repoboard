@@ -207,3 +207,15 @@ describe("item details and review notes", () => {
     expect(last.notes).toEqual([{ author: "gpt", date: "2026-09-26", text: "Also needed for Google Play." }]);
   });
 });
+
+describe("links between documents", () => {
+  it("collects [[links]] from prose and items, resolving workspace folders", async () => {
+    const { wikiLinks } = await import("@/lib/markdown/document");
+    const text = "See [[notes/commands]] and [[docs/PLAN.md|the plan]].\n- [ ] Check [[checklists/licenses]]\n```\n[[not/a-link]]\n```\n";
+    expect(wikiLinks(text)).toEqual([
+      ".repoboard/notes/commands.md",
+      "docs/PLAN.md",
+      ".repoboard/checklists/licenses.md",
+    ]);
+  });
+});

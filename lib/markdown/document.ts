@@ -70,6 +70,8 @@ export interface DocSection {
 
 export interface ParsedDocument {
   title: string;
+  /** Every [[link]] in the file, prose included, normalised to a repo path. */
+  links: string[];
   sections: DocSection[];
   items: DocItem[];
   total: number;
@@ -196,12 +198,34 @@ export function parseDocument(content: string, fallbackTitle = "Untitled"): Pars
 
   const totals: Counts = { total: 0, done: 0, doing: 0, review: 0, cancelled: 0 };
   for (const item of items) count(totals, item.state);
-  return { title: title ?? fallbackTitle, sections, items, ...totals };
+  return { title: title ?? fallbackTitle, sections, items, links: wikiLinks(content), ...totals };
+}
+
+/**
+ * [[checklists/licenses]] inside the workspace means .repoboard/checklists/licenses.md;
+ * [[docs/PLAN.md]] with a folder that is not a workspace folder is a repo path.
+ * Links inside fenced code are ignored.
+ */
+export function resolveLink(target: string): string {
+  let path = target.trim().replace(/^\/+/, "").split("#")[0];
+  if (!/\.md$/i.test(path)) path = `${path}.md`;
+  if (/^(checklists|notes|decisions)\//.test(path) || !path.includes("/") && /^README\.md$/i.test(path)) {
+    path = `.repoboard/${path}`;
+  }
+  return path;
+}
+
+export function wikiLinks(content: string): string[] {
+  const withoutCode = content.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
+  const found = new Set<string>();
+  for (const match of withoutCode.matchAll(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g)) found.add(resolveLink(match[1]));
+  return [...found];
 }
 
 export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
   return {
     title: parsed.title,
+    links: parsed.links,
     total: parsed.total,
     done: parsed.done,
     doing: parsed.doing,

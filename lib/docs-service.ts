@@ -54,6 +54,7 @@ export interface TrackedDoc {
   review: number;
   sections: DocSnapshot["sections"];
   items: DocSnapshot["items"];
+  links: string[];
   sha: string | null;
   snapshotAt: number | null;
 }
@@ -77,6 +78,7 @@ function toTracked(row: typeof markdownSources.$inferSelect): TrackedDoc {
     review: snap?.review ?? 0,
     sections: snap?.sections ?? [],
     items: snap?.items ?? [],
+    links: snap?.links ?? [],
     sha: row.snapshotSha,
     snapshotAt: row.snapshotAt?.getTime() ?? null,
   };

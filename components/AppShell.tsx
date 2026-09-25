@@ -8,6 +8,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
+import { ToolRail } from "@/components/shell/ToolRail";
 import { ShellContext, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -63,7 +64,7 @@ function MobileBar({ onSearch }: { onSearch: () => void }) {
         </Dialog.Trigger>
         <Dialog.Portal>
           <Dialog.Overlay className="rb-fade-in fixed inset-0 z-[70] bg-black/30" />
-          <Dialog.Content className="rb-sheet-in fixed inset-y-0 left-0 z-[71] flex shadow-pop focus:outline-none" aria-describedby={undefined}>
+          <Dialog.Content className="rb-sheet-in fixed inset-y-0 left-0 z-[71] flex bg-panel-back shadow-pop focus:outline-none" aria-describedby={undefined}>
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
             <Suspense>
               <Sidebar />
@@ -185,16 +186,19 @@ export function AppShell({
           <ShellContext.Provider value={shell}>
             <ConnectionContext.Provider value={{ status, retry }}>
               {unlocked ? (
-                <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas md:flex-row">
+                // Panels on a desk: navigation recessed on the left, the work
+                // floating over it, tools in a pill on the right edge.
+                <div className="rb-desk flex h-[100dvh] w-full flex-col overflow-hidden md:flex-row md:p-3">
                   <MobileBar onSearch={() => openPalette()} />
-                  <div className="hidden md:flex">
+                  <div className="rb-panel-back hidden pr-6 md:flex">
                     <Suspense>
                       <Sidebar />
                     </Suspense>
                   </div>
-                  <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface md:my-1.5 md:mr-1.5 md:rounded-xl md:border md:border-border md:shadow-card">
-                    {children}
-                  </main>
+                  <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-6">
+                    <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
+                    <ToolRail />
+                  </div>
                 </div>
               ) : showingSettings ? (
                 <main className="flex h-screen min-w-0 flex-col overflow-auto bg-canvas">{children}</main>

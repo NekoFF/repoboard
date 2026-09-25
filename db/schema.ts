@@ -126,6 +126,8 @@ export const markdownSources = sqliteTable("markdown_sources", {
 
 export interface DocSnapshot {
   title: string;
+  /** Other documents this one links to with [[…]], as repository paths. */
+  links?: string[];
   total: number;
   done: number;
   doing?: number;

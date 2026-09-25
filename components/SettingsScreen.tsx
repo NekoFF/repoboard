@@ -247,6 +247,7 @@ export function SettingsScreen({
           </Card>
 
           <Card title="Appearance" icon={<Palette className="size-4" />}>
+            <div>
             <Segmented
               value={choice}
               onChange={setChoice}
@@ -256,6 +257,7 @@ export function SettingsScreen({
                 { value: "dark", label: <><Moon className="size-3.5" /> Dark</> },
               ]}
             />
+            </div>
           </Card>
 
           <Card

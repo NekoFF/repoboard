@@ -19,6 +19,10 @@
     --faint: 160 162 167;
     --pill: 240 240 237;
     --hover: 243 243 241;
+    /* The desk the panels sit on, the recessed navigation panel, the tool rail. */
+    --desk: 244 244 241;
+    --panel-back: 235 235 232;
+    --rail: 226 226 222;
 
     --state-todo: 150 153 159;
     --state-doing: 199 130 14;
@@ -47,6 +51,9 @@
     --faint: 103 106 112;
     --pill: 36 37 41;
     --hover: 33 34 38;
+    --desk: 11 12 14;
+    --panel-back: 19 20 23;
+    --rail: 38 39 44;
 
     --state-todo: 125 128 135;
     --state-doing: 230 168 62;
@@ -83,9 +90,19 @@
     @apply border-border;
   }
 
-  /* One focus language everywhere: a thin ring in the ink colour. */
-  :focus-visible {
+  /* One focus language everywhere: a thin ring in the ink colour. Text fields
+     are the exception — the caret (and .rb-input's border) already say where
+     focus is, and a ring around a borderless title field looks broken. */
+  :focus-visible:not(input):not(textarea) {
     @apply outline-none ring-2 ring-ink/70 ring-offset-1 ring-offset-surface;
+  }
+  input:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none;
+  }
+  input[type="checkbox"]:focus-visible,
+  input[type="radio"]:focus-visible {
+    @apply ring-2 ring-ink/70 ring-offset-1 ring-offset-surface;
   }
 
   ::selection {
@@ -198,6 +215,25 @@
   }
 
   /* --------------------------------------------------------------- board -- */
+  /* The desk: a quiet dot grid behind the floating panels. */
+  .rb-desk {
+    background-color: rgb(var(--desk));
+    background-image: radial-gradient(rgb(var(--ink) / 0.09) 1px, transparent 1.2px);
+    background-size: 22px 22px;
+  }
+  .rb-panel-back {
+    border-radius: 22px;
+    background-color: rgb(var(--panel-back));
+  }
+  .rb-panel-main {
+    border-radius: 22px;
+    background-color: rgb(var(--surface));
+    box-shadow:
+      0 28px 70px -30px rgb(var(--shadow) / 0.32),
+      0 4px 14px -6px rgb(var(--shadow) / 0.1),
+      0 0 0 1px rgb(var(--ink) / 0.045);
+  }
+
   .rb-board-canvas {
     background-color: rgb(var(--canvas));
     background-image: radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1px);

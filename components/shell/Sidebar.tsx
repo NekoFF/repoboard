@@ -67,7 +67,7 @@ export function Sidebar() {
   const currentDoc = pathname.startsWith("/docs") ? params.get("path") : null;
 
   return (
-    <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-border bg-canvas">
+    <aside className="flex h-full w-[248px] shrink-0 flex-col">
       <div className="px-2.5 pt-2.5">
         <ProjectSwitcher />
       </div>
@@ -75,7 +75,7 @@ export function Sidebar() {
       <div className="px-2.5 pt-2">
         <button
           onClick={() => openPalette()}
-          className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-surface px-2 text-sm text-faint shadow-card transition-colors hover:border-border-strong hover:text-muted"
+          className="flex h-8 w-full items-center gap-2 rounded-lg bg-surface/70 px-2 text-sm text-faint shadow-card transition-colors hover:bg-surface hover:text-muted"
         >
           <Search className="size-3.5" />
           <span className="flex-1 text-left">Search or run a command</span>
@@ -135,18 +135,18 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 border-t border-border px-2.5 py-2">
+      <div className="flex items-center gap-1 px-2.5 py-2.5">
         <NavLink href="/settings" active={pathname.startsWith("/settings")} icon={<Settings className="size-4" />}>
           Settings
         </NavLink>
         <div className="flex-1" />
         <Tooltip content="Keyboard shortcuts" shortcut="?">
-          <button className="rb-icon-btn" onClick={openShortcuts} aria-label="Keyboard shortcuts">
+          <button className="rb-icon-btn lg:hidden" onClick={openShortcuts} aria-label="Keyboard shortcuts">
             <Keyboard className="size-4" />
           </button>
         </Tooltip>
         <Tooltip content={resolved === "dark" ? "Light theme" : "Dark theme"}>
-          <button className="rb-icon-btn" onClick={toggle} aria-label="Toggle theme">
+          <button className="rb-icon-btn lg:hidden" onClick={toggle} aria-label="Toggle theme">
             {resolved === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </button>
         </Tooltip>

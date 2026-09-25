@@ -114,7 +114,7 @@ export function CommandPalette({
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Type a command or search…"
-                className="h-12 flex-1 bg-transparent text-md text-ink outline-none placeholder:text-faint"
+                className="h-12 flex-1 bg-transparent text-md text-ink outline-none placeholder:text-faint focus-visible:ring-0"
               />
               {loading && <Spinner className="text-faint" />}
             </div>
@@ -218,7 +218,7 @@ export function CommandPalette({
                       hint={branch.ahead || branch.behind ? `+${branch.ahead} −${branch.behind}` : undefined}
                       onSelect={go(`/repository?tab=commits&branch=${encodeURIComponent(branch.name)}`)}
                     >
-                      <span className="font-mono text-[12.5px]">{branch.name}</span>
+                      <span className="font-mono text-xs">{branch.name}</span>
                     </Item>
                   ))}
                 </Command.Group>

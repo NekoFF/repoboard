@@ -4,7 +4,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { Children, Fragment, isValidElement, useMemo, type ReactNode } from "react";
-import type { DocItem, DocSection } from "@/lib/markdown/document";
+import { resolveLink, type DocItem, type DocSection } from "@/lib/markdown/document";
 import type { ItemState } from "@/lib/markdown/format";
 import { DueLabel, Menu, MenuItem, PriorityIcon, ProgressBar, StatusIcon } from "@/components/ui";
 import { STATUS_LABEL } from "@/lib/status";
@@ -12,11 +12,9 @@ import { STATUS_LABEL } from "@/lib/status";
 /** [[docs/PRIVACY.md]] → a link to that document inside RepoBoard. */
 function linkify(text: string): string {
   return text
-    .replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_m, target: string, label?: string) => {
-      const path = target.trim().replace(/^\//, "");
-      const file = /\.md$/i.test(path) ? path : `${path}.md`;
-      return `[${(label ?? path).trim()}](/docs?path=${encodeURIComponent(file)})`;
-    })
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_m, target: string, label?: string) =>
+      `[${(label ?? target).trim()}](/docs?path=${encodeURIComponent(resolveLink(target))})`,
+    )
     .replace(/\bRB-(\d{1,6})\b/g, (_m, n: string) => `[RB-${n}](/board?ref=${n})`);
 }
 
