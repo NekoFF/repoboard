@@ -7,65 +7,71 @@
  * (bg-ink/10). The light theme is the default; `.dark` on <html> switches.
  */
 @layer base {
+  /* Cool, soft neutrals with a blue cast, near-white panels on a light grey
+     desk, graphite text instead of black, and one calm blue for actions. */
   :root {
-    --canvas: 246 246 244;
+    --canvas: 245 246 248;
     --surface: 255 255 255;
     --raised: 255 255 255;
-    --border: 228 228 225;
-    --border-strong: 206 206 202;
-    --ink: 28 29 31;
+    --border: 231 233 237;
+    --border-strong: 212 215 221;
+    --ink: 31 35 41;
     --on-ink: 255 255 255;
-    --muted: 106 109 115;
-    --faint: 160 162 167;
-    --pill: 240 240 237;
-    --hover: 243 243 241;
+    --muted: 99 106 117;
+    --faint: 152 158 168;
+    --pill: 237 239 242;
+    --hover: 243 244 247;
     /* The desk the panels sit on, the recessed navigation panel, the tool rail. */
-    --desk: 244 244 241;
-    --panel-back: 235 235 232;
-    --rail: 226 226 222;
+    --desk: 241 242 245;
+    --panel-back: 250 250 252;
+    --rail: 234 236 240;
+    --accent: 72 118 224;
+    --on-accent: 255 255 255;
 
-    --state-todo: 150 153 159;
-    --state-doing: 199 130 14;
-    --state-review: 108 92 212;
-    --state-done: 28 133 74;
-    --state-cancelled: 176 178 183;
-    --done-bg: 231 244 236;
-    --doing-bg: 252 243 224;
-    --doing-border: 234 203 140;
-    --danger: 196 60 54;
-    --danger-bg: 252 236 235;
-    --code-bg: 244 244 242;
-    --shadow: 20 20 24;
+    --state-todo: 152 158 168;
+    --state-doing: 204 138 32;
+    --state-review: 118 104 222;
+    --state-done: 36 150 96;
+    --state-cancelled: 182 187 196;
+    --done-bg: 230 245 237;
+    --doing-bg: 252 244 228;
+    --doing-border: 236 209 150;
+    --danger: 205 70 66;
+    --danger-bg: 253 238 237;
+    --code-bg: 245 246 249;
+    --shadow: 28 36 52;
     color-scheme: light;
   }
 
   .dark {
-    --canvas: 17 18 20;
-    --surface: 24 25 28;
-    --raised: 31 32 36;
-    --border: 42 44 49;
-    --border-strong: 64 66 72;
-    --ink: 232 232 229;
-    --on-ink: 20 21 23;
-    --muted: 154 157 163;
-    --faint: 103 106 112;
-    --pill: 36 37 41;
-    --hover: 33 34 38;
-    --desk: 11 12 14;
-    --panel-back: 19 20 23;
-    --rail: 38 39 44;
+    --canvas: 20 21 25;
+    --surface: 27 29 33;
+    --raised: 33 35 40;
+    --border: 44 47 54;
+    --border-strong: 64 68 77;
+    --ink: 232 234 239;
+    --on-ink: 22 24 28;
+    --muted: 152 158 170;
+    --faint: 103 109 120;
+    --pill: 39 42 48;
+    --hover: 36 38 44;
+    --desk: 15 16 19;
+    --panel-back: 23 24 28;
+    --rail: 40 43 49;
+    --accent: 116 154 245;
+    --on-accent: 16 20 32;
 
-    --state-todo: 125 128 135;
-    --state-doing: 230 168 62;
-    --state-review: 152 140 246;
-    --state-done: 72 190 122;
-    --state-cancelled: 92 95 101;
-    --done-bg: 25 46 34;
-    --doing-bg: 52 40 19;
-    --doing-border: 108 82 35;
-    --danger: 240 112 106;
-    --danger-bg: 58 28 27;
-    --code-bg: 19 20 22;
+    --state-todo: 124 130 142;
+    --state-doing: 230 170 70;
+    --state-review: 156 146 248;
+    --state-done: 76 194 130;
+    --state-cancelled: 92 97 107;
+    --done-bg: 24 46 36;
+    --doing-bg: 52 41 21;
+    --doing-border: 108 84 38;
+    --danger: 240 116 110;
+    --danger-bg: 58 29 29;
+    --code-bg: 21 22 26;
     --shadow: 0 0 0;
     color-scheme: dark;
   }
@@ -94,7 +100,7 @@
      are the exception — the caret (and .rb-input's border) already say where
      focus is, and a ring around a borderless title field looks broken. */
   :focus-visible:not(input):not(textarea) {
-    @apply outline-none ring-2 ring-ink/70 ring-offset-1 ring-offset-surface;
+    @apply outline-none ring-2 ring-accent/55 ring-offset-1 ring-offset-surface;
   }
   input:focus-visible,
   textarea:focus-visible {
@@ -102,11 +108,11 @@
   }
   input[type="checkbox"]:focus-visible,
   input[type="radio"]:focus-visible {
-    @apply ring-2 ring-ink/70 ring-offset-1 ring-offset-surface;
+    @apply ring-2 ring-accent/55 ring-offset-1 ring-offset-surface;
   }
 
   ::selection {
-    @apply bg-state-review/25;
+    @apply bg-accent/20;
   }
 
   ::-webkit-scrollbar {
@@ -138,7 +144,7 @@
       hover:border-border-strong hover:bg-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
   }
   .rb-btn-primary {
-    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-ink px-3 text-sm font-medium text-on-ink
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-accent px-3 text-sm font-medium text-on-accent
       transition-[opacity,transform] duration-100 hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
   }
   .rb-btn-ghost {
@@ -160,7 +166,7 @@
   /* -------------------------------------------------------------- inputs -- */
   .rb-input {
     @apply h-8 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-ink transition-colors duration-100
-      placeholder:text-faint hover:border-border-strong focus:border-ink/60 focus:outline-none focus:ring-0;
+      placeholder:text-faint hover:border-border-strong focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/15;
   }
   textarea.rb-input {
     @apply h-auto py-2;
@@ -218,20 +224,23 @@
   /* The desk: a quiet dot grid behind the floating panels. */
   .rb-desk {
     background-color: rgb(var(--desk));
-    background-image: radial-gradient(rgb(var(--ink) / 0.09) 1px, transparent 1.2px);
+    background-image: radial-gradient(rgb(var(--ink) / 0.08) 1px, transparent 1.2px);
     background-size: 22px 22px;
   }
   .rb-panel-back {
     border-radius: 22px;
     background-color: rgb(var(--panel-back));
+    box-shadow:
+      0 12px 36px -24px rgb(var(--shadow) / 0.16),
+      0 0 0 1px rgb(var(--ink) / 0.035);
   }
   .rb-panel-main {
     border-radius: 22px;
     background-color: rgb(var(--surface));
     box-shadow:
-      0 28px 70px -30px rgb(var(--shadow) / 0.32),
-      0 4px 14px -6px rgb(var(--shadow) / 0.1),
-      0 0 0 1px rgb(var(--ink) / 0.045);
+      0 24px 60px -28px rgb(var(--shadow) / 0.22),
+      0 3px 12px -6px rgb(var(--shadow) / 0.08),
+      0 0 0 1px rgb(var(--ink) / 0.04);
   }
 
   .rb-board-canvas {
@@ -249,7 +258,7 @@
     @apply border-border-strong;
   }
   .rb-task[data-selected="true"] {
-    @apply border-ink/50 ring-1 ring-ink/30;
+    @apply border-accent/60 ring-2 ring-accent/15;
   }
 
   /* ---------------------------------------------------- rendered markdown -- */

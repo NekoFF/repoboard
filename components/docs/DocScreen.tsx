@@ -402,7 +402,7 @@ export function DocScreen({ path }: { path: string }) {
               Discard
             </button>
             <button className="rb-btn-primary rb-btn-sm" onClick={() => setReviewing(true)}>
-              Review and commit <span className="text-on-ink/60">⌘↵</span>
+              Review and commit <span className="text-on-accent/70">⌘↵</span>
             </button>
           </div>
         </div>

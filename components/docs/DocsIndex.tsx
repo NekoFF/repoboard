@@ -174,13 +174,13 @@ function WorkspaceSetup({ onCreated }: { onCreated: () => void }) {
               key={t.id}
               onClick={() => toggle(t.id)}
               className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                on ? "border-ink/40 bg-surface" : "border-border bg-transparent hover:bg-surface"
+                on ? "border-accent/50 bg-surface" : "border-border bg-transparent hover:bg-surface"
               }`}
               aria-pressed={on}
             >
               <span
                 className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-[4px] border ${
-                  on ? "border-ink bg-ink text-on-ink" : "border-border-strong"
+                  on ? "border-accent bg-accent text-on-accent" : "border-border-strong"
                 }`}
               >
                 {on && <Check className="size-3" strokeWidth={3} />}

@@ -43,7 +43,8 @@ step.
 6. **Colours are tokens**: CSS variables in `app/globals.css` (light and
    `.dark`), exposed through `tailwind.config.ts`. Never a hex in a component.
    Colour means state: the five item states (todo, doing, review, done,
-   cancelled) plus danger. `StatusIcon` and `ProgressBar` are the only
+   cancelled) plus danger — and `accent`, reserved for the primary action,
+   focus and selection. `StatusIcon` and `ProgressBar` are the only
    vocabulary for progress — use them.
 7. **Tokens never reach the browser.** They live in
    `~/.repoboard/credentials.json` (0600) or the environment; only route
@@ -138,7 +139,9 @@ npm run demo      # the app against a fake GitHub, no token needed
 
 ## Design notes
 
-Calm, dense but not cramped. IBM Plex Sans for the interface, Plex Mono only
+Calm, dense but not cramped. Cool neutrals with a blue cast, near-white panels
+on a light grey desk, graphite text, one soft blue (`accent`) for primary
+actions, focus and selection. IBM Plex Sans for the interface, Plex Mono only
 for things that are code (SHAs, branches, paths, RB-n). Neutral surfaces; the
 state colours are the only colour. Cards carry a title, labels and small
 indicators — details belong in the panel. Screens with reading content

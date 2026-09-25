@@ -85,7 +85,7 @@ export function BoardCalendar({
               >
                 <span
                   className={`inline-grid size-6 place-items-center rounded-full text-xs tabular-nums ${
-                    isToday ? "bg-ink font-semibold text-on-ink" : inMonth ? "text-muted" : "text-faint"
+                    isToday ? "bg-accent font-semibold text-on-accent" : inMonth ? "text-muted" : "text-faint"
                   }`}
                 >
                   {date.getUTCDate()}

@@ -28,6 +28,8 @@ export default {
         "panel-back": v("panel-back"),
         rail: v("rail"),
         active: v("ink"),
+        accent: v("accent"),
+        "on-accent": v("on-accent"),
         "on-ink": v("on-ink"),
         state: {
           todo: v("state-todo"),
