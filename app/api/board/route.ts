@@ -50,6 +50,7 @@ const boardFields = {
   name: z.string().trim().min(1).max(80),
   description: z.string().max(2000).nullish(),
   color: z.string().max(20).nullish(),
+  art: z.string().max(30).nullish(),
   owner: z.string().max(100).nullish(),
 };
 const boardSchema = z.discriminatedUnion("action", [

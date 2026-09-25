@@ -113,6 +113,8 @@ export interface BoardInfo {
   name: string;
   description: string | null;
   color: string | null;
+  /** The tile's picture (components/BoardArt.tsx); null picks one from the id. */
+  art: string | null;
   owner: string | null;
   /** The primary board follows the markdown file and board.json. */
   primary: boolean;
@@ -306,6 +308,7 @@ function boardInfo(board: typeof boards.$inferSelect): BoardInfo {
     name: board.name,
     description: board.description ?? null,
     color: board.color ?? null,
+    art: board.art ?? null,
     owner: board.owner ?? null,
     primary: board.id === primaryBoardId(board.repositoryId),
   };
@@ -508,6 +511,7 @@ export function createBoard(args: {
   name: string;
   description?: string | null;
   color?: string | null;
+  art?: string | null;
   owner?: string | null;
 }): string {
   const repository = activeRepository();
@@ -521,6 +525,7 @@ export function createBoard(args: {
       name: args.name,
       description: args.description ?? null,
       color: args.color ?? null,
+      art: args.art ?? null,
       owner: args.owner ?? null,
       position,
       createdAt: now(),
@@ -544,11 +549,11 @@ function ownBoard(boardId: string) {
 
 export function updateBoard(
   boardId: string,
-  patch: { name?: string; description?: string | null; color?: string | null; owner?: string | null },
+  patch: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null },
 ): void {
   const { repository, board } = ownBoard(boardId);
   const values: Record<string, unknown> = {};
-  for (const key of ["name", "description", "color", "owner"] as const) {
+  for (const key of ["name", "description", "color", "art", "owner"] as const) {
     if (patch[key] !== undefined) values[key] = patch[key];
   }
   if (Object.keys(values).length === 0) return;

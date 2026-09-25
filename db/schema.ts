@@ -32,6 +32,8 @@ export const boards = sqliteTable("boards", {
   description: text("description"),
   /** One of the label hues, by name — see components/labelColor.ts. */
   color: text("color"),
+  /** The picture on the board's tile, by name — see components/BoardArt.tsx. */
+  art: text("art"),
   /** A person the board belongs to, for per-person boards. */
   owner: text("owner"),
   position: integer("position").notNull().default(0),

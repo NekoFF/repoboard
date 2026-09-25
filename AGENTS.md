@@ -198,4 +198,9 @@ scroll area after it adds `rb-under-header`), with no rules under them.
 Dialogs, sheets, the command menu, menus and toasts use `rb-glass-strong` /
 `rb-menu` over a blurred scrim.
 
-Motion answers actions only, under 200 ms; respect reduced motion.
+Motion answers actions only, under 200 ms; respect reduced motion. The one
+exception is the board tiles on the Boards screen: each shows a picture the
+person picks (`components/BoardArt.tsx`, stored in `boards.art`; null picks
+one from the board's id) that moves slowly. Pictures take their colours from
+`--h` / `--s` on `.rb-tile`, so they work in both themes; previews in the
+picker hold still until pointed at.

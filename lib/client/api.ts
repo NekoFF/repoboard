@@ -127,9 +127,9 @@ export const api = {
   board: (boardId?: string | null) =>
     request<BoardData>(`/api/board${boardId ? `?board=${encodeURIComponent(boardId)}` : ""}`),
   boards: () => request<{ boards: BoardSummary[] }>("/api/board?list=1"),
-  createBoard: (fields: { name: string; description?: string | null; color?: string | null; owner?: string | null }) =>
+  createBoard: (fields: { name: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
     post<{ id: string }>("/api/board", { action: "board-create", ...fields }),
-  updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; owner?: string | null }) =>
+  updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
     post<{ ok: true }>("/api/board", { action: "board-update", boardId, ...fields }),
   archiveBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-archive", boardId }),
 

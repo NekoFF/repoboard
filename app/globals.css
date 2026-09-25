@@ -529,10 +529,17 @@
   --tl-line: 42%;
   --tl-solid: 58%;
   --tl-stroke: hsl(var(--h) calc(var(--s) * 1%) var(--tl-line));
+  --tl-bgc: hsl(var(--h) calc(var(--s) * 1%) var(--tl-bg));
+  --tl-fill-soft: hsl(var(--h) calc(var(--s) * 1%) var(--tl-mid));
+  --tl-fill-1: hsl(var(--h) calc(var(--s) * 1%) var(--tl-deep));
+  --tl-fill-2: hsl(calc(var(--h) + 38) calc(var(--s) * 1%) var(--tl-deep));
+  --tl-fill-3: hsl(calc(var(--h) - 42) calc(var(--s) * 1%) var(--tl-deep));
+  --tl-blend: multiply;
   position: relative;
   isolation: isolate;
 }
 .dark .rb-tile {
+  --tl-blend: screen;
   --tl-bg: 19%;
   --tl-mid: 27%;
   --tl-deep: 40%;
@@ -615,14 +622,60 @@
   mix-blend-mode: soft-light;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-/* Inside the SVG pictures `transform` is safe: nothing else positions them. */
-.rb-tile-flow {
-  animation: rb-flow 30s linear infinite;
-}
-.rb-tile-spin {
+/* Inside the SVG pictures `transform` is safe: nothing else positions them.
+   Each class names a motion; duration and delay come from the element. */
+.rb-a-flow { animation: rb-flow 30s linear infinite; }
+.rb-a-spin,
+.rb-a-ripple,
+.rb-a-bob,
+.rb-a-breathe,
+.rb-a-sway,
+.rb-a-bar,
+.rb-a-rise,
+.rb-a-twinkle {
   transform-box: fill-box;
   transform-origin: center;
-  animation: rb-spin 70s linear infinite;
+}
+.rb-a-spin { animation: rb-spin 70s linear infinite; }
+.rb-a-ripple { animation: rb-ripple 8s ease-out infinite; }
+.rb-a-bob { animation: rb-bob 9s ease-in-out infinite alternate; }
+.rb-a-breathe { animation: rb-breathe 8s ease-in-out infinite alternate; }
+.rb-a-sway { animation: rb-sway 10s ease-in-out infinite alternate; }
+.rb-a-bar { transform-origin: 50% 100%; animation: rb-bar 3s ease-in-out infinite alternate; }
+.rb-a-rise { animation: rb-rise 14s linear infinite; }
+.rb-a-twinkle { animation: rb-twinkle 4s ease-in-out infinite alternate; }
+/* A radar's sweep and a plasma's colours are HTML layers, turned by `rotate`. */
+.rb-tile-sweep {
+  position: absolute;
+  width: 170%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg, transparent 0 72%, hsl(var(--h) calc(var(--s) * 1%) var(--tl-deep) / 0.75) 100%);
+  animation: rb-turn 7s linear infinite;
+}
+.rb-tile-plasma {
+  position: absolute;
+  inset: -60%;
+  filter: blur(22px);
+  background: conic-gradient(
+    from 0deg,
+    var(--tl-fill-1),
+    var(--tl-fill-2),
+    var(--tl-fill-soft),
+    var(--tl-fill-3),
+    var(--tl-fill-1)
+  );
+  animation: rb-turn 28s linear infinite;
+}
+/* Previews in the picker hold still until pointed at or chosen. */
+.rb-tile-still *,
+.rb-tile-still {
+  animation-play-state: paused !important;
+}
+.rb-art-choice:hover .rb-tile-still *,
+.rb-art-choice[aria-checked="true"] .rb-tile-still * {
+  animation-play-state: running !important;
 }
 
 /* The glass plate carrying the board's name. */
@@ -665,6 +718,39 @@
 @keyframes rb-spin {
   to { transform: rotate(360deg); }
 }
+@keyframes rb-turn {
+  to { rotate: 360deg; }
+}
+@keyframes rb-ripple {
+  from { transform: scale(0.08); opacity: 0.9; }
+  to { transform: scale(1); opacity: 0; }
+}
+@keyframes rb-bob {
+  from { transform: translateY(6px); }
+  to { transform: translateY(-8px); }
+}
+@keyframes rb-breathe {
+  from { transform: scale(0.9); }
+  to { transform: scale(1.08); }
+}
+@keyframes rb-sway {
+  from { transform: rotate(-6deg) translateY(4px); }
+  to { transform: rotate(6deg) translateY(-4px); }
+}
+@keyframes rb-bar {
+  from { transform: scaleY(0.35); }
+  to { transform: scaleY(1); }
+}
+@keyframes rb-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(-185px); opacity: 0; }
+}
+@keyframes rb-twinkle {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -674,4 +760,9 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Small tiles (the picture picker) have no window stacked behind. */
+.rb-tile-flat::before {
+  content: none;
 }
