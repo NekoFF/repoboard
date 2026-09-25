@@ -276,10 +276,9 @@
     backdrop-filter: blur(3px);
   }
 
-  /* The tool rail floats over the page's right edge as glass: what scrolls
-     under it (board columns, rows) shows through, blurred. Its shadow falls
-     to the left, in the same tone as the main panel's, so it reads as lying
-     on top. */
+  /* The tool rail: a glass pill at the page's right edge. Every page keeps
+     clear of it (--rb-rail), so it never covers anything. Its shadow falls
+     to the left, in the same tone as the main panel's. */
   .rb-rail {
     background-color: rgb(var(--glass) / var(--glass-alpha));
     -webkit-backdrop-filter: blur(22px) saturate(1.8);
@@ -357,10 +356,6 @@
     padding-top: var(--rb-header-h);
     padding-right: var(--rb-rail);
     scroll-padding-top: var(--rb-header-h);
-  }
-  /* Surfaces that should pass under the glass rail (the board). */
-  .rb-under-header.rb-under-rail {
-    padding-right: 0;
   }
   .rb-header {
     padding-right: var(--rb-rail);

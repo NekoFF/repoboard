@@ -537,7 +537,6 @@ export function KanbanBoard({
           }}
         >
           <div className="rb-board-canvas flex min-h-0 w-full flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4">
-            {/* The canvas runs under the glass rail; this keeps the last column reachable. */}
             {data.columns.map((column) => (
               <Column
                 key={column.id}
@@ -557,7 +556,6 @@ export function KanbanBoard({
                 setComposerOpen={setComposerOpen}
               />
             ))}
-            <div className="shrink-0" style={{ width: "var(--rb-rail)" }} aria-hidden />
           </div>
 
           <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.22,1,0.36,1)" }}>

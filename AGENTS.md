@@ -153,10 +153,9 @@ over a dotted desk with two soft colour washes; the main panel is opaque and
 fully rounded, level with the navigation, and the navigation reaches 60px
 under it so its own rounded corner is hidden and the top edges read as one.
 The main panel throws a quiet shadow to the left, onto the navigation. The tool
-rail is a glass pill floating over the page's right edge (absolute, inside
-`main`); scroll areas keep clear of it through `--rb-rail` (added by
-`rb-under-header` / `rb-clear-rail`), except the board, which passes under it
-(`rb-under-rail`) so the glass has something to blur. Page
+rail is a glass pill at the page's right edge (absolute, inside `main`); every
+page keeps clear of it through `--rb-rail` (added by `rb-under-header` /
+`rb-clear-rail`) — nothing may ever sit under the rail. Page
 headers are glass bars floating over the page (`PageHeader` is absolute; the
 scroll area after it adds `rb-under-header`), with no rules under them.
 Dialogs, sheets, the command menu, menus and toasts use `rb-glass-strong` /
