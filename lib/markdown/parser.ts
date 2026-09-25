@@ -2,6 +2,7 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { Heading, List, ListItem, Root } from "mdast";
+import { stateFromChar, type ItemState } from "@/lib/markdown/format";
 
 /**
  * Markdown ↔ board parsing.
@@ -22,7 +23,8 @@ export const DEFAULT_COLUMN_HEADINGS = [
 export const DONE_HEADING = "Done";
 
 const TASK_ID_PATTERN = /<!--\s*rb:(task_[A-Za-z0-9_-]+)\s*-->/;
-const CHECKBOX_LINE = /^(\s*)([-*+])\s+\[( |x|X)\]\s+(.*)$/;
+// See format.ts: " " todo, "/" in progress, "x" done, "-" cancelled.
+const CHECKBOX_LINE = /^(\s*)([-*+])\s+\[( |x|X|\/|-)\]\s+(.*)$/;
 
 export interface ParsedTask {
   /** Stable id from the `<!-- rb:task_x -->` marker, or null when absent. */
@@ -55,13 +57,14 @@ function headingText(node: Heading, lines: string[]): string {
 /** Splits a checkbox line into its parts, or null when it is not a task. */
 export function parseTaskLine(
   raw: string,
-): { done: boolean; title: string; id: string | null } | null {
+): { done: boolean; state: ItemState; title: string; id: string | null } | null {
   const match = raw.match(CHECKBOX_LINE);
   if (!match) return null;
   const [, , , checkChar, rest] = match;
   const idMatch = rest.match(TASK_ID_PATTERN);
   return {
     done: checkChar.toLowerCase() === "x",
+    state: stateFromChar(checkChar),
     title: rest.replace(TASK_ID_PATTERN, "").trim(),
     id: idMatch ? idMatch[1] : null,
   };

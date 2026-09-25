@@ -1,38 +1,70 @@
 import type { Config } from "tailwindcss";
 
-// One restrained neutral palette. Status colours only communicate state.
+/**
+ * Every colour is a CSS variable (see app/globals.css), so the same class works
+ * in the light and the dark theme. The palette is deliberately small: neutrals
+ * for everything, and colour only for state — the four item states, plus
+ * danger for destructive actions and errors.
+ */
+const v = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
+  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        canvas: "#fafafa",
-        surface: "#ffffff",
-        border: "#e6e7e8",
-        ink: "#202124",
-        muted: "#686b70",
-        pill: "#f4f5f6",
-        active: "#202124",
-        success: { bg: "#edf7f0", fg: "#2e7847" },
-        warn: { bg: "#fcf2e0", fg: "#b8731a", border: "#e8c785" },
-        danger: { fg: "#ad332e" },
-        code: { bg: "#121213", fg: "#e6e6e6" },
+        canvas: v("canvas"),
+        surface: v("surface"),
+        raised: v("raised"),
+        border: v("border"),
+        "border-strong": v("border-strong"),
+        ink: v("ink"),
+        muted: v("muted"),
+        faint: v("faint"),
+        pill: v("pill"),
+        hover: v("hover"),
+        active: v("ink"),
+        "on-ink": v("on-ink"),
+        state: {
+          todo: v("state-todo"),
+          doing: v("state-doing"),
+          review: v("state-review"),
+          done: v("state-done"),
+          cancelled: v("state-cancelled"),
+        },
+        success: { DEFAULT: v("state-done"), bg: v("done-bg"), fg: v("state-done") },
+        warn: { DEFAULT: v("state-doing"), bg: v("doing-bg"), fg: v("state-doing"), border: v("doing-border") },
+        danger: { DEFAULT: v("danger"), bg: v("danger-bg"), fg: v("danger") },
+        code: { bg: v("code-bg"), fg: v("ink") },
       },
       borderRadius: {
-        sm: "6px",
-        md: "7px",
+        xs: "3px",
+        sm: "4px",
+        md: "6px",
         lg: "8px",
-        xl: "9px",
+        xl: "10px",
+        "2xl": "14px",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        sans: ['"IBM Plex Sans"', "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        mono: ['"IBM Plex Mono"', "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
+      fontSize: {
+        "2xs": ["10.5px", { lineHeight: "14px" }],
+        xs: ["11.5px", { lineHeight: "16px" }],
+        sm: ["12.5px", { lineHeight: "18px" }],
+        base: ["13.5px", { lineHeight: "20px" }],
+        md: ["15px", { lineHeight: "22px" }],
+        lg: ["18px", { lineHeight: "24px" }],
+        xl: ["22px", { lineHeight: "28px" }],
+        "2xl": ["28px", { lineHeight: "34px" }],
       },
       boxShadow: {
-        card: "0 1px 2px rgba(18,18,19,0.04)",
-        lift: "0 8px 24px -6px rgba(18,18,19,0.18), 0 2px 6px rgba(18,18,19,0.06)",
-        panel: "-16px 0 48px -24px rgba(18,18,19,0.25)",
-        pop: "0 16px 48px -12px rgba(18,18,19,0.28)",
+        card: "0 1px 1px rgb(var(--shadow) / 0.04), 0 0 0 1px rgb(var(--shadow) / 0.02)",
+        lift: "0 10px 30px -8px rgb(var(--shadow) / 0.28), 0 2px 6px rgb(var(--shadow) / 0.08)",
+        panel: "-24px 0 60px -30px rgb(var(--shadow) / 0.35)",
+        pop: "0 18px 50px -12px rgb(var(--shadow) / 0.35), 0 0 0 1px rgb(var(--shadow) / 0.04)",
       },
       keyframes: {
         "rb-pulse": {

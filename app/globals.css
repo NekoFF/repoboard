@@ -2,156 +2,319 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Colour tokens as RGB channels so Tailwind's opacity modifiers work
+ * (bg-ink/10). The light theme is the default; `.dark` on <html> switches.
+ */
 @layer base {
+  :root {
+    --canvas: 246 246 244;
+    --surface: 255 255 255;
+    --raised: 255 255 255;
+    --border: 228 228 225;
+    --border-strong: 206 206 202;
+    --ink: 28 29 31;
+    --on-ink: 255 255 255;
+    --muted: 106 109 115;
+    --faint: 160 162 167;
+    --pill: 240 240 237;
+    --hover: 243 243 241;
+
+    --state-todo: 150 153 159;
+    --state-doing: 199 130 14;
+    --state-review: 108 92 212;
+    --state-done: 28 133 74;
+    --state-cancelled: 176 178 183;
+    --done-bg: 231 244 236;
+    --doing-bg: 252 243 224;
+    --doing-border: 234 203 140;
+    --danger: 196 60 54;
+    --danger-bg: 252 236 235;
+    --code-bg: 244 244 242;
+    --shadow: 20 20 24;
+    color-scheme: light;
+  }
+
+  .dark {
+    --canvas: 17 18 20;
+    --surface: 24 25 28;
+    --raised: 31 32 36;
+    --border: 42 44 49;
+    --border-strong: 64 66 72;
+    --ink: 232 232 229;
+    --on-ink: 20 21 23;
+    --muted: 154 157 163;
+    --faint: 103 106 112;
+    --pill: 36 37 41;
+    --hover: 33 34 38;
+
+    --state-todo: 125 128 135;
+    --state-doing: 230 168 62;
+    --state-review: 152 140 246;
+    --state-done: 72 190 122;
+    --state-cancelled: 92 95 101;
+    --done-bg: 25 46 34;
+    --doing-bg: 52 40 19;
+    --doing-border: 108 82 35;
+    --danger: 240 112 106;
+    --danger-bg: 58 28 27;
+    --code-bg: 19 20 22;
+    --shadow: 0 0 0;
+    color-scheme: dark;
+  }
+
   html,
   body {
     @apply h-full;
   }
   body {
-    @apply bg-canvas text-ink antialiased;
-    font-family:
-      Inter,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      system-ui,
-      sans-serif;
-    font-feature-settings:
-      "cv02" 1,
-      "cv03" 1,
-      "cv04" 1,
-      "tnum" 0;
+    @apply bg-canvas font-sans text-base text-ink antialiased;
+    font-feature-settings: "ss02" 1;
+    text-rendering: optimizeLegibility;
   }
   button,
   input,
   textarea,
   select {
     font: inherit;
+    color: inherit;
   }
   * {
     @apply border-border;
   }
 
-  /* One focus language everywhere: a thin dark ring, never a browser default. */
+  /* One focus language everywhere: a thin ring in the ink colour. */
   :focus-visible {
-    @apply outline-none ring-2 ring-ink/80 ring-offset-1 ring-offset-surface;
+    @apply outline-none ring-2 ring-ink/70 ring-offset-1 ring-offset-surface;
   }
 
   ::selection {
-    @apply bg-ink text-white;
+    @apply bg-state-review/25;
   }
 
-  /* Quiet scrollbars — the board scrolls a lot and chrome should not shout. */
   ::-webkit-scrollbar {
-    @apply h-2 w-2;
+    @apply h-2.5 w-2.5;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-black/15;
+    @apply rounded-full border-2 border-solid border-transparent bg-ink/15 bg-clip-padding;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-black/25;
+    @apply bg-ink/30;
   }
-  ::-webkit-scrollbar-track {
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
     @apply bg-transparent;
+  }
+
+  code,
+  kbd,
+  pre {
+    @apply font-mono;
   }
 }
 
 @layer components {
+  /* ------------------------------------------------------------- buttons -- */
+  .rb-btn {
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-3 text-sm font-medium text-ink
+      shadow-card transition-[background-color,border-color,transform] duration-100
+      hover:border-border-strong hover:bg-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-primary {
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-ink px-3 text-sm font-medium text-on-ink
+      transition-[opacity,transform] duration-100 hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-ghost {
+    @apply inline-flex h-7 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium text-muted
+      transition-colors duration-100 hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-danger {
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm font-medium text-danger
+      transition-colors duration-100 hover:bg-danger-bg disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-icon-btn {
+    @apply inline-grid size-7 shrink-0 select-none place-items-center rounded-md text-muted transition-colors duration-100
+      hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-sm {
+    @apply h-7 px-2.5 text-xs;
+  }
+
+  /* -------------------------------------------------------------- inputs -- */
+  .rb-input {
+    @apply h-8 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-ink transition-colors duration-100
+      placeholder:text-faint hover:border-border-strong focus:border-ink/60 focus:outline-none focus:ring-0;
+  }
+  textarea.rb-input {
+    @apply h-auto py-2;
+  }
+
+  .rb-kbd {
+    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm border border-border bg-surface px-1
+      font-sans text-2xs font-medium text-muted shadow-card;
+  }
+
+  /* ---------------------------------------------------------- pills/chips -- */
   .rb-pill {
-    @apply inline-flex items-center gap-1 rounded-sm bg-pill px-2 py-1 text-[11px] font-medium leading-none text-ink;
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-pill px-1.5 text-2xs font-medium text-muted;
   }
   .rb-pill-ok {
-    @apply inline-flex items-center gap-1 rounded-sm bg-success-bg px-2 py-1 text-[11px] font-medium leading-none text-success-fg;
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-success-bg px-1.5 text-2xs font-medium text-success-fg;
   }
   .rb-pill-warn {
-    @apply inline-flex items-center gap-1 rounded-sm bg-warn-bg px-2 py-1 text-[11px] font-medium leading-none text-warn-fg;
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-warn-bg px-1.5 text-2xs font-medium text-warn-fg;
+  }
+  .rb-pill-danger {
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-danger-bg px-1.5 text-2xs font-medium text-danger;
+  }
+  /* A property you can click to change: status, priority, due date… */
+  .rb-chip {
+    @apply inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2 text-xs text-ink
+      transition-colors duration-100 hover:border-border-strong hover:bg-hover;
   }
 
   .rb-card {
     @apply rounded-lg border border-border bg-surface;
   }
 
-  .rb-btn {
-    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-[7px] text-[12px] font-medium text-ink transition-colors duration-150
-      hover:bg-pill active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
-  }
-  .rb-btn-primary {
-    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-md bg-active px-[13px] py-[7px] text-[12px] font-medium text-white transition-colors duration-150
-      hover:bg-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
-  }
-  .rb-btn-ghost {
-    @apply inline-flex select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-medium text-muted transition-colors duration-150
-      hover:bg-pill hover:text-ink disabled:pointer-events-none disabled:opacity-40;
-  }
-
-  .rb-input {
-    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink transition-colors duration-150
-      placeholder:text-muted/70 hover:border-ink/25 focus:border-ink focus:outline-none focus:ring-0;
-  }
-
-  .rb-kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-border bg-surface px-1
-      font-sans text-[10px] font-medium text-muted;
-  }
-
-  /* Skeletons carry the same radius as the thing they stand in for, so the
-     swap to real content never shifts the layout. */
   .rb-skeleton {
-    @apply animate-rb-pulse rounded-md bg-black/[0.06];
+    @apply animate-rb-pulse rounded-md bg-ink/[0.06];
   }
 
-  /* The board reads as a board because the columns are visible containers
-     sitting on a textured surface, not cards floating on white. */
+  /* ---------------------------------------------------------------- menus -- */
+  .rb-menu {
+    @apply z-[90] min-w-[200px] overflow-hidden rounded-lg border border-border bg-raised p-1 text-sm text-ink shadow-pop;
+    animation: rb-pop-sm 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .rb-menu-item {
+    @apply flex h-8 cursor-default select-none items-center gap-2 rounded-md px-2 text-sm text-ink outline-none
+      data-[disabled]:pointer-events-none data-[highlighted]:bg-hover data-[disabled]:opacity-40;
+  }
+  .rb-menu-label {
+    @apply px-2 pb-1 pt-2 text-2xs font-medium text-faint;
+  }
+  .rb-menu-sep {
+    @apply my-1 h-px bg-border;
+  }
+
+  /* --------------------------------------------------------------- board -- */
   .rb-board-canvas {
-    background-color: #fff;
-    background-image: radial-gradient(
-      rgba(32, 33, 36, 0.08) 1px,
-      transparent 1px
-    );
-    background-size: 16px 16px;
+    background-color: rgb(var(--canvas));
+    background-image: radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1px);
+    background-size: 18px 18px;
   }
-
   .rb-column {
-    @apply flex min-w-0 flex-col rounded-lg border border-border bg-pill;
+    @apply flex min-w-0 flex-col rounded-xl bg-pill/70;
   }
-
   .rb-task {
-    @apply w-full rounded-md border border-border bg-surface p-3 text-left shadow-card transition-[border-color,box-shadow] duration-150;
+    @apply w-full rounded-lg border border-border bg-surface p-2.5 text-left shadow-card transition-[border-color,box-shadow] duration-100;
   }
   .rb-task:hover {
-    @apply border-ink/25 shadow-card;
+    @apply border-border-strong;
+  }
+  .rb-task[data-selected="true"] {
+    @apply border-ink/50 ring-1 ring-ink/30;
   }
 
-  .rb-view-tab {
-    @apply rounded-[5px] px-3 py-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink;
+  /* ---------------------------------------------------- rendered markdown -- */
+  .rb-prose {
+    @apply max-w-[72ch] text-base leading-[1.65] text-ink;
   }
-  .rb-view-tab-active {
-    @apply bg-surface text-ink shadow-card;
+  .rb-prose > * + * {
+    @apply mt-3;
   }
-  .rb-filter-field {
-    @apply mb-3 block text-[11px] font-medium text-muted;
+  .rb-prose h1 {
+    @apply mt-0 text-2xl font-semibold tracking-[-0.015em];
+  }
+  .rb-prose h2 {
+    @apply mt-9 border-b border-border pb-1.5 text-lg font-semibold tracking-[-0.01em];
+  }
+  .rb-prose h3 {
+    @apply mt-6 text-md font-semibold;
+  }
+  .rb-prose h4,
+  .rb-prose h5,
+  .rb-prose h6 {
+    @apply mt-5 text-base font-semibold;
+  }
+  .rb-prose a {
+    @apply text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink;
+  }
+  .rb-prose ul,
+  .rb-prose ol {
+    @apply pl-5;
+  }
+  .rb-prose ul {
+    @apply list-disc;
+  }
+  .rb-prose ol {
+    @apply list-decimal;
+  }
+  .rb-prose li + li {
+    @apply mt-1;
+  }
+  .rb-prose li > ul,
+  .rb-prose li > ol {
+    @apply mt-1;
+  }
+  .rb-prose ul.contains-task-list {
+    @apply list-none pl-0;
+  }
+  .rb-prose li.task-list-item > ul.contains-task-list {
+    @apply pl-6;
+  }
+  .rb-prose blockquote {
+    @apply border-l-2 border-border-strong pl-4 text-muted;
+  }
+  .rb-prose code {
+    @apply rounded-sm bg-code-bg px-1 py-px text-[0.88em];
+  }
+  .rb-prose pre {
+    @apply overflow-x-auto rounded-lg border border-border bg-code-bg p-3 text-sm leading-relaxed;
+  }
+  .rb-prose pre code {
+    @apply bg-transparent p-0;
+  }
+  .rb-prose table {
+    @apply w-full border-collapse text-sm;
+  }
+  .rb-prose th,
+  .rb-prose td {
+    @apply border border-border px-2.5 py-1.5 text-left align-top;
+  }
+  .rb-prose th {
+    @apply bg-pill font-semibold;
+  }
+  .rb-prose hr {
+    @apply my-8 border-border;
+  }
+  .rb-prose img {
+    @apply max-w-full rounded-md;
   }
 }
 
 @layer utilities {
   .rb-enter {
-    animation: rb-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rb-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  .rb-panel-in {
-    animation: rb-panel-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  .rb-sheet-in {
+    animation: rb-sheet-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .rb-fade-in {
-    animation: rb-fade 140ms ease-out both;
+    animation: rb-fade 120ms ease-out both;
   }
   .rb-pop {
-    animation: rb-pop 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rb-pop 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .rb-scroll-thin {
+    scrollbar-width: thin;
   }
 }
 
 @keyframes rb-enter {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -159,10 +322,10 @@
   }
 }
 
-@keyframes rb-panel-in {
+@keyframes rb-sheet-in {
   from {
-    opacity: 0;
-    transform: translateX(16px);
+    opacity: 0.4;
+    transform: translateX(24px);
   }
   to {
     opacity: 1;
@@ -180,11 +343,22 @@
 }
 
 @keyframes rb-pop {
-  0% {
+  from {
     opacity: 0;
-    transform: scale(0.97) translateY(6px);
+    transform: scale(0.98) translateY(4px);
   }
-  100% {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rb-pop-sm {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
     opacity: 1;
     transform: none;
   }

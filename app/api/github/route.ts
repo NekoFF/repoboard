@@ -38,6 +38,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ pulls: await gh.listPullRequests() });
       case "issues":
         return NextResponse.json({ issues: await gh.listIssues() });
+      case "refs":
+        return NextResponse.json({ refs: await gh.findReferences() });
       case "markdown-files":
         return NextResponse.json({ files: await gh.listMarkdownFiles() });
       case "file": {

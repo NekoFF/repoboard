@@ -12,6 +12,7 @@ const emptyData: BoardData = {
   boardId: null,
   columns: [],
   tasks: [],
+  milestones: [],
   markdownSource: null,
 };
 const emptyHeader: RepoHeader = {

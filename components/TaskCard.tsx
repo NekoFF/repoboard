@@ -2,209 +2,203 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { BoardTask } from "@/lib/board-service";
-import { labelColor } from "@/components/labelColor";
-import { formatDate } from "@/components/ui";
+import { AlignLeft, Check, FileText, GitBranch, GitPullRequest } from "lucide-react";
+import type { BoardMilestone, BoardTask } from "@/lib/board-service";
+import { labelColor, displayLabel } from "@/components/labelColor";
+import { DueLabel, PriorityIcon, ProgressRing } from "@/components/ui";
 
-function ChecklistRing({ done, total }: { done: number; total: number }) {
-  const ratio = total === 0 ? 0 : done / total;
-  const circumference = 2 * Math.PI * 5;
-  const complete = done === total && total > 0;
+export function Avatar({ name, size = 18 }: { name: string; size?: number }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[11px] ${
-        complete ? "text-success-fg" : "text-muted"
-      }`}
-      title={`${done} of ${total} checklist items done`}
+      title={name}
+      className="grid shrink-0 place-items-center rounded-full bg-pill text-[9px] font-semibold uppercase text-muted ring-1 ring-border"
+      style={{ width: size, height: size }}
     >
-      <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden>
-        <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.25" />
-        <circle
-          cx="7"
-          cy="7"
-          r="5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - ratio)}
-          transform="rotate(-90 7 7)"
-          style={{ transition: "stroke-dashoffset 240ms ease" }}
-        />
-      </svg>
-      {done}/{total}
+      {name.replace(/^@/, "").slice(0, 2)}
     </span>
   );
 }
 
-export function TaskCardBody({ task }: { task: BoardTask }) {
-  const doneItems = task.checklist.filter((c) => c.done).length;
-  const displayLabel = (label: string) => label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
-  const hasFooter =
-    Boolean(task.description) ||
+export function LabelChip({ label }: { label: string }) {
+  return (
+    <span
+      title={label}
+      className="inline-flex h-5 max-w-[140px] items-center gap-1.5 rounded-full border border-border px-2 text-2xs font-medium text-muted"
+    >
+      <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: labelColor(label) }} aria-hidden />
+      <span className="truncate">{displayLabel(label)}</span>
+    </span>
+  );
+}
+
+/**
+ * A card says what it is and whether anything needs attention — nothing more.
+ * Everything else has a home in the detail panel.
+ */
+export function TaskCardBody({
+  task,
+  milestone,
+  done,
+  mentions = 0,
+}: {
+  task: BoardTask;
+  milestone?: BoardMilestone | null;
+  done?: boolean;
+  mentions?: number;
+}) {
+  const checklistDone = task.checklist.filter((c) => c.done).length;
+  const hasMeta =
+    task.labels.length > 0 ||
+    Boolean(milestone) ||
     task.checklist.length > 0 ||
     task.branches.length > 0 ||
     task.pullRequests.length > 0 ||
-    Boolean(task.assignee) ||
-    Boolean(task.dueDate);
+    Boolean(task.description) ||
+    Boolean(task.markdownTaskId) ||
+    mentions > 0;
 
   return (
-    <div className="flex flex-col gap-2">
-      {task.issues.length > 0 && <span className="text-[10.5px] font-medium text-muted">Issue #{task.issues[0]}</span>}
-      <p className="text-[13px] font-medium leading-[1.4] text-ink">{task.title}</p>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex h-4 items-center gap-1.5 text-2xs text-faint">
+        {task.priority > 0 && <PriorityIcon priority={task.priority} size={13} />}
+        {task.number != null && <span className="font-mono tracking-tight">RB-{task.number}</span>}
+        <span className="flex-1" />
+        {task.dueDate && !done && <DueLabel value={task.dueDate} className="font-medium" />}
+        {task.assignee && <Avatar name={task.assignee} size={16} />}
+      </div>
 
-      {task.number !== null && (
-        <span
-          className="font-mono text-[10.5px] text-muted/70"
-          title="Write this in a commit message and the card will find that commit"
-        >
-          RB-{task.number}
-        </span>
-      )}
+      <p className={`text-sm font-medium leading-[1.4] ${done ? "text-muted line-through decoration-faint" : "text-ink"}`}>
+        {task.title}
+      </p>
 
-      {task.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {task.labels.slice(0, 2).map((label) => (
-            <span
-              key={label}
-              title={label}
-              className="inline-flex items-center gap-1.5 rounded-md bg-pill px-1.5 py-[3px] text-[10.5px] font-medium capitalize text-ink"
-            >
-              <span
-                className="size-[6px] shrink-0 rounded-full"
-                style={{ backgroundColor: labelColor(label) }}
-                aria-hidden
-              />
-              {displayLabel(label)}
-            </span>
+      {hasMeta && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-2xs text-muted">
+          {task.labels.slice(0, 3).map((label) => (
+            <LabelChip key={label} label={label} />
           ))}
-          {task.labels.length > 2 && <span className="self-center text-[10px] text-muted">+{task.labels.length - 2}</span>}
-        </div>
-      )}
-
-      {hasFooter && (
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted">
-          {task.description && <span title="Has a description">≡</span>}
-
+          {task.labels.length > 3 && <span className="text-faint">+{task.labels.length - 3}</span>}
+          {milestone && (
+            <span className="inline-flex h-5 max-w-[140px] items-center truncate rounded-full bg-pill px-2 font-medium" title={`Milestone: ${milestone.name}`}>
+              {milestone.name}
+            </span>
+          )}
           {task.checklist.length > 0 && (
-            <ChecklistRing done={doneItems} total={task.checklist.length} />
+            <span className="inline-flex items-center gap-1 tabular-nums" title="Checklist">
+              <ProgressRing done={checklistDone} total={task.checklist.length} size={12} />
+              {checklistDone}/{task.checklist.length}
+            </span>
           )}
-
           {task.branches.length > 0 && (
-            <span title={`Branch: ${task.branches[0]}`}>⑂ branch</span>
-          )}
-
-          {task.pullRequests.map((pr) => (
-            <span key={`pr-${pr}`} title={`Pull request #${pr}`}>
-              ↗ #{pr}
-            </span>
-          ))}
-          {task.dueDate && (
-            <span className={task.dueDate < Date.now() ? "text-danger-fg" : ""}>
-              {formatDate(task.dueDate)}
+            <span className="inline-flex items-center" title={`Branch ${task.branches[0]}`}>
+              <GitBranch className="size-3" />
             </span>
           )}
-
-          <div className="flex-1" />
-
-          {task.assignee && (
-            <span
-              title={task.assignee}
-              className="grid size-[18px] place-items-center rounded-full bg-pill text-[9px] font-semibold text-muted"
-            >
-              {task.assignee.slice(0, 2).toUpperCase()}
+          {(task.pullRequests.length > 0 || mentions > 0) && (
+            <span className="inline-flex items-center gap-0.5" title="Pull requests and commits that mention this card">
+              <GitPullRequest className="size-3" />
+              {task.pullRequests.length + mentions}
             </span>
           )}
+          {task.description && <AlignLeft className="size-3" aria-label="Has a description" />}
+          {task.markdownTaskId && <FileText className="size-3" aria-label="Comes from the markdown file" />}
         </div>
       )}
     </div>
   );
 }
 
-/** Same card, no drag wiring — used for the first paint before mount. */
-export function StaticTaskCard({
-  task,
-  isDone,
-  onOpen,
-}: {
+interface CardProps {
   task: BoardTask;
+  milestone?: BoardMilestone | null;
   isDone: boolean;
+  selected?: boolean;
+  mentions?: number;
   onOpen: () => void;
-}) {
+  onSelect?: () => void;
+  onToggleDone?: () => void;
+}
+
+function DoneButton({ isDone, onToggleDone }: { isDone: boolean; onToggleDone?: () => void }) {
+  if (!onToggleDone) return null;
+  return (
+    <button
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggleDone();
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      title={isDone ? "Move back to Todo" : "Mark as done"}
+      aria-label={isDone ? "Move back to Todo" : "Mark as done"}
+      className={`absolute bottom-2 right-2 z-10 grid size-5 place-items-center rounded-full border transition-all duration-100 ${
+        isDone
+          ? "border-state-done bg-state-done text-surface"
+          : "border-border-strong bg-surface text-transparent opacity-0 hover:border-state-done hover:text-state-done focus-visible:opacity-100 group-hover/card:opacity-100"
+      }`}
+    >
+      <Check className="size-3" strokeWidth={3} />
+    </button>
+  );
+}
+
+/** Same card, no drag wiring — used for the first paint before mount. */
+export function StaticTaskCard({ task, milestone, isDone, selected, mentions, onOpen }: CardProps) {
   return (
     <div
       role="button"
-      tabIndex={0}
+      tabIndex={-1}
+      data-card-id={task.id}
+      data-selected={selected ? "true" : undefined}
       onClick={onOpen}
-      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}
-      className={`rb-task cursor-pointer pr-8 ${isDone ? "opacity-70" : ""}`}
+      className="rb-task cursor-pointer"
     >
-      <TaskCardBody task={task} />
+      <TaskCardBody task={task} milestone={milestone} done={isDone} mentions={mentions} />
     </div>
   );
 }
 
 export function SortableTaskCard({
   task,
+  milestone,
   isDone,
+  selected,
+  mentions,
   onOpen,
+  onSelect,
   onToggleDone,
-}: {
-  task: BoardTask;
-  isDone: boolean;
-  onOpen: () => void;
-  onToggleDone: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: task.id });
+}: CardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+  });
 
   return (
     <div
       ref={setNodeRef}
       style={{
         transform: CSS.Transform.toString(transform),
-        transition: transition ?? "transform 180ms cubic-bezier(0.22,1,0.36,1)",
+        transition: transition ?? "transform 160ms cubic-bezier(0.22,1,0.36,1)",
       }}
-      className={`group/card relative ${isDragging ? "opacity-0" : ""}`}
+      className={`group/card relative ${isDragging ? "opacity-30" : ""}`}
     >
-      {/* The tick is the plain answer to "how do I mark this done?" — it moves
-          the card to the Done column, the same thing a drag there would do. */}
-      <button
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleDone();
-        }}
-        title={isDone ? "Move back to Todo" : "Mark as done"}
-        aria-label={isDone ? "Move back to Todo" : "Mark as done"}
-        className={`absolute right-2 top-2 z-10 grid size-[22px] place-items-center rounded-full border text-[11px] transition-all
-          ${
-            isDone
-              ? "border-success-fg/40 bg-success-bg text-success-fg opacity-100"
-              : "border-border bg-surface text-muted opacity-0 hover:border-success-fg/50 hover:text-success-fg group-hover/card:opacity-100 focus-visible:opacity-100"
-          }`}
-      >
-        ✓
-      </button>
-
       <div
         {...attributes}
         {...listeners}
         role="button"
-        tabIndex={0}
+        tabIndex={-1}
+        data-card-id={task.id}
+        data-selected={selected ? "true" : undefined}
         onClick={onOpen}
+        onFocus={onSelect}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
             onOpen();
           }
         }}
-        className={`rb-task cursor-pointer pr-8 active:cursor-grabbing ${
-          isDone ? "opacity-70" : ""
-        }`}
+        className="rb-task cursor-pointer active:cursor-grabbing"
       >
-        <TaskCardBody task={task} />
+        <TaskCardBody task={task} milestone={milestone} done={isDone} mentions={mentions} />
       </div>
+      <DoneButton isDone={isDone} onToggleDone={onToggleDone} />
     </div>
   );
 }

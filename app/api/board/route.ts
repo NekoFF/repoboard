@@ -7,6 +7,9 @@ import {
   deleteTask,
   getBoardData,
   importIssues,
+  createMilestone,
+  updateMilestone,
+  deleteMilestone,
   reorderColumn,
   restoreTask,
   taskBelongsToBoard,
@@ -36,6 +39,9 @@ const createSchema = z.object({
   description: z.string().nullish(),
   assignee: z.string().nullish(),
   labels: z.array(z.string()).optional(),
+  priority: z.number().int().min(0).max(4).optional(),
+  milestoneId: z.string().nullish(),
+  dueDate: z.number().nullish(),
 });
 
 const moveSchema = z.object({
@@ -56,6 +62,8 @@ const updateSchema = z.object({
     .array(z.object({ id: z.string(), text: z.string(), done: z.boolean() }))
     .optional(),
   labels: z.array(z.string()).optional(),
+  priority: z.number().int().min(0).max(4).optional(),
+  milestoneId: z.string().nullish(),
 });
 
 const linkSchema = z.object({
@@ -108,7 +116,28 @@ const importSchema = z.object({
   columnId: z.string(),
 });
 
+const milestoneCreateSchema = z.object({
+  action: z.literal("milestone-create"),
+  name: z.string().trim().min(1),
+  description: z.string().nullish(),
+  dueDate: z.number().nullish(),
+});
+const milestoneUpdateSchema = z.object({
+  action: z.literal("milestone-update"),
+  milestoneId: z.string(),
+  name: z.string().trim().min(1).optional(),
+  description: z.string().nullish(),
+  dueDate: z.number().nullish(),
+});
+const milestoneDeleteSchema = z.object({
+  action: z.literal("milestone-delete"),
+  milestoneId: z.string(),
+});
+
 const bodySchema = z.discriminatedUnion("action", [
+  milestoneCreateSchema,
+  milestoneUpdateSchema,
+  milestoneDeleteSchema,
   createSchema,
   moveSchema,
   updateSchema,
@@ -148,16 +177,38 @@ export async function POST(request: Request) {
   const body = parsed.data;
   const columnIds = new Set(data.columns.map((column) => column.id));
   const taskIds = new Set(data.tasks.map((task) => task.id));
+  const milestoneIds = new Set(data.milestones.map((m) => m.id));
   const invalidTarget =
     ((body.action === "create" || body.action === "import-issues" || body.action === "move" || body.action === "reorder") && !columnIds.has(body.columnId)) ||
     ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment") && !taskIds.has(body.taskId)) ||
     (body.action === "restore" && !taskBelongsToBoard(body.taskId, data.boardId)) ||
-    (body.action === "reorder" && body.orderedIds.some((taskId) => !taskIds.has(taskId)));
+    (body.action === "reorder" && body.orderedIds.some((taskId) => !taskIds.has(taskId))) ||
+    ((body.action === "milestone-update" || body.action === "milestone-delete") &&
+      !milestoneIds.has(body.milestoneId)) ||
+    ((body.action === "create" || body.action === "update") &&
+      body.milestoneId != null &&
+      !milestoneIds.has(body.milestoneId));
   if (invalidTarget) {
     return NextResponse.json({ error: "Card or column not found" }, { status: 404 });
   }
 
   switch (body.action) {
+    case "milestone-create": {
+      const id = createMilestone({
+        boardId: data.boardId,
+        repositoryId: data.repository.id,
+        name: body.name,
+        description: body.description ?? null,
+        dueDate: body.dueDate ?? null,
+      });
+      return NextResponse.json({ id });
+    }
+    case "milestone-update":
+      updateMilestone(body.milestoneId, body);
+      return NextResponse.json({ ok: true });
+    case "milestone-delete":
+      deleteMilestone(body.milestoneId);
+      return NextResponse.json({ ok: true });
     case "create": {
       const id = createTask({
         boardId: data.boardId,
@@ -166,6 +217,9 @@ export async function POST(request: Request) {
         description: body.description ?? null,
         assignee: body.assignee ?? null,
         labels: body.labels,
+        priority: body.priority,
+        milestoneId: body.milestoneId ?? null,
+        dueDate: body.dueDate ?? null,
         repositoryId: data.repository.id,
       });
       return NextResponse.json({ id });
@@ -196,6 +250,8 @@ export async function POST(request: Request) {
         dueDate: body.dueDate,
         checklist: body.checklist,
         labels: body.labels,
+        priority: body.priority,
+        milestoneId: body.milestoneId,
       });
       return NextResponse.json({ ok: true });
     }
@@ -256,8 +312,9 @@ export async function POST(request: Request) {
       deleteTask(body.taskId);
       logActivity({
         repositoryId: data.repository.id,
+        taskId: body.taskId,
         type: "card_deleted",
-        message: `Card deleted`,
+        message: `Card deleted: ${data.tasks.find((t) => t.id === body.taskId)?.title ?? ""}`.trim(),
       });
       return NextResponse.json({ ok: true });
     }

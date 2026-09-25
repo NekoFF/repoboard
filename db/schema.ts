@@ -53,11 +53,27 @@ export const tasks = sqliteTable("tasks", {
   // card find that commit — the one thing a board wired to git can do that a
   // generic board cannot.
   cardNumber: integer("card_number"),
+  // 0 none · 1 urgent · 2 high · 3 medium · 4 low — Linear's order, so sorting
+  // ascending (with 0 last) reads most-urgent first.
+  priority: integer("priority").notNull().default(0),
+  milestoneId: text("milestone_id"),
   // Deleting is reversible: the row stays so the undo toast has something to
   // bring back, and the board filters these out.
   deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+// A goal with a date: "Public beta", "CRA compliance". Cards point at one, and
+// its progress is simply how many of those cards are done.
+export const milestones = sqliteTable("milestones", {
+  id: text("id").primaryKey(),
+  boardId: text("board_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  dueDate: integer("due_date", { mode: "timestamp_ms" }),
+  position: integer("position").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
 export const taskLabels = sqliteTable("task_labels", {
@@ -96,7 +112,38 @@ export const markdownSources = sqliteTable("markdown_sources", {
   path: text("path").notNull(), // e.g. ROADMAP.md
   lastKnownSha: text("last_known_sha"),
   autoSync: integer("auto_sync", { mode: "boolean" }).notNull().default(false),
+  // "board": headings drive the board's columns (at most one per repository).
+  // "checklist": a tracked document — its checkboxes are counted, shown and
+  // ticked, but they do not become cards.
+  role: text("role", { enum: ["board", "checklist"] }).notNull().default("board"),
+  // The last parsed copy, so progress shows instantly and offline. GitHub stays
+  // the source of truth: this is refreshed whenever the file is read.
+  snapshot: text("snapshot", { mode: "json" }).$type<DocSnapshot>(),
+  snapshotSha: text("snapshot_sha"),
+  snapshotAt: integer("snapshot_at", { mode: "timestamp_ms" }),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(true),
 });
+
+export interface DocSnapshot {
+  title: string;
+  total: number;
+  done: number;
+  doing?: number;
+  cancelled?: number;
+  sections: { heading: string; depth: number; total: number; done: number; doing?: number }[];
+  /** Compact per-item state for the overview's item map and "due soon". */
+  items: {
+    title: string;
+    text?: string;
+    state?: "todo" | "doing" | "done" | "cancelled";
+    done: boolean;
+    section: number;
+    line: number;
+    priority?: number;
+    due?: string | null;
+    owners?: string[];
+  }[];
+}
 
 export const markdownTaskMappings = sqliteTable("markdown_task_mappings", {
   id: text("id").primaryKey(),

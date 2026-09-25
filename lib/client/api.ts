@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardData, PendingChange } from "@/lib/board-service";
+import type { DocChange, DocView, TrackedDoc } from "@/lib/docs-service";
+import type { DocEdit } from "@/lib/markdown/document";
 import type {
   BranchSummary,
+  CardReference,
   CommitDetail,
   CommitSummary,
   IssueSummary,
@@ -44,16 +47,70 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 /* ------------------------------------------------------------- resources -- */
 
+export interface ProjectInfo {
+  repo: string;
+  savedAt: string;
+  active: boolean;
+  open?: number;
+  done?: number;
+  lastSyncAt?: number | null;
+}
+
+export interface ConnectionInfo {
+  connected: boolean;
+  managedByEnvironment: boolean;
+  tokenSource: "env" | "file" | null;
+  authLabel: string;
+  projects: ProjectInfo[];
+  live?: { owner: string; name: string; defaultBranch: string; visibility: string; htmlUrl: string };
+}
+
+const post = <T>(url: string, body: unknown) =>
+  request<T>(url, { method: "POST", body: JSON.stringify(body) });
+
 export const api = {
-  connection: () => request<{ connected: boolean; repo?: { owner: string; name: string } }>("/api/repo"),
+  connection: () => request<ConnectionInfo>("/api/repo"),
 
   connectRepository: (token: string, repo: string) =>
-    request<{ connected: boolean; repo: { owner: string; name: string; defaultBranch: string; visibility: string } }>("/api/repo", {
-      method: "POST",
-      body: JSON.stringify({ token, repo }),
-    }),
+    post<{
+      connected: boolean;
+      repo: { owner: string; name: string; defaultBranch: string; visibility: string };
+      projects: ProjectInfo[];
+    }>("/api/repo", { token, repo }),
 
-  disconnectRepository: () => request<{ connected: boolean }>("/api/repo", { method: "DELETE" }),
+  switchProject: (repo: string) =>
+    post<{ switched: string; projects: ProjectInfo[] }>("/api/repo", { action: "switch", repo }),
+
+  removeProject: (repo: string) =>
+    post<{ removed: string; projects: ProjectInfo[] }>("/api/repo", { action: "remove", repo }),
+
+  disconnectRepository: () =>
+    request<{ connected: boolean; projects: ProjectInfo[] }>("/api/repo", { method: "DELETE" }),
+
+  /* documents */
+  docs: () => request<{ docs: TrackedDoc[] }>("/api/docs"),
+  doc: (path: string) => request<DocView>(`/api/docs?path=${encodeURIComponent(path)}`),
+  markdownFiles: () => request<{ files: string[] }>("/api/docs?files=1"),
+  trackDoc: (path: string) => post<TrackedDoc>("/api/docs", { action: "track", path }),
+  untrackDoc: (id: string) => post<{ ok: true }>("/api/docs", { action: "untrack", id }),
+  pinDoc: (id: string, pinned: boolean) => post<{ ok: true }>("/api/docs", { action: "pin", id, pinned }),
+  refreshDocs: () => post<{ refreshed: number; failed: string[] }>("/api/docs", { action: "refresh" }),
+  previewDocEdit: (path: string, edits: DocEdit[], baseSha: string | null) =>
+    post<DocChange>("/api/docs", { action: "preview", path, edits, baseSha }),
+  commitDocEdit: (path: string, edits: DocEdit[], expectedSha: string, force?: boolean) =>
+    post<{ commitSha: string; contentSha: string; summary: string }>("/api/docs", {
+      action: "commit",
+      path,
+      edits,
+      expectedSha,
+      force,
+    }),
+  previewDocCreate: (path: string, content: string) =>
+    post<DocChange>("/api/docs", { action: "create-preview", path, content }),
+  createDoc: (path: string, content: string) =>
+    post<{ commitSha: string; path: string }>("/api/docs", { action: "create", path, content }),
+
+  refs: () => request<{ refs: CardReference[] }>("/api/github?resource=refs"),
 
   board: () => request<BoardData>("/api/board"),
 

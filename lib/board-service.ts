@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -7,6 +7,7 @@ import {
   columns,
   markdownSources,
   markdownTaskMappings,
+  milestones,
   repositories,
   syncState,
   taskBranchLinks,
@@ -21,6 +22,7 @@ import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
+  DONE_HEADING,
   ensureTaskIds,
   moveTask as moveTaskInMarkdown,
   parseMarkdown,
@@ -43,12 +45,12 @@ import {
 
 const WORKSPACE_ID = "ws_local";
 
-function configuredRepositoryId(): string | null {
+export function configuredRepositoryId(): string | null {
   const repo = getConfiguredRepo();
   return repo ? `repo_${repo.owner}_${repo.name}`.toLowerCase() : null;
 }
 
-function activeRepository() {
+export function activeRepository() {
   const id = configuredRepositoryId();
   return id
     ? db.select().from(repositories).where(eq(repositories.id, id)).get()
@@ -83,6 +85,10 @@ export interface BoardTask {
   assignee: string | null;
   dueDate: number | null;
   position: number;
+  /** 0 none · 1 urgent · 2 high · 3 medium · 4 low. */
+  priority: number;
+  milestoneId: string | null;
+  updatedAt: number;
   checklist: { id: string; text: string; done: boolean }[];
   markdownTaskId: string | null;
   labels: string[];
@@ -90,6 +96,14 @@ export interface BoardTask {
   commits: string[];
   pullRequests: number[];
   issues: number[];
+}
+
+export interface BoardMilestone {
+  id: string;
+  name: string;
+  description: string | null;
+  dueDate: number | null;
+  position: number;
 }
 
 export interface BoardData {
@@ -104,6 +118,7 @@ export interface BoardData {
   boardId: string | null;
   columns: { id: string; name: string; position: number }[];
   tasks: BoardTask[];
+  milestones: BoardMilestone[];
   markdownSource: {
     id: string;
     path: string;
@@ -205,6 +220,58 @@ export function ensureBootstrap(repo: {
   return { repositoryId, boardId };
 }
 
+function group<T>(rows: T[], key: (row: T) => string, value: (row: T) => unknown) {
+  const map = new Map<string, never[]>();
+  for (const row of rows) {
+    const k = key(row);
+    const list = map.get(k) ?? [];
+    (list as unknown[]).push(value(row));
+    map.set(k, list);
+  }
+  return map;
+}
+
+/** Labels and links for the given cards only — never the whole database. */
+function linksFor(taskIds: string[]) {
+  const ids = taskIds.length ? taskIds : ["\u0000"];
+  return {
+    labels: group(
+      db.select().from(taskLabels).where(inArray(taskLabels.taskId, ids)).all(),
+      (r) => r.taskId,
+      (r) => r.label,
+    ) as Map<string, string[]>,
+    branches: group(
+      db.select().from(taskBranchLinks).where(inArray(taskBranchLinks.taskId, ids)).all(),
+      (r) => r.taskId,
+      (r) => r.branchName,
+    ) as Map<string, string[]>,
+    commits: group(
+      db.select().from(taskCommitLinks).where(inArray(taskCommitLinks.taskId, ids)).all(),
+      (r) => r.taskId,
+      (r) => r.commitSha,
+    ) as Map<string, string[]>,
+    pullRequests: group(
+      db.select().from(taskPullRequestLinks).where(inArray(taskPullRequestLinks.taskId, ids)).all(),
+      (r) => r.taskId,
+      (r) => r.prNumber,
+    ) as Map<string, number[]>,
+    issues: group(
+      db.select().from(taskIssueLinks).where(inArray(taskIssueLinks.taskId, ids)).all(),
+      (r) => r.taskId,
+      (r) => r.issueNumber,
+    ) as Map<string, number[]>,
+  };
+}
+
+/** The one markdown file whose headings drive the board's columns. */
+export function boardSource(repositoryId: string) {
+  return db
+    .select()
+    .from(markdownSources)
+    .where(and(eq(markdownSources.repositoryId, repositoryId), eq(markdownSources.role, "board")))
+    .get();
+}
+
 export function getBoardData(): BoardData {
   const repository = activeRepository();
   if (!repository) {
@@ -213,6 +280,7 @@ export function getBoardData(): BoardData {
       boardId: null,
       columns: [],
       tasks: [],
+      milestones: [],
       markdownSource: null,
     };
   }
@@ -236,6 +304,7 @@ export function getBoardData(): BoardData {
       boardId: null,
       columns: [],
       tasks: [],
+      milestones: [],
       markdownSource: null,
     };
   }
@@ -254,17 +323,14 @@ export function getBoardData(): BoardData {
     .orderBy(asc(tasks.position))
     .all();
 
-  const labels = db.select().from(taskLabels).all();
-  const branches = db.select().from(taskBranchLinks).all();
-  const commits = db.select().from(taskCommitLinks).all();
-  const prs = db.select().from(taskPullRequestLinks).all();
-  const issues = db.select().from(taskIssueLinks).all();
-
-  const source = db
+  const links = linksFor(rows.map((t) => t.id));
+  const source = boardSource(repository.id);
+  const goals = db
     .select()
-    .from(markdownSources)
-    .where(eq(markdownSources.repositoryId, repository.id))
-    .get();
+    .from(milestones)
+    .where(eq(milestones.boardId, board.id))
+    .orderBy(asc(milestones.position), asc(milestones.createdAt))
+    .all();
 
   return {
     repository: {
@@ -290,15 +356,23 @@ export function getBoardData(): BoardData {
       assignee: t.assignee,
       dueDate: t.dueDate?.getTime() ?? null,
       position: t.position,
+      priority: t.priority ?? 0,
+      milestoneId: t.milestoneId ?? null,
+      updatedAt: t.updatedAt.getTime(),
       checklist: t.checklist ?? [],
       markdownTaskId: t.markdownTaskId,
-      labels: labels.filter((l) => l.taskId === t.id).map((l) => l.label),
-      branches: branches
-        .filter((b) => b.taskId === t.id)
-        .map((b) => b.branchName),
-      commits: commits.filter((c) => c.taskId === t.id).map((c) => c.commitSha),
-      pullRequests: prs.filter((p) => p.taskId === t.id).map((p) => p.prNumber),
-      issues: issues.filter((i) => i.taskId === t.id).map((i) => i.issueNumber),
+      labels: links.labels.get(t.id) ?? [],
+      branches: links.branches.get(t.id) ?? [],
+      commits: links.commits.get(t.id) ?? [],
+      pullRequests: links.pullRequests.get(t.id) ?? [],
+      issues: links.issues.get(t.id) ?? [],
+    })),
+    milestones: goals.map((m) => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      dueDate: m.dueDate?.getTime() ?? null,
+      position: m.position,
     })),
     markdownSource: source
       ? {
@@ -338,13 +412,16 @@ export function createTask(args: {
   description?: string | null;
   assignee?: string | null;
   labels?: string[];
+  priority?: number;
+  milestoneId?: string | null;
+  dueDate?: number | null;
   repositoryId: string;
 }): string {
   const id = randomUUID();
   const siblings = db
-    .select()
+    .select({ id: tasks.id })
     .from(tasks)
-    .where(eq(tasks.columnId, args.columnId))
+    .where(and(eq(tasks.columnId, args.columnId), isNull(tasks.deletedAt)))
     .all();
 
   db.insert(tasks)
@@ -356,7 +433,9 @@ export function createTask(args: {
       title: args.title,
       description: args.description ?? null,
       assignee: args.assignee ?? null,
-      dueDate: null,
+      dueDate: args.dueDate ? new Date(args.dueDate) : null,
+      priority: args.priority ?? 0,
+      milestoneId: args.milestoneId ?? null,
       checklist: [],
       markdownTaskId: null,
       cardNumber: nextCardNumber(args.boardId),
@@ -390,6 +469,8 @@ export function updateTask(
     dueDate?: number | null;
     checklist?: { id: string; text: string; done: boolean }[];
     labels?: string[];
+    priority?: number;
+    milestoneId?: string | null;
   },
 ): void {
   const values: Record<string, unknown> = { updatedAt: now() };
@@ -400,6 +481,8 @@ export function updateTask(
     values.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
   }
   if (patch.checklist !== undefined) values.checklist = patch.checklist;
+  if (patch.priority !== undefined) values.priority = patch.priority;
+  if (patch.milestoneId !== undefined) values.milestoneId = patch.milestoneId;
 
   db.update(tasks).set(values).where(eq(tasks.id, taskId)).run();
 
@@ -536,11 +619,18 @@ export function importIssues(args: {
 }
 
 export function setMarkdownSource(repositoryId: string, path: string): string {
-  const existing = db
-    .select()
-    .from(markdownSources)
-    .where(eq(markdownSources.repositoryId, repositoryId))
-    .get();
+  const existing = boardSource(repositoryId);
+  // The same file tracked as a checklist becomes the board source instead of
+  // appearing twice.
+  db.delete(markdownSources)
+    .where(
+      and(
+        eq(markdownSources.repositoryId, repositoryId),
+        eq(markdownSources.path, path),
+        eq(markdownSources.role, "checklist"),
+      ),
+    )
+    .run();
 
   if (existing) {
     db.update(markdownSources)
@@ -552,7 +642,7 @@ export function setMarkdownSource(repositoryId: string, path: string): string {
 
   const id = randomUUID();
   db.insert(markdownSources)
-    .values({ id, repositoryId, path, lastKnownSha: null, autoSync: false })
+    .values({ id, repositoryId, path, lastKnownSha: null, autoSync: false, role: "board" })
     .run();
   return id;
 }
@@ -981,14 +1071,17 @@ function localBoardState(): BoardState {
     .where(eq(tasks.boardId, data.boardId ?? ""))
     .all();
 
-  const labels = db.select().from(taskLabels).all();
-  const branches = db.select().from(taskBranchLinks).all();
-  const prs = db.select().from(taskPullRequestLinks).all();
-  const issues = db.select().from(taskIssueLinks).all();
+  const links = linksFor(rows.map((t) => t.id));
+  const milestoneName = new Map(data.milestones.map((m) => [m.id, m.name]));
 
   return {
     version: 1,
     columns: data.columns.map((c) => c.name),
+    milestones: data.milestones.map((m) => ({
+      name: m.name,
+      description: m.description,
+      dueDate: m.dueDate,
+    })),
     cards: rows.map((t) => ({
       id: t.id,
       number: t.cardNumber,
@@ -999,10 +1092,12 @@ function localBoardState(): BoardState {
       assignee: t.assignee,
       dueDate: t.dueDate?.getTime() ?? null,
       checklist: t.checklist ?? [],
-      labels: labels.filter((l) => l.taskId === t.id).map((l) => l.label),
-      branches: branches.filter((b) => b.taskId === t.id).map((b) => b.branchName),
-      pullRequests: prs.filter((p) => p.taskId === t.id).map((p) => p.prNumber),
-      issues: issues.filter((i) => i.taskId === t.id).map((i) => i.issueNumber),
+      labels: links.labels.get(t.id) ?? [],
+      branches: links.branches.get(t.id) ?? [],
+      pullRequests: links.pullRequests.get(t.id) ?? [],
+      issues: links.issues.get(t.id) ?? [],
+      priority: t.priority ?? 0,
+      milestone: t.milestoneId ? (milestoneName.get(t.milestoneId) ?? null) : null,
       markdownTaskId: t.markdownTaskId,
       updatedAt: t.updatedAt.getTime(),
       deletedAt: t.deletedAt?.getTime() ?? null,
@@ -1014,6 +1109,7 @@ function writeCards(cards: BoardStateCard[]): void {
   const data = getBoardData();
   if (!data.boardId) return;
   const columnByName = new Map(data.columns.map((c) => [c.name, c.id]));
+  const milestoneByName = new Map(data.milestones.map((m) => [m.name, m.id]));
 
   // A remote board file must never reassign a card that belongs to another repo.
   for (const card of cards) {
@@ -1039,6 +1135,8 @@ function writeCards(cards: BoardStateCard[]): void {
       checklist: card.checklist,
       markdownTaskId: card.markdownTaskId,
       cardNumber: card.number,
+      priority: card.priority ?? 0,
+      milestoneId: card.milestone ? (milestoneByName.get(card.milestone) ?? null) : null,
       updatedAt: new Date(card.updatedAt),
       deletedAt: card.deletedAt ? new Date(card.deletedAt) : null,
     };
@@ -1125,6 +1223,21 @@ export async function pullBoardState(
   }
   if (!remote) return null;
 
+  // Milestones travel by name; create the ones this machine has not seen.
+  if (data.boardId) {
+    const known = new Set(data.milestones.map((m) => m.name));
+    for (const m of remote.milestones ?? []) {
+      if (known.has(m.name)) continue;
+      createMilestone({
+        boardId: data.boardId,
+        repositoryId: data.repository.id,
+        name: m.name,
+        description: m.description,
+        dueDate: m.dueDate,
+      });
+    }
+  }
+
   const merged = mergeBoardState(localBoardState().cards, remote.cards);
   writeCards(merged.cards);
 
@@ -1177,6 +1290,58 @@ export async function pushBoardState(
   });
 
   return { commitSha: written.commitSha, changes };
+}
+
+/* ------------------------------------------------------------ milestones -- */
+
+export function createMilestone(args: {
+  boardId: string;
+  repositoryId: string;
+  name: string;
+  description?: string | null;
+  dueDate?: number | null;
+}): string {
+  const id = randomUUID();
+  const count = db
+    .select({ n: sql<number>`count(*)` })
+    .from(milestones)
+    .where(eq(milestones.boardId, args.boardId))
+    .get();
+  db.insert(milestones)
+    .values({
+      id,
+      boardId: args.boardId,
+      name: args.name,
+      description: args.description ?? null,
+      dueDate: args.dueDate ? new Date(args.dueDate) : null,
+      position: count?.n ?? 0,
+      createdAt: now(),
+    })
+    .run();
+  logActivity({
+    repositoryId: args.repositoryId,
+    type: "milestone_created",
+    message: `Milestone created: ${args.name}`,
+  });
+  return id;
+}
+
+export function updateMilestone(
+  id: string,
+  patch: { name?: string; description?: string | null; dueDate?: number | null },
+): void {
+  const values: Record<string, unknown> = {};
+  if (patch.name !== undefined) values.name = patch.name;
+  if (patch.description !== undefined) values.description = patch.description;
+  if (patch.dueDate !== undefined) values.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+  if (Object.keys(values).length === 0) return;
+  db.update(milestones).set(values).where(eq(milestones.id, id)).run();
+}
+
+/** Cards keep existing; they just stop pointing at the milestone. */
+export function deleteMilestone(id: string): void {
+  db.update(tasks).set({ milestoneId: null }).where(eq(tasks.milestoneId, id)).run();
+  db.delete(milestones).where(eq(milestones.id, id)).run();
 }
 
 export function getActivity(limit = 50) {
@@ -1294,6 +1459,38 @@ export function unlinkTask(args: {
       )
       .run();
   }
+}
+
+/** Card counts per connected repository, for the project switcher. */
+export function projectSummaries(
+  repos: string[],
+): Map<string, { open: number; done: number; lastSyncAt: number | null }> {
+  const result = new Map<string, { open: number; done: number; lastSyncAt: number | null }>();
+  for (const slug of repos) {
+    const [owner, name] = slug.split("/");
+    const repositoryId = `repo_${owner}_${name}`.toLowerCase();
+    const repository = db.select().from(repositories).where(eq(repositories.id, repositoryId)).get();
+    if (!repository) continue;
+    const board = db.select().from(boards).where(eq(boards.repositoryId, repositoryId)).get();
+    if (!board) continue;
+    const done = db
+      .select({ id: columns.id })
+      .from(columns)
+      .where(and(eq(columns.boardId, board.id), eq(columns.name, DONE_HEADING)))
+      .get();
+    const rows = db
+      .select({ columnId: tasks.columnId })
+      .from(tasks)
+      .where(and(eq(tasks.boardId, board.id), isNull(tasks.deletedAt)))
+      .all();
+    const doneCount = rows.filter((r) => r.columnId === done?.id).length;
+    result.set(slug.toLowerCase(), {
+      open: rows.length - doneCount,
+      done: doneCount,
+      lastSyncAt: repository.lastSyncAt?.getTime() ?? null,
+    });
+  }
+  return result;
 }
 
 export async function connectRepository(token: string, slug: string) {

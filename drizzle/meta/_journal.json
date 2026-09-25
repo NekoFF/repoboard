@@ -15,6 +15,13 @@
       "when": 1790294638468,
       "tag": "0001_demonic_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790342001667,
+      "tag": "0002_docs_priority_milestones",
+      "breakpoints": true
     }
   ]
 }

@@ -28,14 +28,24 @@ export interface BoardStateCard {
   pullRequests: number[];
   issues: number[];
   markdownTaskId: string | null;
+  /** Optional so board files written before these existed still parse. */
+  priority?: number;
+  milestone?: string | null;
   updatedAt: number;
   deletedAt: number | null;
+}
+
+export interface BoardStateMilestone {
+  name: string;
+  description: string | null;
+  dueDate: number | null;
 }
 
 export interface BoardState {
   version: 1;
   columns: string[];
   cards: BoardStateCard[];
+  milestones?: BoardStateMilestone[];
 }
 
 export const BOARD_STATE_PATH = ".repoboard/board.json";

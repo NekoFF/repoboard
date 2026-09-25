@@ -76,6 +76,32 @@ export interface RepoFile {
   sha: string;
 }
 
+/** A commit or pull request that mentions a card, e.g. "fix focus loss (RB-12)". */
+export interface CardReference {
+  kind: "commit" | "pull";
+  card: number;
+  /** Short SHA or "#42". */
+  ref: string;
+  title: string;
+  url: string;
+  author: string | null;
+  date: string | null;
+  /** For pull requests: open, closed or merged. */
+  state?: string;
+}
+
+const REF_PATTERN = /\bRB-(\d{1,6})\b/gi;
+
+export function cardNumbersIn(text: string | null | undefined): number[] {
+  if (!text) return [];
+  const found = new Set<number>();
+  for (const match of text.matchAll(REF_PATTERN)) found.add(Number(match[1]));
+  return [...found];
+}
+
+const referenceCache = new Map<string, { at: number; refs: CardReference[] }>();
+const REFERENCE_TTL_MS = 60_000;
+
 export class GitHubClient {
   private constructor(
     private readonly octokit: Octokit,
@@ -263,6 +289,66 @@ export class GitHubClient {
         ),
         assignees: (issue.assignees ?? []).map((a) => a.login),
       }));
+  }
+
+  /**
+   * Every recent commit and pull request that names a card. This is what makes
+   * a board wired to git worth having: write "RB-12" in a commit message and the
+   * card knows about it, without anyone linking anything by hand.
+   */
+  async findReferences(): Promise<CardReference[]> {
+    const key = `${this.owner}/${this.repo}`.toLowerCase();
+    const cached = referenceCache.get(key);
+    if (cached && Date.now() - cached.at < REFERENCE_TTL_MS) return cached.refs;
+
+    const base = `https://github.com/${this.owner}/${this.repo}`;
+    const [commits, pulls] = await Promise.all([
+      this.octokit.rest.repos
+        .listCommits({ owner: this.owner, repo: this.repo, per_page: 100 })
+        .then((r) => r.data)
+        .catch(() => []),
+      this.octokit.rest.pulls
+        .list({ owner: this.owner, repo: this.repo, state: "all", per_page: 50 })
+        .then((r) => r.data)
+        .catch(() => []),
+    ]);
+
+    const refs: CardReference[] = [];
+    for (const commit of commits) {
+      for (const card of cardNumbersIn(commit.commit.message)) {
+        refs.push({
+          kind: "commit",
+          card,
+          ref: commit.sha.slice(0, 7),
+          title: commit.commit.message.split("\n")[0],
+          url: `${base}/commit/${commit.sha}`,
+          author: commit.author?.login ?? commit.commit.author?.name ?? null,
+          date: commit.commit.author?.date ?? null,
+        });
+      }
+    }
+    for (const pr of pulls) {
+      const cards = new Set([
+        ...cardNumbersIn(pr.title),
+        ...cardNumbersIn(pr.body),
+        ...cardNumbersIn(pr.head.ref),
+      ]);
+      for (const card of cards) {
+        refs.push({
+          kind: "pull",
+          card,
+          ref: `#${pr.number}`,
+          title: pr.title,
+          url: pr.html_url,
+          author: pr.user?.login ?? null,
+          date: pr.merged_at ?? pr.updated_at ?? pr.created_at ?? null,
+          state: pr.merged_at ? "merged" : pr.state,
+        });
+      }
+    }
+
+    referenceCache.set(key, { at: Date.now(), refs });
+    return refs;
   }
 
   /** Lists the markdown files a user can pick as a board source. */

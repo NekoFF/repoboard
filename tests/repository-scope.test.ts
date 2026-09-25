@@ -72,7 +72,7 @@ describe("repository selection", () => {
     const denied = await boardRoute.GET();
     expect(denied.status).toBe(401);
     expect(JSON.stringify(await denied.json())).not.toContain("Alpha only");
-    expect((await getPageContext()).data).toEqual({ repository: null, boardId: null, columns: [], tasks: [], markdownSource: null });
+    expect((await getPageContext()).data).toEqual({ repository: null, boardId: null, columns: [], tasks: [], milestones: [], markdownSource: null });
     expect((await boardRoute.POST(new Request("http://localhost/api/board", {
       method: "POST", body: JSON.stringify({ action: "create", columnId: beta.columns[0].id, title: "No access" }),
     }))).status).toBe(401);
