@@ -33,7 +33,7 @@ function RailButton({
 }
 
 /**
- * The glass pill beside the main panel: the actions you want from
+ * The pill inside the main panel's right edge: the actions you want from
  * anywhere, one press away, without crowding each screen's own header.
  */
 export function ToolRail() {
@@ -42,9 +42,11 @@ export function ToolRail() {
   const { resolved, toggle } = useTheme();
 
   return (
+    // The gutter shades softly towards the panel's edge; the pill sits in it.
+    <div className="rb-rail-gutter relative hidden w-[60px] shrink-0 lg:flex">
     <aside
       aria-label="Tools"
-      className="rb-glass ml-2 hidden w-12 shrink-0 flex-col items-center gap-1 rounded-full py-2 lg:flex"
+      className="rb-rail relative z-[1] my-2.5 ml-1 mr-2.5 flex w-11 flex-col items-center gap-1 rounded-full py-2"
     >
       <RailButton label="Search and commands" shortcut={`${modKey()}K`} onClick={() => openPalette()}>
         <Search className="size-4" />
@@ -63,5 +65,6 @@ export function ToolRail() {
         {resolved === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
       </RailButton>
     </aside>
+    </div>
   );
 }

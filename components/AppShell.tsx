@@ -195,12 +195,13 @@ export function AppShell({
                       <Sidebar />
                     </Suspense>
                   </div>
-                  {/* Square on the left where it lies over the navigation, so the
-                      top and bottom edges run on as one straight line. */}
-                  <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-6 md:rounded-l-none">
+                  {/* Fully rounded, and a little shorter than the navigation
+                      behind it, so its corners show the panel underneath
+                      instead of meeting its edge in a step. */}
+                  <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-6 md:my-2.5">
                     <main className="rb-page relative flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
+                    <ToolRail />
                   </div>
-                  <ToolRail />
                 </div>
               ) : showingSettings ? (
                 <main className="flex h-screen min-w-0 flex-col overflow-auto bg-canvas">{children}</main>

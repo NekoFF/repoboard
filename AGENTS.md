@@ -148,9 +148,12 @@ indicators — details belong in the panel. Screens with reading content
 (Overview, Documents, Settings) are a centred column with generous spacing;
 work surfaces (Board, Code) use the full width.
 
-Layout: panels on a desk. Navigation and the tool rail are glass (`rb-glass`)
-over a dotted desk with two soft colour washes; the main panel is opaque, square
-on the left where it overlaps the navigation so the edges run straight. Page
+Layout: panels on a desk. Navigation is glass (`rb-glass`)
+over a dotted desk with two soft colour washes; the main panel is opaque and
+fully rounded, slightly shorter than the navigation behind it so its corners
+reveal that panel instead of meeting its edge in a step. The tool rail is a
+solid pill inside the main panel's right edge, in a gutter that shades softly
+towards the edge. Page
 headers are glass bars floating over the page (`PageHeader` is absolute; the
 scroll area after it adds `rb-under-header`), with no rules under them.
 Dialogs, sheets, the command menu, menus and toasts use `rb-glass-strong` /
