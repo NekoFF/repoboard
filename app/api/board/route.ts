@@ -3,6 +3,7 @@ import { runAs } from "@/lib/actor";
 import { getViewer } from "@/lib/github/access";
 
 import { z } from "zod";
+import type { ChecklistItem } from "@/lib/checklist";
 import { GitHubClient } from "@/lib/github/client";
 import { getVerifiedRepository } from "@/lib/github/access";
 import {
@@ -35,6 +36,31 @@ export async function GET() {
   return NextResponse.json(getBoardData());
 }
 
+/** One checklist item and, recursively, its sub-items (lib/checklist.ts). */
+const checklistItem: z.ZodType<ChecklistItem> = z.lazy(() =>
+  z.object({
+    id: z.string().min(1).max(64),
+    text: z.string().max(2000),
+    done: z.boolean(),
+    notes: z.string().max(40_000).nullish(),
+    assignee: z.string().max(100).nullish(),
+    due: z.number().nullish(),
+    children: z.array(checklistItem).max(200).optional(),
+    comments: z
+      .array(
+        z.object({
+          id: z.string(),
+          author: z.string().max(100),
+          kind: z.enum(["person", "agent"]),
+          text: z.string().max(10_000),
+          at: z.number(),
+        }),
+      )
+      .max(500)
+      .optional(),
+  }),
+) as z.ZodType<ChecklistItem>;
+
 const createSchema = z.object({
   action: z.literal("create"),
   columnId: z.string(),
@@ -61,9 +87,7 @@ const updateSchema = z.object({
   description: z.string().nullish(),
   assignee: z.string().nullish(),
   dueDate: z.number().nullish(),
-  checklist: z
-    .array(z.object({ id: z.string(), text: z.string(), done: z.boolean() }))
-    .optional(),
+  checklist: z.array(checklistItem).max(500).optional(),
   labels: z.array(z.string()).optional(),
   priority: z.number().int().min(0).max(4).optional(),
   milestoneId: z.string().nullish(),

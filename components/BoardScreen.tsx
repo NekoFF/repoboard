@@ -77,7 +77,7 @@ export function BoardScreen({
     const ref = params.get("ref");
     if (ref) {
       const task = data.tasks.find((t) => t.number === Number(ref));
-      router.replace(task ? `/board?card=${task.id}` : "/board", { scroll: false });
+      router.replace(task ? `/board/card/${task.id}` : "/board", { scroll: false });
       if (!task) toast.push({ kind: "info", message: `RB-${ref} is not on this board` });
     }
     const q = params.get("q");

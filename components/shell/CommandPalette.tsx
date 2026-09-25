@@ -223,7 +223,7 @@ export function CommandPalette({
                       keywords={task.labels}
                       icon={<StatusIcon status={statusOfColumn(columnName.get(task.columnId))} />}
                       hint={task.number ? <span className="font-mono">RB-{task.number}</span> : undefined}
-                      onSelect={go(`/board?card=${task.id}`)}
+                      onSelect={go(`/board/card/${task.id}`)}
                     >
                       {task.title}
                     </Item>

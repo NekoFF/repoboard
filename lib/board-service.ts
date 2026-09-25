@@ -20,6 +20,7 @@ import {
 } from "@/db/schema";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
+import { normalise, type ChecklistItem } from "@/lib/checklist";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
@@ -90,7 +91,7 @@ export interface BoardTask {
   priority: number;
   milestoneId: string | null;
   updatedAt: number;
-  checklist: { id: string; text: string; done: boolean }[];
+  checklist: ChecklistItem[];
   markdownTaskId: string | null;
   labels: string[];
   branches: string[];
@@ -364,7 +365,7 @@ export function getBoardData(): BoardData {
       priority: t.priority ?? 0,
       milestoneId: t.milestoneId ?? null,
       updatedAt: t.updatedAt.getTime(),
-      checklist: t.checklist ?? [],
+      checklist: normalise(t.checklist),
       markdownTaskId: t.markdownTaskId,
       labels: links.labels.get(t.id) ?? [],
       branches: links.branches.get(t.id) ?? [],
@@ -472,7 +473,7 @@ export function updateTask(
     description?: string | null;
     assignee?: string | null;
     dueDate?: number | null;
-    checklist?: { id: string; text: string; done: boolean }[];
+    checklist?: ChecklistItem[];
     labels?: string[];
     priority?: number;
     milestoneId?: string | null;

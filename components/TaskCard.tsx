@@ -7,6 +7,7 @@ import type { BoardMilestone, BoardTask } from "@/lib/board-service";
 import { labelColor, displayLabel } from "@/components/labelColor";
 import { DueLabel, PriorityIcon, ProgressRing } from "@/components/ui";
 import { ActorAvatar } from "@/components/Actor";
+import { progress } from "@/lib/checklist";
 
 export function Avatar({ name, size = 18 }: { name: string; size?: number }) {
   return <ActorAvatar name={name} size={size} />;
@@ -39,7 +40,8 @@ export function TaskCardBody({
   done?: boolean;
   mentions?: number;
 }) {
-  const checklistDone = task.checklist.filter((c) => c.done).length;
+  const checklist = progress(task.checklist);
+  const checklistDone = checklist.done;
   const hasMeta =
     task.labels.length > 0 ||
     Boolean(milestone) ||
@@ -75,10 +77,10 @@ export function TaskCardBody({
               {milestone.name}
             </span>
           )}
-          {task.checklist.length > 0 && (
+          {checklist.total > 0 && (
             <span className="inline-flex items-center gap-1 tabular-nums" title="Checklist">
-              <ProgressRing done={checklistDone} total={task.checklist.length} size={12} />
-              {checklistDone}/{task.checklist.length}
+              <ProgressRing done={checklistDone} total={checklist.total} size={12} />
+              {checklistDone}/{checklist.total}
             </span>
           )}
           {task.branches.length > 0 && (

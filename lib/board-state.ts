@@ -1,3 +1,5 @@
+import type { ChecklistItem } from "@/lib/checklist";
+
 /**
  * The board as a file in the repository.
  *
@@ -22,7 +24,7 @@ export interface BoardStateCard {
   description: string | null;
   assignee: string | null;
   dueDate: number | null;
-  checklist: { id: string; text: string; done: boolean }[];
+  checklist: ChecklistItem[];
   labels: string[];
   branches: string[];
   pullRequests: number[];

@@ -24,13 +24,13 @@ import {
 import { Plus } from "lucide-react";
 import type { BoardData, BoardMilestone, BoardTask } from "@/lib/board-service";
 import { SortableTaskCard, StaticTaskCard, TaskCardBody } from "@/components/TaskCard";
-import { CardDetailPanel } from "@/components/CardDetailPanel";
 import { BoardCalendar } from "@/components/BoardCalendar";
 import { BoardList } from "@/components/BoardList";
 import { EmptyState, StatusIcon, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { applyFilter, type BoardFilter } from "@/lib/client/filters";
 import { useHotkeys } from "@/lib/client/hotkeys";
+import { useCommitMove } from "@/lib/client/moves";
 import { statusOfColumn } from "@/lib/status";
 
 export type BoardView = "board" | "list" | "calendar";
@@ -209,7 +209,8 @@ export function KanbanBoard({
 
   const [tasks, setTasks] = useState<BoardTask[]>(data.tasks);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // A card opens as its own page; old ?card= links are forwarded there.
+  const openCard = useCallback((id: string) => router.push(`/board/card/${id}`), [router]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState<string | null>(null);
 
@@ -223,8 +224,8 @@ export function KanbanBoard({
 
   useEffect(() => {
     const card = searchParams.get("card");
-    if (card) setOpenTaskId(card);
-  }, [searchParams]);
+    if (card) router.replace(`/board/card/${card}`);
+  }, [searchParams, router]);
 
   const milestoneById = useMemo(
     () => new Map(data.milestones.map((m) => [m.id, m])),
@@ -261,62 +262,12 @@ export function KanbanBoard({
     return tasks.find((t) => t.id === id)?.columnId ?? null;
   };
 
-  /**
-   * One path for every way a card changes column — drag, the tick, the
-   * keyboard, the detail panel — so a markdown-backed card always joins the
-   * queue of changes that are reviewed before anything is written to GitHub.
-   */
-  const commitMove = async (taskId: string, targetColumnId: string, orderedIds: string[]) => {
-    const original = data.tasks.find((t) => t.id === taskId);
-    if (!original) return;
-    const changedColumn = original.columnId !== targetColumnId;
-
-    try {
-      if (changedColumn) {
-        await api.boardAction({
-          action: "move",
-          taskId,
-          columnId: targetColumnId,
-          position: Math.max(orderedIds.indexOf(taskId), 0),
-        });
-      }
-      await api.boardAction({ action: "reorder", columnId: targetColumnId, orderedIds });
-
-      if (changedColumn) {
-        const heading = data.columns.find((c) => c.id === targetColumnId)?.name;
-        const from = data.columns.find((c) => c.id === original.columnId)?.name;
-        toast.push({
-          kind: "success",
-          message: `Moved to ${heading}`,
-          detail: original.markdownTaskId
-            ? "Queued for the next commit to the markdown file"
-            : from
-              ? `${original.title} · was ${from}`
-              : undefined,
-          action: {
-            label: "Undo",
-            run: () => {
-              const back = [...byColumn(original.columnId).map((t) => t.id).filter((id) => id !== taskId)];
-              back.splice(Math.min(original.position, back.length), 0, taskId);
-              setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, columnId: original.columnId } : t)));
-              void api
-                .boardAction({ action: "move", taskId, columnId: original.columnId, position: original.position })
-                .then(() => api.boardAction({ action: "reorder", columnId: original.columnId, orderedIds: back }))
-                .finally(() => {
-                  window.dispatchEvent(new CustomEvent("rb:pending-changed"));
-                  router.refresh();
-                });
-            },
-          },
-        });
-        window.dispatchEvent(new CustomEvent("rb:pending-changed"));
-      }
-      router.refresh();
-    } catch (error) {
-      setTasks(data.tasks);
-      toast.push({ kind: "error", message: "Could not move the card", detail: (error as Error).message });
-    }
-  };
+  // The one path for every column change (see lib/client/moves.ts).
+  const commitMove = useCommitMove(data, {
+    revert: () => setTasks(data.tasks),
+    undo: (taskId, columnId) =>
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, columnId } : t))),
+  });
 
   const moveTo = async (task: BoardTask, columnId: string) => {
     if (task.columnId === columnId) return;
@@ -460,7 +411,7 @@ export function KanbanBoard({
       ArrowLeft: () => step(-1, 0),
       j: () => step(0, 1),
       k: () => step(0, -1),
-      Enter: () => selectedTask && setOpenTaskId(selectedTask.id),
+      Enter: () => selectedTask && openCard(selectedTask.id),
       x: () => selectedTask && toggleDone(selectedTask),
       Escape: () => setSelectedId(null),
       c: onCreate,
@@ -471,16 +422,10 @@ export function KanbanBoard({
         ]),
       ),
     },
-    { enabled: view !== "calendar" && !openTaskId },
+    { enabled: view !== "calendar" },
   );
 
-  const openTask = tasks.find((t) => t.id === openTaskId) ?? null;
   const activeTask = tasks.find((t) => t.id === activeId) ?? null;
-
-  const closePanel = () => {
-    setOpenTaskId(null);
-    if (searchParams.get("card")) router.replace("/board", { scroll: false });
-  };
 
   const empty = tasks.length === 0;
 
@@ -509,7 +454,7 @@ export function KanbanBoard({
           />
         </div>
       ) : view === "calendar" ? (
-        <BoardCalendar tasks={visible} columns={data.columns} onOpen={(task) => setOpenTaskId(task.id)} />
+        <BoardCalendar tasks={visible} columns={data.columns} onOpen={(task) => openCard(task.id)} />
       ) : view === "list" ? (
         <BoardList
           data={data}
@@ -517,7 +462,7 @@ export function KanbanBoard({
           selectedId={selectedId}
           mentions={mentions}
           onSelect={(task) => setSelectedId(task.id)}
-          onOpen={(task) => setOpenTaskId(task.id)}
+          onOpen={(task) => openCard(task.id)}
           onToggleDone={toggleDone}
           onMove={moveTo}
         />
@@ -552,7 +497,7 @@ export function KanbanBoard({
                 selectedId={selectedId}
                 milestones={milestoneById}
                 mentions={mentions}
-                onOpen={(task) => setOpenTaskId(task.id)}
+                onOpen={(task) => openCard(task.id)}
                 onSelect={(task) => setSelectedId(task.id)}
                 onToggleDone={toggleDone}
                 onAdd={addCard}
@@ -575,30 +520,6 @@ export function KanbanBoard({
         </DndContext>
       )}
 
-      {openTask && (
-        <CardDetailPanel
-          key={openTask.id}
-          task={openTask}
-          data={data}
-          connected={connected}
-          onClose={closePanel}
-          onChange={(updated) => setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))}
-          onMove={moveTo}
-          onDelete={(taskId) => {
-            setTasks((prev) => prev.filter((t) => t.id !== taskId));
-            closePanel();
-            router.refresh();
-          }}
-          onNavigate={(direction) => {
-            const index = flat.indexOf(openTask.id);
-            const next = flat[index + direction];
-            if (next) {
-              setOpenTaskId(next);
-              setSelectedId(next);
-            }
-          }}
-        />
-      )}
     </>
   );
 }

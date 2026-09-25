@@ -30,8 +30,8 @@ step.
    the write is refused until the user decides. Do not add a code path that
    calls the Contents or Git Data API from anywhere else.
 2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),
-   the list view and the detail panel all call `commitMove` in
-   `KanbanBoard.tsx`, so a markdown-backed card always joins the queue of
+   the list view and the card page all go through `useCommitMove` in
+   `lib/client/moves.ts`, so a markdown-backed card always joins the queue of
    reviewed changes. Do not bypass it.
 3. **The UI talks to the server only through `lib/client/api.ts`.** No `fetch`
    to `/api/...` inside a component.
@@ -65,7 +65,8 @@ components/
   shell/               sidebar, project switcher, command menu, theme, shortcuts
   docs/                documents index, document screen, checklist view
   ui/                  primitives: toasts, menus, modal, sheet, glyphs (StatusIcon, ProgressBar)
-  *.tsx                screens: Overview, Board (+ list, calendar, card panel), Repository (Code), Activity, Settings
+  card/                the card page (/board/card/<id>), its item tree and the item dialog
+  *.tsx                screens: Overview, Board (+ list, calendar), Repository (Code), Activity, Settings
 lib/
   client/              api.ts, filters (board query language), hotkeys, graph layout
   markdown/            parser (board), document (checklists), format (the conventions), sync (diff, SHA rules)

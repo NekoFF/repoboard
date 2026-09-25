@@ -45,7 +45,7 @@ function CardChip({ task }: { task: BoardTask | undefined }) {
   if (!task) return null;
   return (
     <Link
-      href={`/board?card=${task.id}`}
+      href={`/board/card/${task.id}`}
       onClick={(event) => event.stopPropagation()}
       className="hidden max-w-[200px] shrink-0 truncate rounded-sm bg-pill px-1.5 py-0.5 text-2xs text-muted hover:text-ink md:inline"
       title={task.title}

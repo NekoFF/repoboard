@@ -112,7 +112,7 @@ export function GitGraph({
                   return card ? (
                     <Link
                       key={n}
-                      href={`/board?card=${card.id}`}
+                      href={`/board/card/${card.id}`}
                       onClick={(event) => event.stopPropagation()}
                       className="hidden max-w-[150px] shrink-0 truncate rounded-sm bg-pill px-1.5 py-0.5 text-2xs text-muted hover:text-ink md:inline"
                       title={card.title}

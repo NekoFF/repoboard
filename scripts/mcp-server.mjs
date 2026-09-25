@@ -204,6 +204,22 @@ function dueValue(date) {
   return time;
 }
 
+/* ------------------------------------------------------ checklist tree -- */
+
+function flattenItems(list) {
+  return list.flatMap((i) => [i, ...flattenItems(i.children ?? [])]);
+}
+function findItem(list, text) {
+  const wanted = String(text).trim().toLowerCase();
+  return flattenItems(list).find((i) => i.text.trim().toLowerCase() === wanted) ?? null;
+}
+function allTexts(list) {
+  return flattenItems(list).map((i) => i.text);
+}
+function saveChecklist(taskId, list) {
+  db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), taskId);
+}
+
 /* ------------------------------------------------------------ documents -- */
 
 function documents(repositoryId) {
@@ -303,16 +319,44 @@ const tools = [
   },
   {
     name: "add_checklist_item",
-    description: "Append an item to a card's checklist.",
-    inputSchema: { type: "object", properties: { card: text, text }, required: ["card", "text"] },
+    description:
+      "Add an item to a card's checklist, at the top level or under another item (items nest: 1, 1.1, 1.1.2). Give it notes — what to do, how to check it, what to keep in mind — so the person can verify the work.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        card: text,
+        text,
+        parent: { type: "string", description: "Text of the item to nest under (optional)" },
+        notes: { type: "string", description: "Markdown: what to do, how to check it, what matters" },
+        assignee: text,
+      },
+      required: ["card", "text"],
+    },
   },
   {
     name: "set_checklist_item",
-    description: "Tick or untick one of a card's checklist items, found by its text.",
+    description:
+      "Tick or untick a checklist item, found by its text at any depth. Prefer leaving ticking to the person unless they asked you to.",
     inputSchema: {
       type: "object",
       properties: { card: text, text, done: { type: "boolean" } },
       required: ["card", "text", "done"],
+    },
+  },
+  {
+    name: "update_checklist_item",
+    description: "Change a checklist item's text, notes or assignee, or add a comment to it. Found by its current text.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        card: text,
+        item: { type: "string", description: "Current text of the item" },
+        text: { type: "string", description: "New text" },
+        notes: text,
+        assignee: text,
+        comment: text,
+      },
+      required: ["card", "item"],
     },
   },
   {
@@ -529,28 +573,67 @@ const handlers = {
     return serialiseCard(cardOf(task.id));
   },
 
-  add_checklist_item({ card, text: itemText }) {
+  add_checklist_item({ card, text: itemText, parent, notes, assignee }) {
     const task = cardOf(card);
     const list = task.checklist ? JSON.parse(task.checklist) : [];
-    list.push({ id: randomUUID(), text: itemText, done: false });
-    db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), task.id);
+    const item = { id: randomUUID(), text: itemText, done: false, notes: notes ?? null, assignee: assignee ?? null, children: [], comments: [] };
+    if (parent) {
+      const host = findItem(list, parent);
+      if (!host) throw new Error(`No checklist item "${parent}" on this card. Items: ${allTexts(list).join(", ") || "none"}`);
+      host.children = [...(host.children ?? []), item];
+    } else {
+      list.push(item);
+    }
+    saveChecklist(task.id, list);
     const { repo } = requireBoard();
-    logActivity(repo.id, task.id, "card_updated", `added checklist item “${itemText}” to ${task.title}`);
+    logActivity(repo.id, task.id, "card_updated", `added item “${itemText}”${parent ? ` under “${parent}”` : ""} to ${task.title}`);
     return { card: serialiseCard(cardOf(task.id)).ref, checklist: list };
   },
 
   set_checklist_item({ card, text: itemText, done }) {
     const task = cardOf(card);
     const list = task.checklist ? JSON.parse(task.checklist) : [];
-    const item = list.find((i) => i.text.toLowerCase() === String(itemText).toLowerCase());
+    const item = findItem(list, itemText);
     if (!item) {
-      throw new Error(`No checklist item "${itemText}". Items: ${list.map((i) => i.text).join(", ") || "none"}`);
+      throw new Error(`No checklist item "${itemText}". Items: ${allTexts(list).join(", ") || "none"}`);
     }
-    item.done = Boolean(done);
-    db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), task.id);
+    const setAll = (i) => {
+      i.done = Boolean(done);
+      if (done) (i.children ?? []).forEach(setAll);
+    };
+    setAll(item);
+    saveChecklist(task.id, list);
     const { repo } = requireBoard();
     logActivity(repo.id, task.id, "card_updated", `${done ? "ticked" : "unticked"} “${item.text}” on ${task.title}`);
     return { checklist: list };
+  },
+
+  update_checklist_item({ card, item: current, text: newText, notes, assignee, comment }) {
+    const task = cardOf(card);
+    const list = task.checklist ? JSON.parse(task.checklist) : [];
+    const item = findItem(list, current);
+    if (!item) throw new Error(`No checklist item "${current}". Items: ${allTexts(list).join(", ") || "none"}`);
+    const changes = [];
+    if (newText !== undefined && newText !== item.text) {
+      item.text = newText;
+      changes.push(`renamed it to “${newText}”`);
+    }
+    if (notes !== undefined) {
+      item.notes = notes || null;
+      changes.push(notes ? "wrote its notes" : "cleared its notes");
+    }
+    if (assignee !== undefined) {
+      item.assignee = assignee || null;
+      changes.push(assignee ? `assigned ${assignee}` : "unassigned it");
+    }
+    if (comment) {
+      item.comments = [...(item.comments ?? []), { id: randomUUID(), author: agentName(), kind: "agent", text: comment, at: now() }];
+      changes.push("commented");
+    }
+    saveChecklist(task.id, list);
+    const { repo } = requireBoard();
+    logActivity(repo.id, task.id, "card_updated", `${changes.join(", ") || "updated"} on item “${current}” of ${task.title}`);
+    return { item };
   },
 
   delete_card({ card }) {

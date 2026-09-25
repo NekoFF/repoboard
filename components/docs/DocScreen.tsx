@@ -146,7 +146,7 @@ export function DocScreen({ path }: { path: string }) {
         kind: "success",
         message: "Card created",
         detail: item.title,
-        action: { label: "Open", run: () => router.push(`/board?card=${result.id}`) },
+        action: { label: "Open", run: () => router.push(`/board/card/${result.id}`) },
       });
     } catch (error) {
       toast.push({ kind: "error", message: "Could not create the card", detail: (error as Error).message });

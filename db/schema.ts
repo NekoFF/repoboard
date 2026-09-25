@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import type { ChecklistItem } from "@/lib/checklist";
 
 // RepoBoard's SQLite schema. GitHub stays the source of truth for git data
 // (branches, commits, PRs, issues are fetched live, never mirrored here).
@@ -43,9 +44,8 @@ export const tasks = sqliteTable("tasks", {
   description: text("description"),
   assignee: text("assignee"),
   dueDate: integer("due_date", { mode: "timestamp_ms" }),
-  checklist: text("checklist", { mode: "json" }).$type<
-    { id: string; text: string; done: boolean }[]
-  >(),
+  // A tree of ChecklistItem (lib/checklist.ts); older rows hold flat items.
+  checklist: text("checklist", { mode: "json" }).$type<ChecklistItem[]>(),
   // stable id embedded in markdown as <!-- rb:task_xxx -->, links a card
   // back to its Markdown line across syncs regardless of position/text edits
   markdownTaskId: text("markdown_task_id"),

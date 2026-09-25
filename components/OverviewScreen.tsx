@@ -143,7 +143,7 @@ export function OverviewScreen({
             key: t.id,
             title: `${t.number != null ? `RB-${t.number} ` : ""}${t.title}`,
             status: columnStatus.get(t.columnId) ?? "todo",
-            href: `/board?card=${t.id}`,
+            href: `/board/card/${t.id}`,
           })),
       ),
     };
@@ -181,7 +181,7 @@ export function OverviewScreen({
   const upcoming = useMemo(() => {
     const cards = data.tasks
       .filter((t) => t.dueDate != null && columnStatus.get(t.columnId) !== "done")
-      .map((t) => ({ key: t.id, title: t.title, due: t.dueDate!, href: `/board?card=${t.id}`, source: "Board", priority: t.priority, status: columnStatus.get(t.columnId) ?? "todo" }));
+      .map((t) => ({ key: t.id, title: t.title, due: t.dueDate!, href: `/board/card/${t.id}`, source: "Board", priority: t.priority, status: columnStatus.get(t.columnId) ?? "todo" }));
     const items = checklists.flatMap((doc) =>
       doc.items
         .filter((i) => i.due && i.state !== "done" && i.state !== "cancelled")
@@ -338,7 +338,7 @@ export function OverviewScreen({
                     </button>
                   </div>
                 ) : (
-                  <Link key={entry.task.id} href={`/board?card=${entry.task.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-hover">
+                  <Link key={entry.task.id} href={`/board/card/${entry.task.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-hover">
                     <StatusIcon status="review" size={16} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base text-ink">{entry.task.title}</p>

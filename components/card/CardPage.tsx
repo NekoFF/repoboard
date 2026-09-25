@@ -41,7 +41,6 @@ import {
   ProgressRing,
   PropertyRow,
   RelativeTime,
-  Sheet,
   Skeleton,
   Spinner,
   StatusIcon,
@@ -49,6 +48,10 @@ import {
   useToast,
 } from "@/components/ui";
 import { PRIORITY_LABEL, statusOfColumn } from "@/lib/status";
+import { PageHeader } from "@/components/PageHeader";
+import { ChecklistTree } from "@/components/card/ChecklistTree";
+import { progress } from "@/lib/checklist";
+import { orderAfterMove, useCommitMove } from "@/lib/client/moves";
 import { useHotkeys } from "@/lib/client/hotkeys";
 
 function Section({ title, count, action, children }: { title: string; count?: ReactNode; action?: ReactNode; children: ReactNode }) {
@@ -69,31 +72,32 @@ function toDateInput(value: number | null): string {
   return value ? new Date(value).toISOString().slice(0, 10) : "";
 }
 
-export function CardDetailPanel({
-  task,
-  data,
-  connected,
-  onClose,
-  onChange,
-  onMove,
-  onDelete,
-  onNavigate,
-}: {
-  task: BoardTask;
-  data: BoardData;
-  connected: boolean;
-  onClose: () => void;
-  onChange: (task: BoardTask) => void;
-  onMove: (task: BoardTask, columnId: string) => Promise<void>;
-  onDelete: (taskId: string) => void;
-  onNavigate: (direction: 1 | -1) => void;
-}) {
+/**
+ * A card as a page in the main panel: the place to work on one topic for a
+ * long time — its description, its tree of items, the code linked to it and
+ * its history. Dialogs open from here only for focused edits (an item).
+ */
+export function CardPage({ task, data, connected }: { task: BoardTask; data: BoardData; connected: boolean }) {
   const router = useRouter();
   const toast = useToast();
+  const commitMove = useCommitMove(data);
+  const onClose = () => router.push("/board");
+  const onChange = (_next: BoardTask) => {};
+  const onMove = async (card: BoardTask, columnId: string) => {
+    await commitMove(card.id, columnId, orderAfterMove(data, card.id, columnId));
+  };
+  const onDelete = () => router.push("/board");
+  // The same order the board shows: column by column, top to bottom.
+  const order = data.columns.flatMap((c) =>
+    data.tasks.filter((t) => t.columnId === c.id).sort((a, b) => a.position - b.position).map((t) => t.id),
+  );
+  const onNavigate = (direction: 1 | -1) => {
+    const next = order[order.indexOf(task.id) + direction];
+    if (next) router.push(`/board/card/${next}`);
+  };
   const [draft, setDraft] = useState(task);
   const [saving, setSaving] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
-  const [newItem, setNewItem] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const [labelDraft, setLabelDraft] = useState("");
   const [assigneeDraft, setAssigneeDraft] = useState(task.assignee ?? "");
@@ -221,7 +225,7 @@ export function CardDetailPanel({
         },
       },
     });
-    onDelete(task.id);
+    onDelete();
   };
 
   const comment = async () => {
@@ -251,15 +255,13 @@ export function CardDetailPanel({
     }
   };
 
-  useHotkeys(
-    {
-      "mod+ArrowDown": () => onNavigate(1),
-      "mod+ArrowUp": () => onNavigate(-1),
-    },
-    { allowInOverlay: true },
-  );
+  useHotkeys({
+    "mod+ArrowDown": () => onNavigate(1),
+    "mod+ArrowUp": () => onNavigate(-1),
+    Escape: onClose,
+  });
 
-  const checklistDone = draft.checklist.filter((c) => c.done).length;
+  const checklistProgress = progress(draft.checklist);
   const ref = draft.number != null ? `RB-${draft.number}` : null;
   const sourcePath = draft.markdownTaskId ? data.markdownSource?.path : null;
 
@@ -467,10 +469,11 @@ export function CardDetailPanel({
             </Popover>
           </PropertyRow>
 
-          {draft.checklist.length > 0 && (
-            <PropertyRow label="Checklist">
+          {checklistProgress.total > 0 && (
+            <PropertyRow label="Items">
               <span className="flex items-center gap-1.5 text-xs text-muted">
-                <ProgressRing done={checklistDone} total={draft.checklist.length} /> {checklistDone} of {draft.checklist.length}
+                <ProgressRing done={checklistProgress.done} total={checklistProgress.total} /> {checklistProgress.done} of{" "}
+                {checklistProgress.total}
               </span>
             </PropertyRow>
           )}
@@ -491,88 +494,103 @@ export function CardDetailPanel({
   );
 
   return (
-    <Sheet label={`Card ${ref ?? ""} ${draft.title}`} onClose={onClose} width={860}>
-      {/* ------------------------------------------------------ header -- */}
-      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-3">
-        <StatusIcon status={status} />
-        <span className="ml-1.5 text-sm text-muted">{column?.name}</span>
-        {ref && (
-          <Tooltip content="Copy — write it in a commit message to link that commit">
-            <button className="rb-btn-ghost ml-1 font-mono text-xs" onClick={() => copy(ref, ref)}>
-              {ref}
-            </button>
-          </Tooltip>
-        )}
-        {saving && (
-          <span className="ml-2 flex items-center gap-1.5 text-xs text-faint">
-            <Spinner /> Saving
+    <>
+      <PageHeader
+        icon={<StatusIcon status={status} />}
+        title={
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Link href="/board" className="text-muted hover:text-ink">
+              Board
+            </Link>
+            <span className="text-faint">/</span>
+            {ref && (
+              <Tooltip content="Copy — write it in a commit message to link that commit">
+                <button className="font-mono text-sm text-muted hover:text-ink" onClick={() => copy(ref, ref)}>
+                  {ref}
+                </button>
+              </Tooltip>
+            )}
+            <span className="truncate">{draft.title}</span>
           </span>
-        )}
-        <div className="flex-1" />
-        <Tooltip content="Previous card" shortcut="⌘↑">
-          <button className="rb-icon-btn" onClick={() => onNavigate(-1)} aria-label="Previous card">
-            <ArrowUp className="size-4" />
-          </button>
-        </Tooltip>
-        <Tooltip content="Next card" shortcut="⌘↓">
-          <button className="rb-icon-btn" onClick={() => onNavigate(1)} aria-label="Next card">
-            <ArrowDown className="size-4" />
-          </button>
-        </Tooltip>
-        <Menu
-          align="end"
-          trigger={
-            <button className="rb-icon-btn" aria-label="More actions">
-              <MoreHorizontal className="size-4" />
-            </button>
-          }
-        >
-          {ref && (
-            <MenuItem icon={<Copy className="size-3.5" />} onSelect={() => copy(ref, ref)}>
-              Copy reference
-            </MenuItem>
-          )}
-          <MenuItem
-            icon={<Link2 className="size-3.5" />}
-            onSelect={() => copy(`${window.location.origin}/board?card=${task.id}`, "link")}
-          >
-            Copy link
-          </MenuItem>
-          <MenuItem
-            icon={<GitBranch className="size-3.5" />}
-            onSelect={() =>
-              copy(
-                `${ref ? `${ref.toLowerCase()}-` : ""}${draft.title
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, "-")
-                  .replace(/^-|-$/g, "")
-                  .slice(0, 48)}`,
-                "branch name",
-              )
-            }
-          >
-            Copy branch name
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem danger icon={<Trash2 className="size-3.5" />} onSelect={remove}>
-            Delete card
-          </MenuItem>
-        </Menu>
-        <button className="rb-icon-btn" onClick={onClose} aria-label="Close">
-          <X className="size-4" />
-        </button>
-      </div>
+        }
+        meta={
+          saving ? (
+            <span className="flex items-center gap-1.5">
+              <Spinner /> Saving
+            </span>
+          ) : undefined
+        }
+        actions={
+          <>
+            <Tooltip content="Previous card" shortcut="⌘↑">
+              <button className="rb-icon-btn" onClick={() => onNavigate(-1)} aria-label="Previous card">
+                <ArrowUp className="size-4" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Next card" shortcut="⌘↓">
+              <button className="rb-icon-btn" onClick={() => onNavigate(1)} aria-label="Next card">
+                <ArrowDown className="size-4" />
+              </button>
+            </Tooltip>
+            <Menu
+              align="end"
+              trigger={
+                <button className="rb-icon-btn" aria-label="More actions">
+                  <MoreHorizontal className="size-4" />
+                </button>
+              }
+            >
+              {ref && (
+                <MenuItem icon={<Copy className="size-3.5" />} onSelect={() => copy(ref, ref)}>
+                  Copy reference
+                </MenuItem>
+              )}
+              <MenuItem
+                icon={<Link2 className="size-3.5" />}
+                onSelect={() => copy(`${window.location.origin}/board/card/${task.id}`, "link")}
+              >
+                Copy link
+              </MenuItem>
+              <MenuItem
+                icon={<GitBranch className="size-3.5" />}
+                onSelect={() =>
+                  copy(
+                    `${ref ? `${ref.toLowerCase()}-` : ""}${draft.title
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, "-")
+                      .replace(/^-|-$/g, "")
+                      .slice(0, 48)}`,
+                    "branch name",
+                  )
+                }
+              >
+                Copy branch name
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem danger icon={<Trash2 className="size-3.5" />} onSelect={remove}>
+                Delete card
+              </MenuItem>
+            </Menu>
+            <Tooltip content="Back to the board" shortcut="Esc">
+              <button className="rb-icon-btn" onClick={onClose} aria-label="Back to the board">
+                <X className="size-4" />
+              </button>
+            </Tooltip>
+          </>
+        }
+      />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1180px] items-start gap-10 px-6 pb-24 pt-6 lg:px-10">
         {/* ------------------------------------------------------- main -- */}
-        <div className="rb-scroll-thin min-w-0 flex-1 overflow-y-auto">
-          <div className="flex flex-col gap-7 px-6 py-6 sm:px-8">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-9">
             <div className="flex flex-col gap-2">
               <textarea
                 ref={titleRef}
                 rows={1}
                 aria-label="Title"
-                className="w-full resize-none bg-transparent text-xl font-semibold tracking-[-0.015em] text-ink outline-none"
+                className="w-full resize-none bg-transparent text-2xl font-semibold tracking-[-0.02em] text-ink outline-none"
                 value={draft.title}
                 onChange={(event) => setDraft({ ...draft, title: event.target.value })}
                 onKeyDown={(event) => {
@@ -649,58 +667,12 @@ export function CardDetailPanel({
 
             <div className="flex flex-col gap-1 rounded-lg border border-border p-3 md:hidden">{properties}</div>
 
-            {/* checklist */}
-            <Section
-              title="Checklist"
-              count={draft.checklist.length ? `${checklistDone}/${draft.checklist.length}` : undefined}
-            >
-              <div className="flex flex-col">
-                {draft.checklist.map((item) => (
-                  <div key={item.id} className="group/item -mx-1.5 flex h-8 items-center gap-2 rounded-md px-1.5 hover:bg-hover">
-                    <button
-                      className="grid size-5 place-items-center"
-                      aria-label={item.done ? "Mark as not done" : "Mark as done"}
-                      onClick={() =>
-                        save({
-                          checklist: draft.checklist.map((c) => (c.id === item.id ? { ...c, done: !c.done } : c)),
-                        })
-                      }
-                    >
-                      <StatusIcon status={item.done ? "done" : "todo"} />
-                    </button>
-                    <span className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-muted line-through decoration-faint" : "text-ink"}`}>
-                      {item.text}
-                    </span>
-                    <button
-                      className="rb-icon-btn size-6 opacity-0 group-hover/item:opacity-100"
-                      aria-label="Remove item"
-                      onClick={() => save({ checklist: draft.checklist.filter((c) => c.id !== item.id) })}
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <div className="-mx-1.5 flex h-8 items-center gap-2 px-1.5">
-                  <Plus className="size-4 text-faint" />
-                  <input
-                    className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
-                    placeholder="Add an item and press Enter"
-                    aria-label="Add checklist item"
-                    value={newItem}
-                    onChange={(event) => setNewItem(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && newItem.trim()) {
-                        event.preventDefault();
-                        void save({
-                          checklist: [...draft.checklist, { id: crypto.randomUUID(), text: newItem.trim(), done: false }],
-                        });
-                        setNewItem("");
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-            </Section>
+            {/* checklist: a tree of items, each openable for its details */}
+            <ChecklistTree
+              items={draft.checklist}
+              people={allAssignees}
+              onChange={(checklist) => save({ checklist })}
+            />
 
             {/* development */}
             <Section
@@ -900,10 +872,11 @@ export function CardDetailPanel({
         </div>
 
         {/* ------------------------------------------------- properties -- */}
-        <aside className="rb-scroll-thin hidden w-[272px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border bg-canvas/60 px-4 py-4 md:flex">
+        <aside className="sticky top-6 hidden w-[280px] shrink-0 flex-col gap-1 rounded-2xl bg-canvas p-4 md:flex">
           {properties}
         </aside>
+        </div>
       </div>
-    </Sheet>
+    </>
   );
 }

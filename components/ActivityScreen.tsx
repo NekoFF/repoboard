@@ -140,7 +140,7 @@ export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; 
                           {eventText(text, event.actor ?? author)}
                         </p>
                         {card && (
-                          <Link href={`/board?card=${card.id}`} className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-faint hover:text-ink">
+                          <Link href={`/board/card/${card.id}`} className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-faint hover:text-ink">
                             {card.number != null && <span className="font-mono">RB-{card.number}</span>}
                             {card.title}
                           </Link>
