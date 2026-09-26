@@ -19,4 +19,6 @@ The app is not signed with a paid Apple or Microsoft certificate yet, so the sys
 
 - Your boards and tokens live in `~/.repoboard`, the same place the web version uses, so both see the same projects.
 - AI agents connect through the MCP server that comes with the app. **Settings → AI agents** shows the command for Claude Code, Codex, Cursor and Claude Desktop, and no Node.js is needed.
-- Updates are not automatic yet. Download the new version from Releases and replace the app. Your data stays where it is.
+- **Updates:** the app checks GitHub Releases once after starting and every few hours. When there is a new version, a small *Update* pill appears at the top of the window. On Windows, it downloads the new version, installs it and starts it again. On macOS, it downloads the new .dmg and opens it. Drag RepoBoard to Applications again, as the first time; macOS allows automatic replacement only for apps signed by Apple. Your data stays where it is.
+- **Getting around:** use ← → at the top of the window, **⌘[ / ⌘]** or a two-finger swipe on macOS, and **Alt+← / Alt+→** or the mouse's side buttons on Windows. **View → Reload** (⌘R / Ctrl+R) reloads the window.
+- **If something goes wrong:** the app restarts its own server when it stops. If that doesn't help, it offers *Try again*, *Open the log* and *Quit*.

@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/shell/Sidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
+import { DesktopBar } from "@/components/shell/DesktopBar";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -214,6 +215,7 @@ export function AppShell({
             <ConnectionContext.Provider value={{ status, retry }}>
               {/* In the desktop app: a strip to drag the window by, where its buttons sit. */}
               <div className="rb-desktop-titlebar" aria-hidden />
+              <DesktopBar />
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.
                 children

@@ -1139,7 +1139,79 @@ html.rb-desktop .rb-desktop-titlebar {
   z-index: 60;
   -webkit-app-region: drag;
 }
-/* Windows draws its caption buttons at the top right, 36px high. */
+/* Back / forward and the update pill, in the strip (components/shell/DesktopBar).
+   The strip drags the window; the buttons in it must not. */
+.rb-desktop-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 34px;
+  z-index: 80;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+html.rb-desktop-win .rb-desktop-bar {
+  height: 38px;
+}
+.rb-desktop-nav,
+.rb-desktop-update {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* macOS: just right of the traffic lights. Windows: at the left edge. */
+.rb-desktop-nav {
+  margin-left: 84px;
+}
+html.rb-desktop-win .rb-desktop-nav {
+  margin-left: 10px;
+}
+.rb-desktop-update {
+  margin-left: auto;
+  margin-right: 12px;
+}
+/* Windows' caption buttons take the top right corner. */
+html.rb-desktop-win .rb-desktop-update {
+  margin-right: 150px;
+}
+.rb-desktop-navbtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border-radius: 6px;
+  color: rgb(var(--muted));
+  transition: background-color 100ms, color 100ms;
+}
+.rb-desktop-navbtn:hover:not(:disabled) {
+  background-color: rgb(var(--ink) / 0.07);
+  color: rgb(var(--ink));
+}
+.rb-desktop-navbtn:disabled {
+  opacity: 0.35;
+}
+.rb-desktop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgb(var(--ink));
+  background-color: rgb(var(--glass) / 0.8);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.08);
+}
+.rb-desktop-pill-ready {
+  color: white;
+  background-color: rgb(var(--accent));
+}
+/* Windows draws its caption buttons at the top right, 38px high. */
 html.rb-desktop-win .rb-desk {
   padding-top: 38px;
 }
