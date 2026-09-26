@@ -190,8 +190,10 @@ npm run demo      # the app against a fake GitHub, no token needed
 
 ## Design notes
 
-Calm, dense but not cramped. Cool neutrals with a blue cast, near-white panels
-on a light grey desk, graphite text, one soft blue (`accent`) for primary
+Calm, dense but not cramped. Light: cool neutrals with a blue cast,
+near-white panels on a light grey desk, graphite text. Dark: near-neutral
+blacks in layers (desk, panel, card, each a step lighter) told apart by
+hairline edges rather than contrast, the desk's colour a whisper, one soft blue (`accent`) for primary
 actions, focus and selection. IBM Plex Sans for the interface, Plex Mono only
 for things that are code (SHAs, branches, paths, RB-n). Neutral surfaces; the
 state colours are the only colour. Cards carry a title, labels and small

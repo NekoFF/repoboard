@@ -48,27 +48,30 @@
     color-scheme: light;
   }
 
+  /* Dark: near-neutral blacks in layers — the desk deepest, the panel a step
+     up, cards a step above that — with hairline edges instead of contrast.
+     The faintest cool cast keeps it from going muddy. */
   .dark {
-    --canvas: 20 21 25;
-    --surface: 27 29 33;
-    --raised: 33 35 40;
-    --border: 44 47 54;
-    --border-strong: 64 68 77;
-    --ink: 232 234 239;
-    --on-ink: 22 24 28;
-    --muted: 152 158 170;
-    --faint: 103 109 120;
-    --pill: 39 42 48;
-    --hover: 36 38 44;
-    --desk: 15 16 19;
-    --panel-back: 23 24 28;
-    --rail: 38 40 46;
+    --canvas: 12 13 14;
+    --surface: 17 18 19;
+    --raised: 25 26 28;
+    --border: 38 39 42;
+    --border-strong: 54 56 60;
+    --ink: 238 239 241;
+    --on-ink: 17 18 19;
+    --muted: 146 149 156;
+    --faint: 99 102 109;
+    --pill: 31 32 35;
+    --hover: 27 28 31;
+    --desk: 8 9 10;
+    --panel-back: 13 14 15;
+    --rail: 22 23 25;
     --accent: 116 154 245;
-    --on-accent: 16 20 32;
-    --glass: 34 36 42;
-    --glass-alpha: 0.5;
+    --on-accent: 14 17 26;
+    --glass: 24 25 27;
+    --glass-alpha: 0.6;
     --glass-edge: 255 255 255;
-    --glass-edge-alpha: 0.07;
+    --glass-edge-alpha: 0.06;
 
     --state-todo: 124 130 142;
     --state-doing: 230 170 70;
@@ -80,7 +83,7 @@
     --doing-border: 108 84 38;
     --danger: 240 116 110;
     --danger-bg: 58 29 29;
-    --code-bg: 21 22 26;
+    --code-bg: 12 13 14;
     --shadow: 0 0 0;
     color-scheme: dark;
   }
@@ -1064,4 +1067,47 @@
     inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
     0 0 0 1px rgb(var(--ink) / 0.055),
     0 14px 34px -22px rgb(var(--shadow) / 0.3);
+}
+
+/* Dark: the desk is almost flat black, the colour in it a whisper; panels and
+   cards are told apart by hairlines, as light does it with shadows. */
+.dark .rb-desk {
+  background-image:
+    radial-gradient(rgb(var(--ink) / 0.035) 1px, transparent 1.2px),
+    radial-gradient(55% 60% at 4% 6%, rgb(var(--accent) / 0.07), transparent 70%),
+    radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.05), transparent 70%);
+}
+.dark .rb-panel-main {
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / 0.05),
+    0 0 0 1px rgb(var(--ink) / 0.075),
+    -16px 0 40px -24px rgb(0 0 0 / 0.6);
+}
+.dark .rb-task {
+  border-color: rgb(var(--ink) / 0.075);
+  background-color: rgb(var(--raised));
+}
+.dark .rb-task:hover {
+  border-color: rgb(var(--ink) / 0.14);
+}
+.dark .rb-card,
+.dark .rb-glass,
+.dark .rb-rail {
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.07),
+    0 18px 40px -24px rgb(0 0 0 / 0.7);
+}
+.dark .rb-overview {
+  background:
+    radial-gradient(60% 45% at 8% 0%, rgb(var(--accent) / 0.05), transparent 70%),
+    radial-gradient(50% 40% at 96% 28%, rgb(var(--state-review) / 0.04), transparent 70%),
+    rgb(var(--canvas));
+}
+.dark .rb-column {
+  background-color: rgb(var(--ink) / 0.025);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.045);
+}
+.dark .rb-board-canvas {
+  background-image: radial-gradient(rgb(var(--ink) / 0.04) 1px, transparent 1px);
 }
