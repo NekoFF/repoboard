@@ -45,11 +45,13 @@ function relativePath(from: string, to: string): string {
 /** A screenshot, made small enough to commit: at most 1600 px wide, WebP where the browser can. */
 async function prepareImage(file: Blob): Promise<{ base64: string; ext: string; url: string }> {
   const bitmap = await createImageBitmap(file);
+  const release = () => bitmap.close();
   const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  release();
   let blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.86));
   if (!blob || blob.type !== "image/webp") blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) throw new Error("Could not read the picture");
@@ -88,7 +90,15 @@ export function ProofDialog({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [quote, setQuote] = useState("");
-  const [shots, setShots] = useState<{ base64: string; ext: string; url: string; alt: string }[]>([]);
+  const [shots, setShots] = useState<{ base64: string; ext: string; url: string }[]>([]);
+  // The previews are object URLs. Cancelled, they are let go; handed on with
+  // "Mark as done", the review dialog still shows them.
+  const shotsRef = useRef(shots);
+  shotsRef.current = shots;
+  const handedOn = useRef(false);
+  useEffect(() => () => {
+    if (!handedOn.current) shotsRef.current.forEach((s) => URL.revokeObjectURL(s.url));
+  }, []);
   const [reading, setReading] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
@@ -123,7 +133,7 @@ export function ProofDialog({
     try {
       for (const file of images.slice(0, 5 - shots.length)) {
         const prepared = await prepareImage(file);
-        setShots((prev) => [...prev, { ...prepared, alt: "" }]);
+        setShots((prev) => [...prev, prepared]);
       }
     } catch (error) {
       toast.push({ kind: "error", message: "Could not add the picture", detail: (error as Error).message });
@@ -141,9 +151,10 @@ export function ProofDialog({
     const base = `${slug(docPath.split("/").pop()?.replace(/\.md$/i, "") ?? "doc")}-${slug(item.title)}-${stamp}`;
     const attachments: ProofAttachment[] = shots.map((shot, index) => {
       const file = `${EVIDENCE_DIR}/${base}${shots.length > 1 ? `-${index + 1}` : ""}.${shot.ext}`;
-      proofs.push({ kind: "image", path: relativePath(docPath, file), alt: shot.alt.trim() || item.title });
+      proofs.push({ kind: "image", path: relativePath(docPath, file), alt: item.title });
       return { path: file, base64: shot.base64, url: shot.url };
     });
+    handedOn.current = true;
     onDone({
       edit: {
         type: "proof",
@@ -271,7 +282,10 @@ export function ProofDialog({
                 <button
                   className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-surface/90 text-muted shadow-card hover:text-ink"
                   aria-label="Remove the screenshot"
-                  onClick={() => setShots((prev) => prev.filter((_, i) => i !== index))}
+                  onClick={() => {
+                    URL.revokeObjectURL(shot.url);
+                    setShots((prev) => prev.filter((_, i) => i !== index));
+                  }}
                 >
                   <X className="size-3.5" />
                 </button>

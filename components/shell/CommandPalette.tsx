@@ -84,7 +84,7 @@ export function CommandPalette({
     if (open) setSearch(initialQuery);
   }, [open, initialQuery]);
 
-  const board = useResource(api.board, [open], { enabled: open && connected });
+  const board = useResource(api.projectCards, [open], { enabled: open && connected });
   const branches = useResource(api.branches, [], { enabled: open && connected });
   const pulls = useResource(api.pulls, [], { enabled: open && connected });
   const issues = useResource(api.issues, [], { enabled: open && connected });
@@ -130,7 +130,7 @@ export function CommandPalette({
               </Command.Empty>
 
               <Command.Group heading="Actions" className={groupClass}>
-                <Item value="New card" keywords={["create", "add", "task"]} icon={<Plus className="size-4" />} hint="C" onSelect={() => go(newCardHref())()}>
+                <Item value="New card" keywords={["create", "add", "task"]} icon={<Plus className="size-4" />} hint="C" onSelect={() => go(newCardHref(boards.map(boardHref)))()}>
                   New card
                 </Item>
                 <Item value="New document" keywords={["create", "markdown", "file", "policy", "checklist"]} icon={<FilePlus2 className="size-4" />} onSelect={go("/docs?new=1")}>

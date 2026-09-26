@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CalendarDays, ChevronRight, CornerDownRight, MessageSquareText, NotebookText, Plus, Trash2 } from "lucide-react";
 import {
+  newId,
   addItem,
   locate,
   progress,
@@ -13,9 +14,9 @@ import {
 } from "@/lib/checklist";
 import { ActorAvatar } from "@/components/Actor";
 import { ChecklistItemDialog } from "@/components/card/ChecklistItemDialog";
-import { DueLabel, ProgressRing, StatusIcon, Tooltip } from "@/components/ui";
+import { DueLabel, ProgressRing, StatusIcon, Tooltip, useToast } from "@/components/ui";
 
-const newId = () => crypto.randomUUID();
+
 
 function AddRow({ depth, onAdd, placeholder }: { depth: number; onAdd: (text: string) => void; placeholder: string }) {
   const [text, setText] = useState("");
@@ -59,6 +60,7 @@ export function ChecklistTree({
   const [open, setOpen] = useState<Set<string>>(() => new Set(items.map((i) => i.id)));
   const [addingUnder, setAddingUnder] = useState<string | null>(null);
   const [dialog, setDialog] = useState<string | null>(null);
+  const toast = useToast();
   const total = progress(items);
 
   const toggleOpen = (id: string) =>
@@ -130,14 +132,23 @@ export function ChecklistTree({
             )}
             {item.assignee && <ActorAvatar name={item.assignee} size={18} />}
           </span>
-          <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100">
+          <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100">
             <Tooltip content="Add a sub-item">
               <button className="rb-icon-btn size-7" onClick={() => setAddingUnder(item.id)} aria-label="Add a sub-item">
                 <CornerDownRight className="size-3.5" />
               </button>
             </Tooltip>
             <Tooltip content="Delete item">
-              <button className="rb-icon-btn size-7 hover:text-danger" onClick={() => onChange(removeItem(items, item.id))} aria-label="Delete item">
+              <button
+                className="rb-icon-btn size-7 hover:text-danger"
+                onClick={() => {
+                  const before = items;
+                  onChange(removeItem(items, item.id));
+                  // With its sub-items, notes and comments: offer it back.
+                  toast.push({ kind: "info", message: "Item deleted", detail: item.text, action: { label: "Undo", run: () => onChange(before) } });
+                }}
+                aria-label="Delete item"
+              >
                 <Trash2 className="size-3.5" />
               </button>
             </Tooltip>

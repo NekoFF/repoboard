@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { KeyRound, Menu as MenuIcon, RefreshCw, Search } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Sidebar } from "@/components/shell/Sidebar";
@@ -55,7 +55,9 @@ function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: ()
 function MobileBar({ onSearch }: { onSearch: () => void }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  useEffect(() => setOpen(false), [pathname]);
+  const search = useSearchParams();
+  // Documents differ only in ?path=…, so the query closes the drawer too.
+  useEffect(() => setOpen(false), [pathname, search]);
   return (
     <div className="rb-glass flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
       <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -111,6 +113,9 @@ export function AppShell({
 
   // The server verified the token for this render; re-check only when the tab
   // comes back after a while, so an expired token is noticed without polling.
+  // A new token or another project comes with a fresh page: start trusting it again.
+  useEffect(() => setCheck(0), [repo]);
+
   useEffect(() => {
     if (!connected) {
       setStatus("disconnected");

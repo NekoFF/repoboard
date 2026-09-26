@@ -7,6 +7,9 @@ import type { ChecklistItem } from "@/lib/checklist";
 import { GitHubClient } from "@/lib/github/client";
 import { getVerifiedRepository } from "@/lib/github/access";
 import {
+  getProjectData,
+  restoreBoard,
+  setItemDone,
   createTask,
   deleteTask,
   getBoardData,
@@ -40,6 +43,7 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url);
   if (url.searchParams.get("list")) return NextResponse.json({ boards: listBoards() });
+  if (url.searchParams.get("all")) return NextResponse.json(getProjectData());
   const boardId = url.searchParams.get("board");
   const data = getBoardData(boardId);
   if (boardId && !data.boardId) return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
@@ -57,6 +61,7 @@ const boardSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("board-create"), ...boardFields }),
   z.object({ action: z.literal("board-update"), boardId: z.string(), ...boardFields, name: boardFields.name.optional() }),
   z.object({ action: z.literal("board-archive"), boardId: z.string() }),
+  z.object({ action: z.literal("board-restore"), boardId: z.string() }),
 ]);
 
 /** One checklist item and, recursively, its sub-items (lib/checklist.ts). */
@@ -144,6 +149,13 @@ const reorderSchema = z.object({
   orderedIds: z.array(z.string()),
 });
 
+const itemDoneSchema = z.object({
+  action: z.literal("item-done"),
+  taskId: z.string(),
+  itemId: z.string(),
+  done: z.boolean(),
+});
+
 const restoreSchema = z.object({
   action: z.literal("restore"),
   taskId: z.string(),
@@ -197,6 +209,7 @@ const bodySchema = z.discriminatedUnion("action", [
   reorderSchema,
   importSchema,
   restoreSchema,
+  itemDoneSchema,
   commentSchema,
   boardStatusSchema,
   boardPullSchema,
@@ -224,6 +237,10 @@ async function handlePost(request: Request) {
       if (b.action === "board-create") return NextResponse.json({ id: createBoard(b) });
       if (b.action === "board-update") {
         updateBoard(b.boardId, b);
+        return NextResponse.json({ ok: true });
+      }
+      if (b.action === "board-restore") {
+        restoreBoard(b.boardId);
         return NextResponse.json({ ok: true });
       }
       archiveBoard(b.boardId);
@@ -260,7 +277,7 @@ async function handlePost(request: Request) {
   const milestoneIds = new Set(data.milestones.map((m) => m.id));
   const invalidTarget =
     ((body.action === "create" || body.action === "import-issues" || body.action === "move" || body.action === "reorder") && !columnIds.has(body.columnId)) ||
-    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment") && !taskIds.has(body.taskId)) ||
+    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment" || body.action === "item-done") && !taskIds.has(body.taskId)) ||
     (body.action === "restore" && !taskBelongsToBoard(body.taskId, data.boardId)) ||
     (body.action === "reorder" && body.orderedIds.some((taskId) => !taskIds.has(taskId))) ||
     ((body.action === "milestone-update" || body.action === "milestone-delete") &&
@@ -367,6 +384,8 @@ async function handlePost(request: Request) {
       return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
     case "board-push":
       return NextResponse.json(await pushBoardState());
+    case "item-done":
+      return NextResponse.json({ checklist: setItemDone(body.taskId, body.itemId, body.done) });
     case "restore": {
       restoreTask(body.taskId);
       logActivity({

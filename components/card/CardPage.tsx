@@ -121,7 +121,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   const branch = draft.branches[0] ?? null;
   const milestone = data.milestones.find((m) => m.id === draft.milestoneId) ?? null;
 
-  const activity = useResource(() => api.activity(200), [task.id]);
+  const activity = useResource(() => api.activity(200, task.id), [task.id, task.updatedAt]);
   const branches = useResource(api.branches, [], { enabled: connected });
   const pulls = useResource(api.pulls, [], { enabled: connected });
   const issues = useResource(api.issues, [], { enabled: connected });
@@ -203,7 +203,12 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   };
 
   const unlink = async (payload: Record<string, unknown>, label: string) => {
-    await api.boardAction({ boardId: data.boardId, action: "unlink", taskId: task.id, ...payload });
+    try {
+      await api.boardAction({ boardId: data.boardId, action: "unlink", taskId: task.id, ...payload });
+    } catch (error) {
+      toast.push({ kind: "error", message: `Could not unlink ${label}`, detail: (error as Error).message });
+      return;
+    }
     const next = { ...draft };
     if (payload.branch) next.branches = next.branches.filter((b) => b !== payload.branch);
     if (payload.pullRequest) next.pullRequests = next.pullRequests.filter((p) => p !== payload.pullRequest);
@@ -215,7 +220,12 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   };
 
   const remove = async () => {
-    await api.boardAction({ boardId: data.boardId, action: "delete", taskId: task.id });
+    try {
+      await api.boardAction({ boardId: data.boardId, action: "delete", taskId: task.id });
+    } catch (error) {
+      toast.push({ kind: "error", message: "Could not delete the card", detail: (error as Error).message });
+      return;
+    }
     // Deleting is reversible, so offer the way back instead of asking first.
     toast.push({
       kind: "info",
@@ -235,8 +245,14 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   const comment = async () => {
     const message = commentDraft.trim();
     if (!message) return;
+    try {
+      await api.boardAction({ boardId: data.boardId, action: "comment", taskId: task.id, message });
+    } catch (error) {
+      // The text stays in the box, so nothing typed is lost.
+      toast.push({ kind: "error", message: "Could not post the comment", detail: (error as Error).message });
+      return;
+    }
     setCommentDraft("");
-    await api.boardAction({ boardId: data.boardId, action: "comment", taskId: task.id, message });
     activity.reload();
   };
 

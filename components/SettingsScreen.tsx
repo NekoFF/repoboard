@@ -232,7 +232,10 @@ export function SettingsScreen({
                         aria-label={`Disconnect ${p.repo}`}
                         title="Disconnect — forgets the token; the board stays on this computer"
                         disabled={busy !== null}
-                        onClick={() => act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`)}
+                        onClick={() => {
+                          if (!window.confirm(`Disconnect ${p.repo}? Its token is removed from this computer; the boards stay here and on GitHub.`)) return;
+                          void act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`);
+                        }}
                       >
                         {busy === `remove-${p.repo}` ? <Spinner /> : <Trash2 className="size-3.5" />}
                       </button>

@@ -22,13 +22,13 @@ export function BoardCalendar({
 }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const today = new Date();
-  const month = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + monthOffset, 1));
+  const month = new Date(Date.UTC(today.getFullYear(), today.getMonth() + monthOffset, 1));
   const year = month.getUTCFullYear();
   const monthIndex = month.getUTCMonth();
   const firstWeekday = (month.getUTCDay() + 6) % 7;
   const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
   const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
-  const todayKey = dateKey(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const todayKey = dateKey(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
   const status = new Map(columns.map((c) => [c.id, statusOfColumn(c.name)]));
 
   const { scheduled, unscheduled } = useMemo(() => {
@@ -61,7 +61,8 @@ export function BoardCalendar({
           <ChevronRight className="size-4" />
         </button>
       </div>
-      <div className="mx-4 overflow-hidden rounded-xl border border-border lg:mx-5">
+      {/* Narrow screens scroll sideways rather than cutting off the weekend. */}
+      <div className="rb-scroll-thin mx-4 overflow-x-auto overflow-y-hidden rounded-xl border border-border lg:mx-5">
         <div className="grid min-w-[640px] grid-cols-7 border-b border-border bg-canvas text-center text-2xs font-medium text-faint">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
             <div key={day} className="py-2">

@@ -23,7 +23,7 @@ import { useTheme } from "@/components/shell/ThemeProvider";
 import { Kbd, ProgressRing, Tooltip, percent } from "@/components/ui";
 import { ActorAvatar } from "@/components/Actor";
 import { boardColor, boardHref } from "@/components/labelColor";
-import { modKey } from "@/lib/client/hotkeys";
+import { useModKey } from "@/lib/client/hotkeys";
 
 const NAV: { href: string; label: string; icon: ReactNode; keys: string }[] = [
   { href: "/", label: "Overview", icon: <Home className="size-4" />, keys: "G then O" },
@@ -68,6 +68,7 @@ export function Sidebar() {
   const router = useRouter();
   const { docs, boards, openPalette, openShortcuts } = useShell();
   const { resolved, toggle } = useTheme();
+  const mod = useModKey();
   const currentDoc = pathname.startsWith("/docs") ? params.get("path") : null;
 
   return (
@@ -83,7 +84,7 @@ export function Sidebar() {
         >
           <Search className="size-3.5" />
           <span className="flex-1 text-left">Search or run a command</span>
-          <Kbd>{modKey()}K</Kbd>
+          <Kbd>{mod}K</Kbd>
         </button>
       </div>
 

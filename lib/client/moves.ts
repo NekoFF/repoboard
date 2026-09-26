@@ -28,6 +28,12 @@ export function useCommitMove(
       const original = data.tasks.find((t) => t.id === taskId);
       if (!original) return;
       const changedColumn = original.columnId !== targetColumnId;
+      const currentOrder = data.tasks
+        .filter((t) => t.columnId === targetColumnId)
+        .sort((a, b) => a.position - b.position)
+        .map((t) => t.id);
+      // Dropped back where it was: nothing to write (and nothing to make "newer").
+      if (!changedColumn && currentOrder.join() === orderedIds.join()) return;
 
       try {
         if (changedColumn) {
@@ -39,7 +45,9 @@ export function useCommitMove(
             position: Math.max(orderedIds.indexOf(taskId), 0),
           });
         }
-        await api.boardAction({ boardId: data.boardId, action: "reorder", columnId: targetColumnId, orderedIds });
+        if (changedColumn || currentOrder.join() !== orderedIds.join()) {
+          await api.boardAction({ boardId: data.boardId, action: "reorder", columnId: targetColumnId, orderedIds });
+        }
 
         if (changedColumn) {
           const heading = data.columns.find((c) => c.id === targetColumnId)?.name;

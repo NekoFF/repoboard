@@ -20,7 +20,7 @@ import {
 } from "@/db/schema";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
-import { normalise, progress, type ChecklistItem } from "@/lib/checklist";
+import { locate, normalise, progress, setDone, type ChecklistItem } from "@/lib/checklist";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
@@ -446,6 +446,25 @@ export function getBoardData(boardId?: string | null): BoardData {
 }
 
 /** Used by route handlers for actions on cards that are not in the visible list (undo). */
+/**
+ * The main board's data with the cards and columns of every board of the
+ * project added — for places that look cards up by id or number (search,
+ * Activity, the Code screen) and must find them on any board. Writes still
+ * go to a board by its own id.
+ */
+export function getProjectData(): BoardData {
+  const main = getBoardData();
+  if (!main.repository) return main;
+  const others = repositoryBoards(main.repository.id)
+    .filter((b) => b.id !== main.boardId)
+    .map((b) => getBoardData(b.id));
+  return {
+    ...main,
+    columns: [...main.columns, ...others.flatMap((o) => o.columns)],
+    tasks: [...main.tasks, ...others.flatMap((o) => o.tasks)],
+  };
+}
+
 export function taskBelongsToBoard(taskId: string, boardId: string): boolean {
   return Boolean(
     db.select({ id: tasks.id })
@@ -575,6 +594,33 @@ export function archiveBoard(boardId: string): void {
   logActivity({ repositoryId: repository.id, type: "board_archived", message: `archived the board ${board.name}` });
 }
 
+/** Brings an archived board back, with its cards. */
+export function restoreBoard(boardId: string): void {
+  const { repository, board } = ownBoard(boardId);
+  db.update(boards).set({ archivedAt: null, updatedAt: now() }).where(eq(boards.id, boardId)).run();
+  logActivity({ repositoryId: repository.id, type: "board_restored", message: `brought back the board ${board.name}` });
+}
+
+/** Archived boards of the active repository, newest first. */
+export function listArchivedBoards(): { id: string; name: string; owner: string | null; archivedAt: number; cards: number }[] {
+  const repository = activeRepository();
+  if (!repository) return [];
+  return db
+    .select()
+    .from(boards)
+    .where(eq(boards.repositoryId, repository.id))
+    .all()
+    .filter((b) => b.archivedAt)
+    .sort((a, b) => b.archivedAt!.getTime() - a.archivedAt!.getTime())
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      owner: b.owner ?? null,
+      archivedAt: b.archivedAt!.getTime(),
+      cards: db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.boardId, b.id), isNull(tasks.deletedAt))).all().length,
+    }));
+}
+
 /** Which board of the active repository a card (id or number) is on. */
 export function findCardBoard(ref: string): { boardId: string; taskId: string } | null {
   const repository = activeRepository();
@@ -649,6 +695,27 @@ export function createTask(args: {
   });
 
   return id;
+}
+
+/**
+ * Tick or untick one item on the card as it is now in the database — not on
+ * a copy the page had, so two quick ticks on the same card both land.
+ */
+export function setItemDone(taskId: string, itemId: string, done: boolean): ChecklistItem[] {
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+  if (!task) throw new Error("No such card");
+  const list = normalise(task.checklist);
+  const found = locate(list, itemId);
+  if (!found) throw new Error("That item is no longer on the card");
+  const next = setDone(list, itemId, done);
+  db.update(tasks).set({ checklist: next, updatedAt: now() }).where(eq(tasks.id, taskId)).run();
+  logActivity({
+    repositoryId: db.select({ r: boards.repositoryId }).from(boards).where(eq(boards.id, task.boardId)).get()?.r ?? "",
+    taskId,
+    type: "card_updated",
+    message: `${done ? "ticked" : "reopened"} item ${found.number} “${found.item.text}” on ${task.title}`,
+  });
+  return next;
 }
 
 export function updateTask(
@@ -1694,13 +1761,18 @@ export function deleteMilestone(id: string): void {
   db.delete(milestones).where(eq(milestones.id, id)).run();
 }
 
-export function getActivity(limit = 50) {
+/** The project's history, newest first; `taskId` narrows it to one card. */
+export function getActivity(limit = 50, taskId?: string | null) {
   const repositoryId = configuredRepositoryId();
   if (!repositoryId) return [];
   return db
     .select()
     .from(activityEvents)
-    .where(eq(activityEvents.repositoryId, repositoryId))
+    .where(
+      taskId
+        ? and(eq(activityEvents.repositoryId, repositoryId), eq(activityEvents.taskId, taskId))
+        : eq(activityEvents.repositoryId, repositoryId),
+    )
     .orderBy(desc(activityEvents.createdAt))
     .limit(limit)
     .all()

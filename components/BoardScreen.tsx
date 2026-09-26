@@ -88,9 +88,17 @@ export function BoardScreen({
       router.replace(task ? `/board/card/${task.id}` : pathname, { scroll: false });
       if (!task) toast.push({ kind: "info", message: `RB-${ref} is not on this board` });
     }
+    // Read once, then taken out of the address, so a refresh does not keep
+    // putting it back over what the person typed since.
     const q = params.get("q");
-    if (q) setQuery(q);
-  }, [params, data.tasks, router, toast]);
+    if (q) {
+      setQuery(q);
+      const rest = new URLSearchParams(params.toString());
+      rest.delete("q");
+      router.replace(rest.size ? `${pathname}?${rest}` : pathname, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   // What the board says that the markdown file does not say yet.
   // The markdown file belongs to the main board only; board.json holds every board.

@@ -286,10 +286,13 @@ export function ProjectStory({
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => showLatest());
+    // Entering or leaving full screen starts from the recent past again; a
+    // plain resize keeps where the person had moved and zoomed to.
+    showLatest();
+    const observer = new ResizeObserver(() => applyView());
     observer.observe(el);
     return () => observer.disconnect();
-  }, [showLatest, full]);
+  }, [showLatest, applyView, full]);
 
   useEffect(() => {
     if (!full) return;
@@ -511,7 +514,9 @@ export function ProjectStory({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        role="application"
+        role={full ? "dialog" : "application"}
+        aria-modal={full || undefined}
+        tabIndex={full ? -1 : undefined}
         aria-label="The history of the project: branches and merges over time"
       >
         {data.loading && !story && (

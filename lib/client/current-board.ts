@@ -11,6 +11,11 @@ export function setCurrentBoard(href: string): void {
   current = href;
 }
 
-export function newCardHref(): string {
-  return `${current}?new=1`;
+/**
+ * `boards` are the hrefs of the project's boards now: a board that was
+ * archived, or one of another project, is not offered.
+ */
+export function newCardHref(boards?: string[]): string {
+  const target = boards && !boards.includes(current) ? "/board" : current;
+  return `${target}?new=1`;
 }

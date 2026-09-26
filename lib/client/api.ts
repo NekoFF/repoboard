@@ -155,6 +155,10 @@ export const api = {
   updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
     post<{ ok: true }>("/api/board", { action: "board-update", boardId, ...fields }),
   archiveBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-archive", boardId }),
+  restoreBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-restore", boardId }),
+
+  /** Every card of the project, on any board, with every board's columns. */
+  projectCards: () => request<BoardData>("/api/board?all=1"),
 
   boardAction: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/api/board", {
@@ -179,7 +183,7 @@ export const api = {
   issues: () =>
     request<{ issues: IssueSummary[] }>("/api/github?resource=issues"),
 
-  activity: (limit = 60) =>
+  activity: (limit = 60, taskId?: string) =>
     request<{
       events: {
         id: string;
@@ -190,7 +194,7 @@ export const api = {
         actorKind: "person" | "agent" | null;
         createdAt: number;
       }[];
-    }>(`/api/activity?limit=${limit}`),
+    }>(`/api/activity?limit=${limit}${taskId ? `&task=${encodeURIComponent(taskId)}` : ""}`),
 
   markdownState: () =>
     request<{

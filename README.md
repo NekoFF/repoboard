@@ -127,7 +127,7 @@ never tick an item themselves, set `[?]` and say how to verify.
 | `C` | new card |
 | `/` | filter the board |
 | arrows, `J` `K`, `Enter` | move the selection, open |
-| `X`, `1`–`4` | done, send to a column |
+| `X`, `1`–`9` | done, send to a column |
 | `E`, `⌘Enter` | edit a document, review changes |
 | `?` | all shortcuts |
 

@@ -205,12 +205,19 @@ export function formatDateTime(value: number | string): string {
   });
 }
 
-/** Days from today (UTC) to a date; negative when it is in the past. */
+/**
+ * Today as the person's own calendar date, in the form due dates are kept
+ * (midnight UTC of that date). Using the UTC date instead would call a task
+ * due today "1d late" in Germany just after midnight.
+ */
+export function startOfLocalToday(now = new Date()): number {
+  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+/** Days from today to a date; negative when it is in the past. */
 export function daysUntil(value: number | string): number {
   const time = typeof value === "string" ? Date.parse(value) : value;
-  const today = new Date();
-  const start = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return Math.round((time - start) / 86_400_000);
+  return Math.round((time - startOfLocalToday()) / 86_400_000);
 }
 
 /** "Today", "Tomorrow", "in 3d", "2d late" — or a date when it is far away. */

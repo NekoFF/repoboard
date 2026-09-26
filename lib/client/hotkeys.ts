@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
+const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/**
+ * Combinations that may fire while typing: the command menu and "submit".
+ * Everything else — ⌘↑/↓ between cards, say — belongs to the text field then
+ * (on macOS ⌘↓ is "go to the end"), or it would throw away what was typed.
+ */
+const WHILE_TYPING = new Set(["mod+k", "mod+Enter"]);
 
 /** True while focus is somewhere that owns its keystrokes. */
 export function isTyping(target: EventTarget | null): boolean {
@@ -17,8 +26,11 @@ export function isTyping(target: EventTarget | null): boolean {
 
 /** A dialog, sheet or menu is open, so page-level shortcuts should stand down. */
 export function overlayOpen(): boolean {
+  // Tooltips live in a popper wrapper too, and must not silence the keyboard.
   return Boolean(
-    document.querySelector('[role="dialog"], [role="menu"], [data-radix-popper-content-wrapper]'),
+    document.querySelector(
+      '[role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]:not(:has([role="tooltip"]))',
+    ),
   );
 }
 
@@ -50,16 +62,18 @@ export function useHotkeys(
     const onKey = (event: KeyboardEvent) => {
       const map = ref.current;
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      const mod = event.metaKey || event.ctrlKey;
+      // ⌘ on a Mac, Ctrl elsewhere — Ctrl on a Mac is the text field's (Ctrl+K cuts a line).
+      const mod = isMac() ? event.metaKey : event.ctrlKey;
 
       if (mod) {
         const combo = `mod+${key}`;
-        if (map[combo]) {
-          event.preventDefault();
-          map[combo](event);
-        }
+        if (!map[combo]) return;
+        if (!WHILE_TYPING.has(combo) && (isTyping(event.target) || (!allowInOverlay && overlayOpen()))) return;
+        event.preventDefault();
+        map[combo](event);
         return;
       }
+      if (event.metaKey || event.ctrlKey) return;
       if (event.altKey || isTyping(event.target)) return;
       if (!allowInOverlay && overlayOpen()) return;
 
@@ -101,5 +115,15 @@ export function useHotkeys(
 /** Pressing the key shown next to an action, rendered for the current OS. */
 export function modKey(): string {
   if (typeof navigator === "undefined") return "Ctrl";
-  return /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+  return isMac() ? "⌘" : "Ctrl";
+}
+
+/**
+ * The same, for rendering: the server cannot know the viewer's OS, so the
+ * first paint says ⌘ on both sides and the browser corrects it after mount.
+ */
+export function useModKey(): string {
+  const [key, setKey] = useState("⌘");
+  useEffect(() => setKey(modKey()), []);
+  return key;
 }
