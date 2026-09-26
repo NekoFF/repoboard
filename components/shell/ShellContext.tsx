@@ -41,6 +41,8 @@ export interface ShellState {
   managedByEnvironment: boolean;
   /** The viewer's role in the open project, from GitHub (lib/roles.ts). */
   role: Role;
+  /** AI agents that have worked on the project, as they sign their work. */
+  agents: string[];
   openPalette: (query?: string) => void;
   openShortcuts: () => void;
 }
@@ -55,6 +57,7 @@ export const ShellContext = createContext<ShellState>({
   boards: [],
   managedByEnvironment: false,
   role: "manager",
+  agents: [],
   openPalette: () => {},
   openShortcuts: () => {},
 });

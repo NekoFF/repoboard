@@ -64,6 +64,7 @@ export function AppShell({
   problem: serverProblem,
   sync,
   role,
+  agents,
   children,
 }: {
   repo: string | null;
@@ -78,6 +79,8 @@ export function AppShell({
   /** Automatic sync of the boards for the open project. */
   sync: { autoSync: boolean; syncedAt: number | null };
   role: Role;
+  /** AI agents that have worked on the project (their names as they write them). */
+  agents: string[];
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -206,10 +209,11 @@ export function AppShell({
       boards,
       managedByEnvironment,
       role,
+      agents,
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, role, openPalette, openShortcuts],
+    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, role, agents, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";

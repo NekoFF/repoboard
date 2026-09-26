@@ -28,7 +28,8 @@ import type { BoardData, BoardTask } from "@/lib/board-service";
 import { api, useResource } from "@/lib/client/api";
 import { Markdown } from "@/components/Markdown";
 import { Avatar, LabelChip } from "@/components/TaskCard";
-import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
+import { agentLabel, ActorAvatar, ActorName, eventText } from "@/components/Actor";
+import { useShell } from "@/components/shell/ShellContext";
 import { boardHref as boardLink, displayLabel, labelColor } from "@/components/labelColor";
 import {
   DueLabel,
@@ -165,15 +166,18 @@ export function CardPage({
   // Everyone GitHub lets you assign in this repository, plus names already
   // used on the board (agents, people outside GitHub).
   const people = useResource(api.people, [], { enabled: connected });
+  const { agents } = useShell();
   const allAssignees = useMemo(
     () =>
       Array.from(
         new Set([
           ...(people.data?.people.map((p) => p.login) ?? []),
+          // The AI agents that work on the project: work can be theirs too.
+          ...agents.map(agentLabel),
           ...(data.tasks.map((t) => t.assignee).filter(Boolean) as string[]),
         ]),
       ).sort((a, b) => a.localeCompare(b)),
-    [data.tasks, people.data],
+    [data.tasks, people.data, agents],
   );
   const [showAllHistory, setShowAllHistory] = useState(false);
   const HISTORY_PREVIEW = 5;

@@ -2047,6 +2047,23 @@ export function setProjectLook(slug: string, look: { art: string | null; hue: nu
   if (updated.changes === 0) throw new Error(`${slug} has no board on this computer yet`);
 }
 
+/**
+ * The AI agents that have worked on the open project (through the MCP
+ * server), by the name they write under — they are participants: work can
+ * be assigned to them, and the activity feed shows what they did.
+ */
+export function projectAgents(): string[] {
+  const repository = activeRepository();
+  if (!repository) return [];
+  return db
+    .selectDistinct({ actor: activityEvents.actor })
+    .from(activityEvents)
+    .where(and(eq(activityEvents.repositoryId, repository.id), eq(activityEvents.actorKind, "agent")))
+    .all()
+    .map((r) => r.actor)
+    .filter((a): a is string => Boolean(a));
+}
+
 /** Card counts per connected repository (every board of it), for the project switcher. */
 export function projectSummaries(
   repos: string[],
