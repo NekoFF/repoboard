@@ -123,6 +123,18 @@ const server = http.createServer(async (req, res) => {
   const p = decodeURIComponent(url.pathname);
 
   if (p === "/user") return send(res, 200, { login: META.viewer });
+  if (p === "/user/repos") {
+    return send(res, 200, [
+      {
+        name: REPO,
+        full_name: `${OWNER}/${REPO}`,
+        owner: { login: OWNER },
+        private: false,
+        description: "A calm, private web browser",
+        pushed_at: commits[0].date,
+      },
+    ]);
+  }
 
   const prefix = `/repos/${OWNER}/${REPO}`;
   if (!p.toLowerCase().startsWith(prefix.toLowerCase())) return notFound(res);

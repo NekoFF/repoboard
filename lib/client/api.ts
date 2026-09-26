@@ -90,6 +90,13 @@ export const api = {
       projects: ProjectInfo[];
     }>("/api/repo", { token, repo }),
 
+  /** Asks GitHub which repositories this token opens; the token goes to our server only. */
+  repositoriesFor: (token: string) =>
+    post<{ repos: { fullName: string; private: boolean; description: string | null; pushedAt: string | null }[] }>(
+      "/api/repo",
+      { action: "repos", token },
+    ),
+
   switchProject: (repo: string) =>
     post<{ switched: string; projects: ProjectInfo[] }>("/api/repo", { action: "switch", repo }),
 

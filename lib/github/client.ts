@@ -17,6 +17,13 @@ export interface RepoSummary {
   pushedAt: string | null;
 }
 
+export interface AccessibleRepo {
+  fullName: string;
+  private: boolean;
+  description: string | null;
+  pushedAt: string | null;
+}
+
 export interface BranchSummary {
   name: string;
   protected: boolean;
@@ -179,6 +186,30 @@ export class GitHubClient {
       htmlUrl: data.html_url,
       pushedAt: data.pushed_at ?? null,
     };
+  }
+
+  /**
+   * The repositories a token can open, most recently pushed first, so the
+   * connect form can offer them instead of asking for "owner/name". A
+   * fine-grained token lists only the repositories it was given.
+   */
+  static async repositoriesFor(token: string): Promise<AccessibleRepo[]> {
+    const octokit = makeOctokit(token);
+    const repos = await octokit
+      .paginate(octokit.rest.repos.listForAuthenticatedUser, { per_page: 100, sort: "pushed" })
+      .catch((error: { status?: number }) => {
+        if (error.status === 401) {
+          throw new Error("GitHub did not accept this token. Check that it was copied whole and has not expired, or make a new one.");
+        }
+        if (!error.status) throw new Error("GitHub could not be reached. Check the internet connection and try again.");
+        throw error;
+      });
+    return repos.slice(0, 300).map((r) => ({
+      fullName: r.full_name,
+      private: r.private,
+      description: r.description ?? null,
+      pushedAt: r.pushed_at ?? null,
+    }));
   }
 
   /** The GitHub login the token belongs to — the default author of notes. */
@@ -469,6 +500,75 @@ export class GitHubClient {
     return [...byShaMap.values()].sort(
       (a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"),
     );
+  }
+
+  /**
+   * The history for Project life: the default branch far back, then each
+   * other branch read until it reaches a commit the default branch has — so
+   * a long-running branch still shows where it left, however many commits it
+   * carries. A branch that came back by fast-forward is only a name on a
+   * commit of the default branch (its `heads`).
+   */
+  async storyGraph(mainLimit = 300, maxBranches = 20, branchLimit = 300): Promise<GraphCommit[]> {
+    const repo = await this.getRepo();
+    const branches = await this.octokit.rest.repos
+      .listBranches({ owner: this.owner, repo: this.repo, per_page: 100 })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error)) return [];
+        throw error;
+      });
+    const main = branches.find((b) => b.name === repo.defaultBranch);
+    const others = branches.filter((b) => b.name !== repo.defaultBranch);
+    const bySha = new Map<string, GraphCommit>();
+    type Listed = Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"];
+    const add = (c: Listed[number]) => {
+      if (bySha.has(c.sha)) return;
+      bySha.set(c.sha, {
+        sha: c.sha,
+        message: c.commit.message.split("\n")[0],
+        author: c.author?.login ?? c.commit.author?.name ?? null,
+        date: c.commit.author?.date ?? null,
+        parents: c.parents.map((p) => p.sha),
+        heads: [],
+      });
+    };
+    const page = (sha: string, n: number, perPage: number) =>
+      this.octokit.rest.repos
+        .listCommits({ owner: this.owner, repo: this.repo, sha, per_page: perPage, page: n })
+        .then((r) => r.data)
+        .catch(() => [] as Listed);
+
+    if (main) {
+      const pages = Math.ceil(mainLimit / 100);
+      const data = (await Promise.all(Array.from({ length: pages }, (_, i) => page(main.name, i + 1, 100)))).flat();
+      data.forEach(add);
+    }
+    const onMain = new Set(bySha.keys());
+    // A branch whose tip is on the default branch needs no reading at all.
+    const reading = others.filter((b) => !onMain.has(b.commit.sha));
+    // The most recently moved branches first; the API gives no order, so read their tips.
+    const tips = await Promise.all(
+      reading.map(async (b) => ({ b, first: await page(b.name, 1, 40) })),
+    );
+    tips.sort((x, y) => Date.parse(y.first[0]?.commit.author?.date ?? "0") - Date.parse(x.first[0]?.commit.author?.date ?? "0"));
+    await Promise.all(
+      tips.slice(0, maxBranches).map(async ({ b, first }) => {
+        let data = first;
+        for (let n = 2; ; n += 1) {
+          const stop = data.findIndex((c) => onMain.has(c.sha));
+          if (stop >= 0) {
+            data.slice(0, stop + 1).forEach(add);
+            return;
+          }
+          data.forEach(add);
+          if (data.length < 40 || n * 40 > branchLimit) return;
+          data = await page(b.name, n, 40);
+        }
+      }),
+    );
+    for (const branch of branches) bySha.get(branch.commit.sha)?.heads.push(branch.name);
+    return [...bySha.values()].sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"));
   }
 
   /**

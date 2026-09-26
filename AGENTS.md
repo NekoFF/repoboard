@@ -131,8 +131,10 @@ The sidebar lists the boards under "Boards"; the command menu has a Boards
 group. Overview opens with **Project life** (`components/ProjectStory.tsx`,
 model in `lib/client/story.ts`): the repository's history as a timeline of
 the main line, branches leaving and merging, and open branches, read from
-`/api/github?resource=story` (300 commits of the default branch, 40 of each
-other). Nodes sit on springs; long stretches of work are grouped per month.
+`/api/github?resource=story` (`storyGraph`: 300 commits of the default branch,
+each other branch read back to where it left it). A branch that came back by
+fast-forward has no merge commit, so it shows as a "landed" mark on the main
+line. Nodes sit on springs; long stretches of work are grouped per month.
 
 If you remove or rename a screen, update `components/shell/Sidebar.tsx`, the
 command menu in `components/shell/CommandPalette.tsx`, the `G` shortcuts in

@@ -151,6 +151,33 @@ export function AppShell({
     };
   }, [connected, retry]);
 
+  // Projects are shared by every window on this computer (the browser, the
+  // desktop app): when one of them connects or switches a project, the others
+  // pick it up the next time they are looked at, instead of showing one
+  // project's name over another's data.
+  const projectKey = projects.map((p) => `${p.repo.toLowerCase()}${p.active ? "*" : ""}`).join(",");
+  useEffect(() => {
+    if (managedByEnvironment) return;
+    let lastLook = 0;
+    const look = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastLook < 2_000) return;
+      lastLook = Date.now();
+      api
+        .connection()
+        .then((now) => {
+          const key = now.projects.map((p) => `${p.repo.toLowerCase()}${p.active ? "*" : ""}`).join(",");
+          if (key !== projectKey) router.refresh();
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener("focus", look);
+    document.addEventListener("visibilitychange", look);
+    return () => {
+      window.removeEventListener("focus", look);
+      document.removeEventListener("visibilitychange", look);
+    };
+  }, [projectKey, managedByEnvironment, router]);
+
   const openPalette = useCallback((query = "") => setPalette({ open: true, query }), []);
   const openShortcuts = useCallback(() => setShortcuts(true), []);
 

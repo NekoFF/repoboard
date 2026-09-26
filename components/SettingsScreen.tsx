@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Check, Copy, ExternalLink, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
+import { Bot, Check, Copy, ExternalLink, Globe, HardDrive, KeyRound, Lock, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
@@ -26,6 +26,240 @@ function Card({ title, icon, description, children }: { title: string; icon: Rea
 }
 
 const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
+const TOKENS_URL = "https://github.com/settings/personal-access-tokens";
+
+type Repo = Awaited<ReturnType<typeof api.repositoriesFor>>["repos"][number];
+
+/**
+ * Token first, then the repository picked from the ones GitHub says the
+ * token opens — nobody has to know how to spell "owner/name". Typing it (or
+ * pasting the page's address) stays possible for a repository not listed.
+ */
+function ConnectForm({
+  connectedRepos,
+  onDone,
+  onCancel,
+}: {
+  connectedRepos: string[];
+  onDone: () => void;
+  onCancel?: () => void;
+}) {
+  const toast = useToast();
+  const [token, setToken] = useState("");
+  const [repos, setRepos] = useState<Repo[] | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [lookError, setLookError] = useState<string | null>(null);
+  const [repo, setRepo] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const asked = useRef(0);
+
+  // Ask GitHub once the token looks whole; a later keystroke wins.
+  useEffect(() => {
+    const value = token.trim();
+    setRepos(null);
+    setLookError(null);
+    setError(null);
+    if (value.length < 40) {
+      setLooking(false);
+      return;
+    }
+    const id = ++asked.current;
+    setLooking(true);
+    const timer = window.setTimeout(() => {
+      api
+        .repositoriesFor(value)
+        .then(({ repos: found }) => {
+          if (id !== asked.current) return;
+          setRepos(found);
+          setRepo((current) => current || (found.length === 1 ? found[0].fullName : ""));
+          if (found.length === 0) setTyping(false);
+        })
+        .catch((err) => id === asked.current && setLookError((err as Error).message))
+        .finally(() => id === asked.current && setLooking(false));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [token]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!repo.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body = await api.connectRepository(token, repo);
+      toast.push({
+        kind: "success",
+        message: `Connected ${body.repo.owner}/${body.repo.name}`,
+        detail: `Default branch ${body.repo.defaultBranch}, ${body.repo.visibility}`,
+      });
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tokenReady = repos !== null || lookError !== null;
+
+  return (
+    <form className="flex flex-col gap-4 rounded-xl border border-border bg-canvas p-5" onSubmit={submit}>
+      <p className="text-sm font-semibold text-ink">Connect a repository</p>
+
+      <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+        Access token from GitHub
+        <input
+          type="password"
+          className="rb-input h-9 font-mono"
+          placeholder="github_pat_…"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          required
+          autoFocus
+          autoComplete="off"
+        />
+      </label>
+
+      {!tokenReady && !looking && (
+        <div className="rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+          <p>
+            No token yet?{" "}
+            <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
+              Create one on GitHub <ExternalLink className="size-3" />
+            </a>
+          </p>
+          <ol className="mt-2 flex list-decimal flex-col gap-1 pl-4 text-xs">
+            <li><em>Resource owner</em>: you, or the organisation the repository belongs to.</li>
+            <li><em>Repository access</em> → <em>Only select repositories</em> → pick the repository.</li>
+            <li>
+              <em>Add permissions</em>: <span className="text-ink">Contents</span> read and write,{" "}
+              <span className="text-ink">Pull requests</span> and <span className="text-ink">Issues</span> read-only.
+            </li>
+            <li><em>Generate token</em>, copy it and paste it above.</li>
+          </ol>
+        </div>
+      )}
+
+      {looking && (
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> Asking GitHub which repositories this token opens…
+        </p>
+      )}
+
+      {lookError && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{lookError}</p>}
+
+      {repos && repos.length === 0 && (
+        <div className="rounded-lg bg-pill p-3 text-sm text-muted">
+          <p className="text-ink">GitHub accepted the token, but it opens no repositories.</p>
+          <p className="mt-1">
+            Open{" "}
+            <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKENS_URL} target="_blank" rel="noreferrer noopener">
+              your tokens <ExternalLink className="size-3" />
+            </a>
+            , click the token → <em>Edit</em> → <em>Repository access</em>, choose the repository and save. Then paste
+            the token here again.
+          </p>
+        </div>
+      )}
+
+      {repos && repos.length > 0 && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-xs font-medium text-muted">
+            {repos.length === 1 ? "This token opens one repository" : "Pick the repository"}
+          </legend>
+          <div className="rb-scroll-thin flex max-h-64 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border bg-surface">
+            {repos.map((r) => {
+              const picked = !typing && repo.toLowerCase() === r.fullName.toLowerCase();
+              const already = connectedRepos.includes(r.fullName.toLowerCase());
+              return (
+                <label
+                  key={r.fullName}
+                  className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 ${picked ? "bg-accent/10" : "hover:bg-pill"}`}
+                >
+                  <input
+                    type="radio"
+                    name="repo"
+                    className="sr-only"
+                    checked={picked}
+                    onChange={() => {
+                      setTyping(false);
+                      setRepo(r.fullName);
+                    }}
+                  />
+                  <ProjectMark repo={r.fullName} size={26} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 truncate text-sm text-ink">
+                      <span className="truncate">
+                        <span className="text-muted">{r.fullName.split("/")[0]}/</span>
+                        <span className="font-medium">{r.fullName.split("/")[1]}</span>
+                      </span>
+                      {r.private ? (
+                        <Lock className="size-3 shrink-0 text-faint" aria-label="Private" />
+                      ) : (
+                        <Globe className="size-3 shrink-0 text-faint" aria-label="Public" />
+                      )}
+                    </span>
+                    {(r.description || already) && (
+                      <span className="block truncate text-xs text-faint">
+                        {already ? "Already connected — this replaces its token" : r.description}
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={`grid size-4 shrink-0 place-items-center rounded-full border ${picked ? "border-accent bg-accent text-white" : "border-border"}`}
+                    aria-hidden
+                  >
+                    {picked && <Check className="size-2.5" strokeWidth={3} />}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      )}
+
+      {tokenReady &&
+        (typing || lookError || (repos && repos.length === 0) ? (
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Repository — its name as owner/name, or its address copied from the browser
+            <input
+              className="rb-input h-9 font-mono"
+              placeholder="https://github.com/owner/name"
+              value={repo}
+              onChange={(event) => setRepo(event.target.value)}
+              autoFocus={typing}
+            />
+          </label>
+        ) : (
+          <button
+            type="button"
+            className="w-fit text-xs text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink"
+            onClick={() => {
+              setTyping(true);
+              setRepo("");
+            }}
+          >
+            The repository is not in the list
+          </button>
+        ))}
+
+      {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}
+
+      <div className="flex items-center gap-2">
+        <button className="rb-btn-primary h-9 px-4" disabled={busy || !repo.trim()}>
+          {busy && <Spinner />} {busy ? "Checking with GitHub" : "Connect"}
+        </button>
+        {onCancel && (
+          <button type="button" className="rb-btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
 
 /** Ready-to-paste MCP configuration for the common AI clients. */
 function AgentSetup({ server, node, env }: { server: string; node: string; env: Record<string, string> }) {
@@ -125,38 +359,12 @@ export function SettingsScreen({
   const toast = useToast();
   const { projects, connected, repo: activeRepo } = useShell();
   const { choice, setChoice } = useTheme();
-  const [repo, setRepo] = useState("");
-  const [token, setToken] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(projects.length === 0 || Boolean(params.get("add")));
 
   useEffect(() => {
     if (params.get("add")) setAdding(true);
   }, [params]);
-
-  const connect = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy("connect");
-    setError(null);
-    try {
-      const body = await api.connectRepository(token, repo);
-      toast.push({
-        kind: "success",
-        message: `Connected ${body.repo.owner}/${body.repo.name}`,
-        detail: `Default branch ${body.repo.defaultBranch}, ${body.repo.visibility}`,
-      });
-      setToken("");
-      setRepo("");
-      setAdding(false);
-      router.refresh();
-      router.push("/");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const act = async (key: string, fn: () => Promise<unknown>, message: string) => {
     setBusy(key);
@@ -247,57 +455,15 @@ export function SettingsScreen({
 
             {!managedByEnvironment &&
               (adding ? (
-                <form className="flex flex-col gap-4 rounded-xl border border-border bg-canvas p-5" onSubmit={connect}>
-                  <p className="text-sm font-semibold text-ink">Connect a repository</p>
-                  <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-                    Repository
-                    <input
-                      className="rb-input h-9 font-mono"
-                      placeholder="owner/name"
-                      value={repo}
-                      onChange={(event) => setRepo(event.target.value)}
-                      required
-                      autoFocus
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-                    Fine-grained access token
-                    <input
-                      type="password"
-                      className="rb-input h-9 font-mono"
-                      placeholder="github_pat_…"
-                      value={token}
-                      onChange={(event) => setToken(event.target.value)}
-                      required
-                      autoComplete="off"
-                    />
-                  </label>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-sm text-muted">
-                    <p>
-                      <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
-                        Create a token on GitHub <ExternalLink className="size-3" />
-                      </a>{" "}
-                      with the repository's owner as <em>Resource owner</em>, <em>Only select repositories</em> → this repository, and under <em>Add permissions</em>:
-                    </p>
-                    <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <li><span className="text-ink">Contents</span> — read and write</li>
-                      <li><span className="text-ink">Pull requests</span> — read</li>
-                      <li><span className="text-ink">Metadata</span> — added by GitHub</li>
-                      <li><span className="text-ink">Issues</span> — read</li>
-                    </ul>
-                  </div>
-                  {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}
-                  <div className="flex items-center gap-2">
-                    <button className="rb-btn-primary h-9 px-4" disabled={busy === "connect"}>
-                      {busy === "connect" && <Spinner />} {busy === "connect" ? "Checking with GitHub" : "Connect"}
-                    </button>
-                    {projects.length > 0 && (
-                      <button type="button" className="rb-btn-ghost" onClick={() => setAdding(false)}>
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </form>
+                <ConnectForm
+                  connectedRepos={projects.map((p) => p.repo.toLowerCase())}
+                  onDone={() => {
+                    setAdding(false);
+                    router.refresh();
+                    router.push("/");
+                  }}
+                  onCancel={projects.length > 0 ? () => setAdding(false) : undefined}
+                />
               ) : (
                 <button className="rb-btn w-fit" onClick={() => setAdding(true)}>
                   <Plus className="size-3.5" /> Connect a repository

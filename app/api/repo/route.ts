@@ -18,6 +18,8 @@ import {
   setActiveProject,
 } from "@/lib/github/auth-provider";
 import { getVerifiedRepository, invalidateAccessCache } from "@/lib/github/access";
+import { GitHubClient } from "@/lib/github/client";
+import { repoSlug } from "@/lib/github/slug";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +60,10 @@ export async function GET() {
   });
 }
 
-const slug = z.string().regex(/^[^/\s]+\/[^/\s]+$/, "Use owner/name");
+const slug = z
+  .string()
+  .transform(repoSlug)
+  .pipe(z.string().regex(/^[^/\s]+\/[^/\s]+$/, "Pick a repository, or type it as owner/name"));
 
 const bodySchema = z.union([
   z.object({
@@ -66,6 +71,7 @@ const bodySchema = z.union([
     token: z.string().min(10, "Token looks too short"),
     repo: slug,
   }),
+  z.object({ action: z.literal("repos"), token: z.string().min(10, "Token looks too short") }),
   z.object({ action: z.literal("switch"), repo: slug }),
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
@@ -93,6 +99,10 @@ async function handlePost(request: Request) {
   const body = parsed.data;
 
   try {
+    if (body.action === "repos") {
+      const repos = await GitHubClient.repositoriesFor(body.token.trim());
+      return NextResponse.json({ repos });
+    }
     if ("token" in body) {
       const summary = await connectRepository(body.token.trim(), body.repo.trim());
       // Stored under GitHub's spelling of the name, so it matches the board row.
