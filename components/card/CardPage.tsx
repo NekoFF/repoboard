@@ -78,7 +78,26 @@ function toDateInput(value: number | null): string {
  * long time — its description, its tree of items, the code linked to it and
  * its history. Dialogs open from here only for focused edits (an item).
  */
-export function CardPage({ task, data, connected }: { task: BoardTask; data: BoardData; connected: boolean }) {
+export interface CardMention {
+  path: string;
+  doc: string;
+  title: string;
+  line: number;
+  state: string;
+}
+
+export function CardPage({
+  task,
+  data,
+  connected,
+  mentions: docMentions = [],
+}: {
+  task: BoardTask;
+  data: BoardData;
+  connected: boolean;
+  /** Checklist items in documents that name this card (RB-n). */
+  mentions?: CardMention[];
+}) {
   const router = useRouter();
   const toast = useToast();
   const commitMove = useCommitMove(data);
@@ -697,6 +716,26 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
               people={allAssignees}
               onChange={(checklist) => save({ checklist })}
             />
+
+            {/* backlinks: where the documents talk about this card */}
+            {docMentions.length > 0 && (
+              <Section title="Mentioned in" count={docMentions.length}>
+                <ul className="flex flex-col">
+                  {docMentions.map((m) => (
+                    <li key={`${m.path}-${m.line}`}>
+                      <Link
+                        href={`/docs?path=${encodeURIComponent(m.path)}#line-${m.line}`}
+                        className="-mx-2 flex h-9 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-hover"
+                      >
+                        <StatusIcon status={m.state as "todo"} />
+                        <span className="min-w-0 flex-1 truncate text-ink">{m.title}</span>
+                        <span className="max-w-[40%] shrink-0 truncate text-xs text-faint">{m.doc}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
 
             {/* development */}
             <Section

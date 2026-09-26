@@ -8,6 +8,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
     title: "Anywhere",
     keys: [
       [`${modKey()} K`, "Search and run commands"],
+      ["G I", "Go to inbox"],
       ["G O", "Go to overview"],
       ["G M", "Go to my work"],
       ["G B", "Go to boards"],

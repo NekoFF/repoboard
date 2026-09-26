@@ -18,7 +18,7 @@ import {
 import type { DocSnapshot } from "@/db/schema";
 
 /** Bump when DocSnapshot gains fields, so stored snapshots are re-read. */
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 
 /**
  * A markdown file read as a checklist: every `- [ ]` anywhere in the file is an
@@ -257,6 +257,8 @@ export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
       priority: i.priority,
       due: i.due,
       owners: i.owners,
+      // RB-n the item names: what a card's "Mentioned in" is made of.
+      cards: i.cards,
     })),
   };
 }

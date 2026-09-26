@@ -12,6 +12,7 @@ import {
   GitBranch,
   GitPullRequest,
   CircleUserRound,
+  Inbox as InboxIcon,
   Home,
   Keyboard,
   Moon,
@@ -148,6 +149,7 @@ export function CommandPalette({
               </Command.Group>
 
               <Command.Group heading="Go to" className={groupClass}>
+                <Item value="Inbox" keywords={["new", "notifications", "unread"]} icon={<InboxIcon className="size-4" />} hint="G I" onSelect={go("/inbox")}>Inbox</Item>
                 <Item value="Overview" icon={<Home className="size-4" />} hint="G O" onSelect={go("/")}>Overview</Item>
                 <Item value="My work" keywords={["assigned", "me", "mine", "todo"]} icon={<CircleUserRound className="size-4" />} hint="G M" onSelect={go("/me")}>My work</Item>
                 <Item value="Boards" icon={<SquareKanban className="size-4" />} hint="G B" onSelect={go("/boards")}>Boards</Item>

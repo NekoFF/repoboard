@@ -161,6 +161,7 @@ export interface DocSnapshot {
     priority?: number;
     due?: string | null;
     owners?: string[];
+    cards?: number[];
   }[];
 }
 

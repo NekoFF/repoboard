@@ -6,6 +6,7 @@ import {
   Activity,
   CircleUserRound,
   FileText,
+  Inbox as InboxIcon,
   GitBranch,
   Home,
   Keyboard,
@@ -24,8 +25,10 @@ import { Kbd, ProgressRing, Tooltip, percent } from "@/components/ui";
 import { ActorAvatar } from "@/components/Actor";
 import { boardColor, boardHref } from "@/components/labelColor";
 import { useModKey } from "@/lib/client/hotkeys";
+import { useInboxCount } from "@/components/InboxScreen";
 
 const NAV: { href: string; label: string; icon: ReactNode; keys: string }[] = [
+  { href: "/inbox", label: "Inbox", icon: <InboxIcon className="size-4" />, keys: "G then I" },
   { href: "/", label: "Overview", icon: <Home className="size-4" />, keys: "G then O" },
   { href: "/me", label: "My work", icon: <CircleUserRound className="size-4" />, keys: "G then M" },
   { href: "/boards", label: "Boards", icon: <SquareKanban className="size-4" />, keys: "G then B" },
@@ -69,6 +72,7 @@ export function Sidebar() {
   const { docs, boards, openPalette, openShortcuts } = useShell();
   const { resolved, toggle } = useTheme();
   const mod = useModKey();
+  const unread = useInboxCount();
   const currentDoc = pathname.startsWith("/docs") ? params.get("path") : null;
 
   return (
@@ -92,7 +96,19 @@ export function Sidebar() {
         {NAV.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname === item.href;
           return (
-            <NavLink key={item.href} href={item.href} active={active && !currentDoc} icon={item.icon}>
+            <NavLink
+              key={item.href}
+              href={item.href}
+              active={active && !currentDoc}
+              icon={item.icon}
+              trailing={
+                item.href === "/inbox" && unread > 0 ? (
+                  <span className="grid min-w-[18px] place-items-center rounded-full bg-accent px-1 text-2xs font-semibold tabular-nums text-on-accent">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                ) : null
+              }
+            >
               {item.label}
             </NavLink>
           );

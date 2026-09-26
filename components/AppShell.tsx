@@ -163,6 +163,7 @@ export function AppShell({
       "g o": () => router.push("/"),
       "g b": () => router.push("/boards"),
       "g m": () => router.push("/me"),
+      "g i": () => router.push("/inbox"),
       "g d": () => router.push("/docs"),
       "g c": () => router.push("/repository"),
       "g a": () => router.push("/activity"),
