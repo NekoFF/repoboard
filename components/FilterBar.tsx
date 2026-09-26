@@ -35,8 +35,13 @@ export const FilterBar = forwardRef<
   // What is in the input box. Operators typed there stay text until a space or
   // Enter completes them — "label:b" must not become a chip mid-word.
   const [draft, setDraft] = useState(() => splitQuery(query).text);
+  // A query set from outside (a link, a milestone) shows its words in the box.
+  const lastQuery = useRef(query);
   useEffect(() => {
-    if (!query) setDraft("");
+    if (query === lastQuery.current) return;
+    lastQuery.current = query;
+    const words = splitQuery(query).text;
+    setDraft((draft) => (splitQuery(draft).text.trim() === words.trim() ? draft : words));
   }, [query]);
 
   const draftTokens = new Set(tokenize(draft));

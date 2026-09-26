@@ -20,7 +20,7 @@ import {
 } from "@/db/schema";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
-import { normalise, progress, type ChecklistItem } from "@/lib/checklist";
+import { locate, normalise, progress, setDone, type ChecklistItem } from "@/lib/checklist";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
 import {
   DEFAULT_COLUMN_HEADINGS,
@@ -446,6 +446,25 @@ export function getBoardData(boardId?: string | null): BoardData {
 }
 
 /** Used by route handlers for actions on cards that are not in the visible list (undo). */
+/**
+ * The main board's data with the cards and columns of every board of the
+ * project added — for places that look cards up by id or number (search,
+ * Activity, the Code screen) and must find them on any board. Writes still
+ * go to a board by its own id.
+ */
+export function getProjectData(): BoardData {
+  const main = getBoardData();
+  if (!main.repository) return main;
+  const others = repositoryBoards(main.repository.id)
+    .filter((b) => b.id !== main.boardId)
+    .map((b) => getBoardData(b.id));
+  return {
+    ...main,
+    columns: [...main.columns, ...others.flatMap((o) => o.columns)],
+    tasks: [...main.tasks, ...others.flatMap((o) => o.tasks)],
+  };
+}
+
 export function taskBelongsToBoard(taskId: string, boardId: string): boolean {
   return Boolean(
     db.select({ id: tasks.id })
@@ -575,6 +594,33 @@ export function archiveBoard(boardId: string): void {
   logActivity({ repositoryId: repository.id, type: "board_archived", message: `archived the board ${board.name}` });
 }
 
+/** Brings an archived board back, with its cards. */
+export function restoreBoard(boardId: string): void {
+  const { repository, board } = ownBoard(boardId);
+  db.update(boards).set({ archivedAt: null, updatedAt: now() }).where(eq(boards.id, boardId)).run();
+  logActivity({ repositoryId: repository.id, type: "board_restored", message: `brought back the board ${board.name}` });
+}
+
+/** Archived boards of the active repository, newest first. */
+export function listArchivedBoards(): { id: string; name: string; owner: string | null; archivedAt: number; cards: number }[] {
+  const repository = activeRepository();
+  if (!repository) return [];
+  return db
+    .select()
+    .from(boards)
+    .where(eq(boards.repositoryId, repository.id))
+    .all()
+    .filter((b) => b.archivedAt)
+    .sort((a, b) => b.archivedAt!.getTime() - a.archivedAt!.getTime())
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      owner: b.owner ?? null,
+      archivedAt: b.archivedAt!.getTime(),
+      cards: db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.boardId, b.id), isNull(tasks.deletedAt))).all().length,
+    }));
+}
+
 /** Which board of the active repository a card (id or number) is on. */
 export function findCardBoard(ref: string): { boardId: string; taskId: string } | null {
   const repository = activeRepository();
@@ -651,6 +697,27 @@ export function createTask(args: {
   return id;
 }
 
+/**
+ * Tick or untick one item on the card as it is now in the database — not on
+ * a copy the page had, so two quick ticks on the same card both land.
+ */
+export function setItemDone(taskId: string, itemId: string, done: boolean): ChecklistItem[] {
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+  if (!task) throw new Error("No such card");
+  const list = normalise(task.checklist);
+  const found = locate(list, itemId);
+  if (!found) throw new Error("That item is no longer on the card");
+  const next = setDone(list, itemId, done);
+  db.update(tasks).set({ checklist: next, updatedAt: now() }).where(eq(tasks.id, taskId)).run();
+  logActivity({
+    repositoryId: db.select({ r: boards.repositoryId }).from(boards).where(eq(boards.id, task.boardId)).get()?.r ?? "",
+    taskId,
+    type: "card_updated",
+    message: `${done ? "ticked" : "reopened"} item ${found.number} “${found.item.text}” on ${task.title}`,
+  });
+  return next;
+}
+
 export function updateTask(
   taskId: string,
   patch: {
@@ -721,23 +788,24 @@ export function moveTaskLocally(
     .where(eq(columns.id, targetColumnId))
     .get();
 
-  db.update(tasks)
-    .set({ columnId: targetColumnId, position, updatedAt: now() })
-    .where(eq(tasks.id, taskId))
-    .run();
-
-  // Re-pack positions in the destination column so ordering stays stable.
+  // The card goes in at `position` among the live cards of the column; the
+  // others keep their order around it. Deleted cards take no place.
   const siblings = db
     .select()
     .from(tasks)
-    .where(eq(tasks.columnId, targetColumnId))
+    .where(and(eq(tasks.columnId, targetColumnId), isNull(tasks.deletedAt)))
     .orderBy(asc(tasks.position))
-    .all();
-  siblings.forEach((sibling, index) => {
-    db.update(tasks)
-      .set({ position: index })
-      .where(eq(tasks.id, sibling.id))
-      .run();
+    .all()
+    .filter((t) => t.id !== taskId);
+  siblings.splice(Math.max(0, Math.min(position, siblings.length)), 0, { ...task, columnId: targetColumnId });
+  db.transaction(() => {
+    siblings.forEach((sibling, index) => {
+      if (sibling.id === taskId) {
+        db.update(tasks).set({ columnId: targetColumnId, position: index, updatedAt: now() }).where(eq(tasks.id, taskId)).run();
+      } else if (sibling.position !== index) {
+        db.update(tasks).set({ position: index }).where(eq(tasks.id, sibling.id)).run();
+      }
+    });
   });
 
   return {
@@ -747,12 +815,26 @@ export function moveTaskLocally(
 }
 
 /** Reorders a column after a drag, keeping positions dense and stable. */
+/**
+ * Only cards whose place actually changes are touched — and only they get a
+ * new updatedAt. Bumping every card in the column would make a drag "win"
+ * every board.json merge and silently undo a teammate's edits to those cards.
+ */
 export function reorderColumn(columnId: string, orderedIds: string[]): void {
-  orderedIds.forEach((taskId, index) => {
-    db.update(tasks)
-      .set({ columnId, position: index, updatedAt: now() })
-      .where(eq(tasks.id, taskId))
-      .run();
+  const current = new Map(
+    db
+      .select({ id: tasks.id, position: tasks.position, columnId: tasks.columnId })
+      .from(tasks)
+      .where(inArray(tasks.id, orderedIds.length ? orderedIds : [""]))
+      .all()
+      .map((t) => [t.id, t]),
+  );
+  db.transaction(() => {
+    orderedIds.forEach((taskId, index) => {
+      const row = current.get(taskId);
+      if (row && row.position === index && row.columnId === columnId) return;
+      db.update(tasks).set({ columnId, position: index, updatedAt: now() }).where(eq(tasks.id, taskId)).run();
+    });
   });
 }
 
@@ -903,8 +985,14 @@ export async function syncFromMarkdown(
 
   const parsed = parseMarkdown(content);
   const columnByName = new Map(data.columns.map((c) => [c.name, c.id]));
+  // Deleted cards count too: a card someone deleted must not come back as a
+  // new one (with a new number) on the next sync.
   const existingByMarkdownId = new Map(
-    data.tasks
+    db
+      .select({ id: tasks.id, title: tasks.title, columnId: tasks.columnId, markdownTaskId: tasks.markdownTaskId, deletedAt: tasks.deletedAt })
+      .from(tasks)
+      .where(eq(tasks.boardId, data.boardId!))
+      .all()
       .filter((t) => t.markdownTaskId)
       .map((t) => [t.markdownTaskId!, t]),
   );
@@ -919,6 +1007,7 @@ export async function syncFromMarkdown(
 
     const existing = existingByMarkdownId.get(mdTask.id);
     if (existing) {
+      if (existing.deletedAt) return;
       if (existing.title !== mdTask.title || existing.columnId !== columnId) {
         db.update(tasks)
           .set({ title: mdTask.title, columnId, updatedAt: now() })
@@ -1441,8 +1530,12 @@ function ensureNamed(repositoryId: string, boardId: string, columnNames: string[
   }
 }
 
-/** Make this machine match a merged board file. */
+/** Make this machine match a merged board file — all of it, or nothing. */
 function applyBoardFile(repositoryId: string, state: BoardState): void {
+  db.transaction(() => applyBoardFileNow(repositoryId, state));
+}
+
+function applyBoardFileNow(repositoryId: string, state: BoardState): void {
   const mainId = primaryBoardId(repositoryId);
   const main = db.select().from(boards).where(eq(boards.id, mainId)).get();
   const sameMeta = (a: BoardStateMeta, b: BoardStateMeta) =>
@@ -1455,6 +1548,8 @@ function applyBoardFile(repositoryId: string, state: BoardState): void {
   writeCards(mainId, state.cards);
 
   for (const incoming of state.boards ?? []) {
+    // The main board is the top level of the file; a "board" with its id is not.
+    if (incoming.id === mainId) continue;
     const row = db.select().from(boards).where(eq(boards.id, incoming.id)).get();
     if (row && row.repositoryId !== repositoryId) throw new Error("A board from another project has the same ID");
     const meta = {
@@ -1482,15 +1577,64 @@ function applyBoardFile(repositoryId: string, state: BoardState): void {
     ensureNamed(repositoryId, incoming.id, incoming.columns, incoming.milestones);
     writeCards(incoming.id, incoming.cards);
   }
+  renumberDuplicates(repositoryId);
 }
 
+/**
+ * The repository's board.json. Missing is fine — the first push creates it.
+ * Present but unreadable (a merge conflict left in it, a newer format) is not:
+ * saving over it would throw away everything only the file has, so both
+ * directions refuse until someone fixes it.
+ */
 async function readBoardFile(gh: Awaited<ReturnType<ClientFactory>>): Promise<{ state: BoardState | null; sha: string | null }> {
+  let file: { content: string; sha: string };
   try {
-    const file = await gh.getFile(BOARD_STATE_PATH);
-    return { state: parseBoardState(file.content), sha: file.sha };
-  } catch {
-    // Not in the repository yet — the first push creates it.
-    return { state: null, sha: null };
+    file = await gh.getFile(BOARD_STATE_PATH);
+  } catch (error) {
+    if ((error as { status?: number }).status === 404 || /not found|is not a file/i.test((error as Error).message)) {
+      return { state: null, sha: null };
+    }
+    throw error;
+  }
+  const state = parseBoardState(file.content);
+  if (!state) {
+    throw new Error(
+      `${BOARD_STATE_PATH} on GitHub could not be read (a merge conflict or a newer format?). Fix or remove it there; nothing was changed.`,
+    );
+  }
+  return { state, sha: file.sha };
+}
+
+/**
+ * Two machines can give different cards the same RB number before they
+ * sync. The older card keeps it; the newer one gets the next free number,
+ * and a new updatedAt so the change travels back.
+ */
+function renumberDuplicates(repositoryId: string): void {
+  const ids = db.select({ id: boards.id }).from(boards).where(eq(boards.repositoryId, repositoryId)).all().map((b) => b.id);
+  if (ids.length === 0) return;
+  const rows = db
+    .select({ id: tasks.id, number: tasks.cardNumber, createdAt: tasks.createdAt, boardId: tasks.boardId, title: tasks.title })
+    .from(tasks)
+    .where(inArray(tasks.boardId, ids))
+    .all()
+    .filter((r) => r.number != null)
+    .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || a.id.localeCompare(b.id));
+  const seen = new Set<number>();
+  for (const row of rows) {
+    if (!seen.has(row.number!)) {
+      seen.add(row.number!);
+      continue;
+    }
+    const next = nextCardNumber(row.boardId);
+    db.update(tasks).set({ cardNumber: next, updatedAt: now() }).where(eq(tasks.id, row.id)).run();
+    seen.add(next);
+    logActivity({
+      repositoryId,
+      taskId: row.id,
+      type: "card_renumbered",
+      message: `renumbered ${row.title} from RB-${row.number} to RB-${next}: another card already had that number`,
+    });
   }
 }
 
@@ -1550,7 +1694,8 @@ export async function pushBoardState(
 
   const written = await gh.putFile({
     path: BOARD_STATE_PATH,
-    content: serialiseBoardState(merged.state),
+    // What this machine now has — merged, and with duplicate numbers resolved.
+    content: serialiseBoardState(localBoardState()),
     expectedSha: sha ?? undefined,
     message: `RepoBoard: update boards (${changes.length} change${changes.length === 1 ? "" : "s"})`,
   });
@@ -1612,17 +1757,22 @@ export function updateMilestone(
 
 /** Cards keep existing; they just stop pointing at the milestone. */
 export function deleteMilestone(id: string): void {
-  db.update(tasks).set({ milestoneId: null }).where(eq(tasks.milestoneId, id)).run();
+  db.update(tasks).set({ milestoneId: null, updatedAt: now() }).where(eq(tasks.milestoneId, id)).run();
   db.delete(milestones).where(eq(milestones.id, id)).run();
 }
 
-export function getActivity(limit = 50) {
+/** The project's history, newest first; `taskId` narrows it to one card. */
+export function getActivity(limit = 50, taskId?: string | null) {
   const repositoryId = configuredRepositoryId();
   if (!repositoryId) return [];
   return db
     .select()
     .from(activityEvents)
-    .where(eq(activityEvents.repositoryId, repositoryId))
+    .where(
+      taskId
+        ? and(eq(activityEvents.repositoryId, repositoryId), eq(activityEvents.taskId, taskId))
+        : eq(activityEvents.repositoryId, repositoryId),
+    )
     .orderBy(desc(activityEvents.createdAt))
     .limit(limit)
     .all()
@@ -1645,6 +1795,8 @@ export function linkTask(args: {
   issue?: number;
   repositoryId: string;
 }) {
+  // A link is part of the card: its updatedAt moves, so board.json carries it.
+  db.update(tasks).set({ updatedAt: now() }).where(eq(tasks.id, args.taskId)).run();
   if (args.branch) {
     db.insert(taskBranchLinks)
       .values({
@@ -1703,6 +1855,7 @@ export function unlinkTask(args: {
   pullRequest?: number;
   issue?: number;
 }) {
+  db.update(tasks).set({ updatedAt: now() }).where(eq(tasks.id, args.taskId)).run();
   if (args.branch) {
     db.delete(taskBranchLinks)
       .where(

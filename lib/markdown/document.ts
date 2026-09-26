@@ -4,6 +4,9 @@ import remarkGfm from "remark-gfm";
 import type { Blockquote, Heading, List, ListItem, Paragraph, Root, RootContent } from "mdast";
 import { parseTaskLine } from "@/lib/markdown/parser";
 import {
+  lineEnding,
+  toLF,
+  withLineEnding,
   parseDetail,
   parseItemMeta,
   parseNote,
@@ -15,7 +18,7 @@ import {
 import type { DocSnapshot } from "@/db/schema";
 
 /** Bump when DocSnapshot gains fields, so stored snapshots are re-read. */
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 
 /**
  * A markdown file read as a checklist: every `- [ ]` anywhere in the file is an
@@ -104,7 +107,8 @@ function headingText(node: Heading, lines: string[]): string {
   return line.replace(/^#+\s*/, "").replace(/\s+#+\s*$/, "").trim();
 }
 
-export function parseDocument(content: string, fallbackTitle = "Untitled"): ParsedDocument {
+export function parseDocument(raw: string, fallbackTitle = "Untitled"): ParsedDocument {
+  const content = toLF(raw);
   const lines = content.split("\n");
   const tree = unified().use(remarkParse).use(remarkGfm).parse(content) as Root;
 
@@ -253,6 +257,8 @@ export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
       priority: i.priority,
       due: i.due,
       owners: i.owners,
+      // RB-n the item names: what a card's "Mentioned in" is made of.
+      cards: i.cards,
     })),
   };
 }
@@ -344,7 +350,14 @@ export interface EditResult {
   summary: string;
 }
 
-export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
+export function applyDocEdits(raw: string, edits: DocEdit[]): EditResult {
+  const eol = lineEnding(raw);
+  const result = applyDocEditsLF(toLF(raw), edits);
+  // A file that was LF but gets its content replaced keeps what the editor sent.
+  return edits.some((e) => e.type === "replace") ? result : { ...result, content: withLineEnding(result.content, eol) };
+}
+
+function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
   const replace = edits.find((e) => e.type === "replace");
   if (replace && replace.type === "replace") {
     return {

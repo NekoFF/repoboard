@@ -78,7 +78,26 @@ function toDateInput(value: number | null): string {
  * long time — its description, its tree of items, the code linked to it and
  * its history. Dialogs open from here only for focused edits (an item).
  */
-export function CardPage({ task, data, connected }: { task: BoardTask; data: BoardData; connected: boolean }) {
+export interface CardMention {
+  path: string;
+  doc: string;
+  title: string;
+  line: number;
+  state: string;
+}
+
+export function CardPage({
+  task,
+  data,
+  connected,
+  mentions: docMentions = [],
+}: {
+  task: BoardTask;
+  data: BoardData;
+  connected: boolean;
+  /** Checklist items in documents that name this card (RB-n). */
+  mentions?: CardMention[];
+}) {
   const router = useRouter();
   const toast = useToast();
   const commitMove = useCommitMove(data);
@@ -121,7 +140,7 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   const branch = draft.branches[0] ?? null;
   const milestone = data.milestones.find((m) => m.id === draft.milestoneId) ?? null;
 
-  const activity = useResource(() => api.activity(200), [task.id]);
+  const activity = useResource(() => api.activity(200, task.id), [task.id, task.updatedAt]);
   const branches = useResource(api.branches, [], { enabled: connected });
   const pulls = useResource(api.pulls, [], { enabled: connected });
   const issues = useResource(api.issues, [], { enabled: connected });
@@ -203,7 +222,12 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   };
 
   const unlink = async (payload: Record<string, unknown>, label: string) => {
-    await api.boardAction({ boardId: data.boardId, action: "unlink", taskId: task.id, ...payload });
+    try {
+      await api.boardAction({ boardId: data.boardId, action: "unlink", taskId: task.id, ...payload });
+    } catch (error) {
+      toast.push({ kind: "error", message: `Could not unlink ${label}`, detail: (error as Error).message });
+      return;
+    }
     const next = { ...draft };
     if (payload.branch) next.branches = next.branches.filter((b) => b !== payload.branch);
     if (payload.pullRequest) next.pullRequests = next.pullRequests.filter((p) => p !== payload.pullRequest);
@@ -215,7 +239,12 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   };
 
   const remove = async () => {
-    await api.boardAction({ boardId: data.boardId, action: "delete", taskId: task.id });
+    try {
+      await api.boardAction({ boardId: data.boardId, action: "delete", taskId: task.id });
+    } catch (error) {
+      toast.push({ kind: "error", message: "Could not delete the card", detail: (error as Error).message });
+      return;
+    }
     // Deleting is reversible, so offer the way back instead of asking first.
     toast.push({
       kind: "info",
@@ -235,8 +264,14 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
   const comment = async () => {
     const message = commentDraft.trim();
     if (!message) return;
+    try {
+      await api.boardAction({ boardId: data.boardId, action: "comment", taskId: task.id, message });
+    } catch (error) {
+      // The text stays in the box, so nothing typed is lost.
+      toast.push({ kind: "error", message: "Could not post the comment", detail: (error as Error).message });
+      return;
+    }
     setCommentDraft("");
-    await api.boardAction({ boardId: data.boardId, action: "comment", taskId: task.id, message });
     activity.reload();
   };
 
@@ -681,6 +716,26 @@ export function CardPage({ task, data, connected }: { task: BoardTask; data: Boa
               people={allAssignees}
               onChange={(checklist) => save({ checklist })}
             />
+
+            {/* backlinks: where the documents talk about this card */}
+            {docMentions.length > 0 && (
+              <Section title="Mentioned in" count={docMentions.length}>
+                <ul className="flex flex-col">
+                  {docMentions.map((m) => (
+                    <li key={`${m.path}-${m.line}`}>
+                      <Link
+                        href={`/docs?path=${encodeURIComponent(m.path)}#line-${m.line}`}
+                        className="-mx-2 flex h-9 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-hover"
+                      >
+                        <StatusIcon status={m.state as "todo"} />
+                        <span className="min-w-0 flex-1 truncate text-ink">{m.title}</span>
+                        <span className="max-w-[40%] shrink-0 truncate text-xs text-faint">{m.doc}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
 
             {/* development */}
             <Section

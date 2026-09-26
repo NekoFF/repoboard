@@ -39,6 +39,15 @@ export interface Located {
   number: string;
 }
 
+/**
+ * An id for a new item or comment. crypto.randomUUID exists only in secure
+ * contexts (https or localhost); opened over the LAN it is missing.
+ */
+export function newId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `id_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function locate(items: Checklist, id: string, prefix = "", path: ChecklistItem[] = []): Located | null {
   for (let i = 0; i < items.length; i += 1) {
     const item = items[i];

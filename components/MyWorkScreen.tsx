@@ -7,7 +7,7 @@ import { ChevronDown, CircleUserRound } from "lucide-react";
 import type { BoardData, BoardSummary } from "@/lib/board-service";
 import type { TrackedDoc } from "@/lib/docs-service";
 import { api } from "@/lib/client/api";
-import { flatten, locate, setDone, type ChecklistItem } from "@/lib/checklist";
+import { flatten, locate, type ChecklistItem } from "@/lib/checklist";
 import { statusOfColumn, type Status } from "@/lib/status";
 import { PageHeader } from "@/components/PageHeader";
 import { ActorAvatar } from "@/components/Actor";
@@ -180,9 +180,10 @@ export function MyWorkScreen({ boards, docs }: { boards: { info: BoardSummary; d
     try {
       await api.boardAction({
         boardId: item.tick.boardId,
-        action: "update",
+        action: "item-done",
         taskId: item.tick.taskId,
-        checklist: setDone(item.tick.checklist, item.tick.itemId, true),
+        itemId: item.tick.itemId,
+        done: true,
       });
       toast.push({ kind: "success", message: "Done", detail: item.title });
       router.refresh();

@@ -257,6 +257,25 @@ export function KanbanBoard({
     [visible],
   );
 
+  // Every card of a column, filtered or not: a move while a filter is on must
+  // not scramble the cards the filter hides.
+  const allIn = (columnId: string, except?: string) =>
+    tasks
+      .filter((t) => t.columnId === columnId && t.id !== except)
+      .sort((a, b) => a.position - b.position)
+      .map((t) => t.id);
+
+  /** The full column order after placing `taskId` where it now is among the visible cards. */
+  const fullOrder = (columnId: string, visibleOrder: string[], taskId: string) => {
+    const rest = allIn(columnId, taskId);
+    const at = visibleOrder.indexOf(taskId);
+    const before = visibleOrder.slice(0, at).reverse().find((id) => rest.includes(id));
+    const after = visibleOrder.slice(at + 1).find((id) => rest.includes(id));
+    const index = before ? rest.indexOf(before) + 1 : after ? rest.indexOf(after) : rest.length;
+    rest.splice(index, 0, taskId);
+    return rest;
+  };
+
   const columnOf = (id: string): string | null => {
     if (data.columns.some((c) => c.id === id)) return id;
     return tasks.find((t) => t.id === id)?.columnId ?? null;
@@ -271,7 +290,7 @@ export function KanbanBoard({
 
   const moveTo = async (task: BoardTask, columnId: string) => {
     if (task.columnId === columnId) return;
-    const ordered = [...byColumn(columnId).map((t) => t.id), task.id];
+    const ordered = [...allIn(columnId, task.id), task.id];
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, columnId, position: ordered.length - 1 } : t)),
     );
@@ -310,12 +329,13 @@ export function KanbanBoard({
     const columnTasks = byColumn(targetColumnId).map((t) => t.id);
     const from = columnTasks.indexOf(taskId);
     const to = columnTasks.indexOf(String(over.id));
-    const ordered =
+    const visibleOrder =
       from !== -1 && to !== -1 && from !== to
         ? arrayMove(columnTasks, from, to)
         : columnTasks.includes(taskId)
           ? columnTasks
           : [...columnTasks, taskId];
+    const ordered = fullOrder(targetColumnId, visibleOrder, taskId);
 
     setTasks((prev) =>
       prev.map((task) =>
@@ -411,7 +431,12 @@ export function KanbanBoard({
       ArrowLeft: () => step(-1, 0),
       j: () => step(0, 1),
       k: () => step(0, -1),
-      Enter: () => selectedTask && openCard(selectedTask.id),
+      // Enter on a focused button or link is that control's, not the board's.
+      Enter: (event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("button, a, [data-card-id]")) return;
+        if (selectedTask) openCard(selectedTask.id);
+      },
       x: () => selectedTask && toggleDone(selectedTask),
       Escape: () => setSelectedId(null),
       c: onCreate,

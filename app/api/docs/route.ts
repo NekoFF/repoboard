@@ -23,6 +23,18 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Who checked an item is the token's owner, whatever the page sent: a
+ * "Checked:" line must not be something a caller can make up.
+ */
+function signed<T extends { type: string }>(edits: T[], login: string | null): T[] {
+  return edits.map((e) => {
+    if (e.type !== "proof") return e;
+    if (!login) throw Object.assign(new Error("GitHub did not say who you are, so the check cannot be signed"), { status: 401 });
+    return { ...e, by: login };
+  });
+}
+
 const denied = () => NextResponse.json({ error: "GitHub access required" }, { status: 401 });
 
 function failure(error: unknown) {
@@ -92,6 +104,24 @@ export async function GET(request: Request) {
 }
 
 const itemState = z.enum(["todo", "doing", "review", "done", "cancelled"]);
+
+/** Documents are markdown files; nothing else in the repository is written from here. */
+const docPath = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((p) => /\.md$/i.test(p) && !p.split("/").some((seg) => seg === ".." || seg === ".") && !/^\/|^\.github\//i.test(p), {
+    message: "Only markdown documents can be written",
+  });
+/** A proof link goes into the file as markdown: http(s) only, nothing that could end the link. */
+const proofUrl = z
+  .string()
+  .max(2000)
+  .regex(/^https?:\/\/[^\s()<>\[\]]+$/i, "A proof link must be a plain http(s) address");
+const proofImage = z
+  .string()
+  .max(500)
+  .regex(/^(\.\.\/)*[\w./-]*evidence\/[\w.-]+\.(png|jpe?g|webp)$/i, "A screenshot must be in .repoboard/evidence/");
 const edit = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("state"),
@@ -128,7 +158,7 @@ const edit = z.discriminatedUnion("type", [
     proofs: z
       .array(
         z.discriminatedUnion("kind", [
-          z.object({ kind: z.literal("link"), url: z.string().url().max(2000), label: z.string().max(300) }),
+          z.object({ kind: z.literal("link"), url: proofUrl, label: z.string().max(300) }),
           z.object({
             kind: z.literal("place"),
             path: z.string().min(1).max(500),
@@ -136,7 +166,7 @@ const edit = z.discriminatedUnion("type", [
             to: z.number().int().min(1).nullish(),
           }),
           z.object({ kind: z.literal("quote"), text: z.string().min(1).max(4000) }),
-          z.object({ kind: z.literal("image"), path: z.string().min(1).max(500), alt: z.string().max(300) }),
+          z.object({ kind: z.literal("image"), path: proofImage, alt: z.string().max(300) }),
         ]),
       )
       .max(10),
@@ -146,7 +176,7 @@ const edit = z.discriminatedUnion("type", [
 const attachment = z.object({ path: z.string().min(1).max(500), base64: z.string().min(1) });
 
 const bodySchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("track"), path: z.string().min(1) }),
+  z.object({ action: z.literal("track"), path: docPath }),
   z.object({ action: z.literal("untrack"), id: z.string() }),
   z.object({ action: z.literal("pin"), id: z.string(), pinned: z.boolean() }),
   z.object({ action: z.literal("refresh") }),
@@ -163,30 +193,30 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("preview"),
-    path: z.string().min(1),
+    path: docPath,
     edits: z.array(edit).min(1),
     baseSha: z.string().nullable(),
     attachments: z.array(z.string()).max(10).optional(),
   }),
   z.object({
     action: z.literal("commit"),
-    path: z.string().min(1),
+    path: docPath,
     edits: z.array(edit).min(1),
     expectedSha: z.string(),
     force: z.boolean().optional(),
     attachments: z.array(attachment).max(10).optional(),
   }),
-  z.object({ action: z.literal("create-preview"), path: z.string().min(1), content: z.string() }),
-  z.object({ action: z.literal("create"), path: z.string().min(1), content: z.string() }),
+  z.object({ action: z.literal("create-preview"), path: docPath, content: z.string() }),
+  z.object({ action: z.literal("create"), path: docPath, content: z.string() }),
 ]);
 
 /** Every change made through this route is attributed to the token's owner. */
 export async function POST(request: Request) {
   const login = await getViewer().catch(() => null);
-  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request));
+  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request, login));
 }
 
-async function handlePost(request: Request) {
+async function handlePost(request: Request, login: string | null) {
   if (!(await getVerifiedRepository())) return denied();
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -212,9 +242,9 @@ async function handlePost(request: Request) {
       case "workspace-create":
         return NextResponse.json(await createWorkspace(body));
       case "preview":
-        return NextResponse.json(await previewDocEdit(body));
+        return NextResponse.json(await previewDocEdit({ ...body, edits: signed(body.edits, login) }));
       case "commit":
-        return NextResponse.json(await commitDocEdit(body));
+        return NextResponse.json(await commitDocEdit({ ...body, edits: signed(body.edits, login) }));
       case "create-preview":
         return NextResponse.json(await previewDocCreate(body));
       case "create":

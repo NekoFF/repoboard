@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { KeyRound, Menu as MenuIcon, RefreshCw, Search } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Sidebar } from "@/components/shell/Sidebar";
@@ -55,7 +55,9 @@ function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: ()
 function MobileBar({ onSearch }: { onSearch: () => void }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  useEffect(() => setOpen(false), [pathname]);
+  const search = useSearchParams();
+  // Documents differ only in ?path=…, so the query closes the drawer too.
+  useEffect(() => setOpen(false), [pathname, search]);
   return (
     <div className="rb-glass flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
       <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -111,6 +113,9 @@ export function AppShell({
 
   // The server verified the token for this render; re-check only when the tab
   // comes back after a while, so an expired token is noticed without polling.
+  // A new token or another project comes with a fresh page: start trusting it again.
+  useEffect(() => setCheck(0), [repo]);
+
   useEffect(() => {
     if (!connected) {
       setStatus("disconnected");
@@ -158,6 +163,7 @@ export function AppShell({
       "g o": () => router.push("/"),
       "g b": () => router.push("/boards"),
       "g m": () => router.push("/me"),
+      "g i": () => router.push("/inbox"),
       "g d": () => router.push("/docs"),
       "g c": () => router.push("/repository"),
       "g a": () => router.push("/activity"),
@@ -199,6 +205,8 @@ export function AppShell({
         <ToastHost>
           <ShellContext.Provider value={shell}>
             <ConnectionContext.Provider value={{ status, retry }}>
+              {/* In the desktop app: a strip to drag the window by, where its buttons sit. */}
+              <div className="rb-desktop-titlebar" aria-hidden />
               {unlocked ? (
                 // Panels on a desk: navigation recessed on the left, the work
                 // floating over it, tools in a pill on the right edge.

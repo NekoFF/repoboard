@@ -186,8 +186,12 @@ export function SortableTaskCard({
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
+            event.stopPropagation();
             onOpen();
+            return;
           }
+          // Space and the arrows are dnd-kit's keyboard dragging.
+          listeners?.onKeyDown?.(event);
         }}
         className="rb-task cursor-pointer active:cursor-grabbing"
       >

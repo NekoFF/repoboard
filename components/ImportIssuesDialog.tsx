@@ -34,13 +34,16 @@ export function ImportIssuesDialog({
   }, [issues.data, onlyOpen]);
 
   const importable = rows.filter((r) => !linkedIssues.includes(r.number));
+  // Only what is on screen can be imported: hiding closed issues drops them from the selection.
+  const visibleSelected = selected.filter((n) => rows.some((r) => r.number === n));
+  const hiddenClosed = (issues.data?.issues ?? []).length - rows.length;
 
   const run = async () => {
-    if (selected.length === 0) return;
+    if (visibleSelected.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await api.importIssues(selected, columnId, boardId);
+      const result = await api.importIssues(visibleSelected, columnId, boardId);
       onDone(result.created);
     } catch (err) {
       setError((err as Error).message);
@@ -76,10 +79,10 @@ export function ImportIssuesDialog({
           <button
             className="rb-btn-primary"
             onClick={run}
-            disabled={busy || selected.length === 0}
+            disabled={busy || visibleSelected.length === 0}
           >
             {busy ? <Spinner /> : null}
-            Import {selected.length || ""}
+            Import {visibleSelected.length || ""}
           </button>
         </>
       }
@@ -129,9 +132,9 @@ export function ImportIssuesDialog({
           </div>
         )}
 
-        {!issues.loading && rows.length === 0 && (
+        {!issues.loading && !issues.error && rows.length === 0 && (
           <p className="p-4 text-center text-sm text-muted">
-            No issues in this repository.
+            {hiddenClosed > 0 ? `No open issues. ${hiddenClosed} closed one${hiddenClosed === 1 ? " is" : "s are"} hidden.` : "No issues in this repository."}
           </p>
         )}
 

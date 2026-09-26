@@ -87,12 +87,32 @@ export function DocScreen({ path }: { path: string }) {
 
   // Moving to another document starts clean.
   useEffect(() => {
-    setEdits([]);
+    // Uncommitted ticks and notes survive leaving the page (not screenshots:
+    // they are too big to keep); they come back when the document is reopened.
+    let restored: DocEdit[] = [];
+    try {
+      restored = JSON.parse(sessionStorage.getItem(`rb-doc-edits:${path}`) ?? "[]");
+    } catch {
+      restored = [];
+    }
+    const kept = restored.filter((e) => e.type !== "replace" && !(e.type === "proof" && e.proofs.some((p) => p.kind === "image")));
+    setEdits(kept);
+    if (kept.length) toast.push({ kind: "info", message: `${kept.length} uncommitted change${kept.length === 1 ? "" : "s"} restored` });
     setAttachments([]);
     setRaw(null);
     setMode("checklist");
     setFilter("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  useEffect(() => {
+    try {
+      if (edits.length) sessionStorage.setItem(`rb-doc-edits:${path}`, JSON.stringify(edits));
+      else sessionStorage.removeItem(`rb-doc-edits:${path}`);
+    } catch {
+      /* storage unavailable: the warning below still guards reloads */
+    }
+  }, [edits, path]);
 
   const states = useMemo(() => {
     const map = new Map<number, ItemState>();
@@ -176,6 +196,18 @@ export function DocScreen({ path }: { path: string }) {
       toast.push({ kind: "error", message: "Could not create the card", detail: (error as Error).message });
     }
   };
+
+  // Closing or reloading with changes not committed asks first.
+  const dirty = edits.length > 0 || (raw !== null && data != null && raw !== data.content);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const pendingEdits: DocEdit[] =
     mode === "edit" && raw !== null && data && raw !== data.content ? [{ type: "replace", content: raw }] : edits;
@@ -308,6 +340,7 @@ export function DocScreen({ path }: { path: string }) {
                 <MenuItem
                   icon={<SquareKanban className="size-3.5" />}
                   onSelect={() =>
+                    window.confirm(`Drive the main board from ${path}? Its checkboxes become the board's cards on the next sync.`) &&
                     act(() => api.markdownAction({ action: "set-source", path }), "The board now follows this file")
                   }
                 >

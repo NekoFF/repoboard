@@ -1,0 +1,78 @@
+{
+  "name": "repoboard-desktop",
+  "productName": "RepoBoard",
+  "version": "0.2.0",
+  "description": "Plan your project inside its repository \u2014 RepoBoard as a desktop app.",
+  "author": "NekoFF",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-server": "node prepare.mjs",
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "com.nekoff.repoboard",
+    "productName": "RepoBoard",
+    "copyright": "Copyright \u00a9 2026 NekoFF",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      }
+    ],
+    "npmRebuild": false,
+    "asar": true,
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "RepoBoard ${version}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "RepoBoard"
+    },
+    "artifactName": "RepoBoard-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "NekoFF",
+        "repo": "repoboard",
+        "releaseType": "release"
+      }
+    ],
+    "afterPack": "./after-pack.cjs"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  }
+}

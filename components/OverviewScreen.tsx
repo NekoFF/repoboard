@@ -145,6 +145,14 @@ export function OverviewScreen({
     [boards],
   );
   const checklists = docs.filter((d) => d.total > 0 && d.role !== "board");
+  // Milestones of every board, soonest first.
+  const allMilestones = useMemo(
+    () =>
+      boards
+        .flatMap(({ info, data: board }) => board.milestones.map((m) => ({ m, info, board })))
+        .sort((a, b) => (a.m.dueDate ?? Infinity) - (b.m.dueDate ?? Infinity)),
+    [boards],
+  );
 
   const groups = useMemo<MapGroup[]>(() => {
     const fromBoards: MapGroup[] = boards.map(({ info }) => ({
@@ -400,15 +408,18 @@ export function OverviewScreen({
           </Section>
 
           {/* --------------------------------------------- milestones -- */}
-          {data.milestones.length > 0 && (
+          {allMilestones.length > 0 && (
             <Section title="Milestones" icon={<Flag className="size-4" />}>
               <div className="flex flex-col gap-4">
-                {data.milestones.map((m) => {
-                  const p = milestoneProgress(data, m.id);
+                {allMilestones.map(({ m, info, board }) => {
+                  const p = milestoneProgress(board, m.id);
                   return (
-                    <Link key={m.id} href={`/board?q=${encodeURIComponent(`milestone:"${m.name}"`)}`} className="-mx-2 flex flex-col gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+                    <Link key={m.id} href={`${boardHref(info)}?q=${encodeURIComponent(`milestone:"${m.name}"`)}`} className="-mx-2 flex flex-col gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
                       <span className="flex items-baseline gap-3">
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{m.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                          {m.name}
+                          {boards.length > 1 && <span className="ml-2 text-xs font-normal text-faint">{info.name}</span>}
+                        </span>
                         <span className="text-xs tabular-nums text-muted">
                           {p.done}/{p.total}
                         </span>

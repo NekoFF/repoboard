@@ -84,7 +84,12 @@ Project (a GitHub repository)
 8. **One nav entry per destination.** The Code screen owns its tabs (graph,
    branches, commits, pull requests, issues); the sidebar does not repeat them.
 9. **Agents propose, people verify.** Nothing an agent does may set a
-   document item to `[x]`; the MCP server has no GitHub write tool.
+   document item to `[x]`, tick a card item, move a card to a done column or
+   write `Checked:`; the MCP server has no GitHub write tool.
+10. **The API answers only RepoBoard.** `middleware.ts` refuses other hosts
+   (DNS rebinding) and writes that are not same-origin JSON with
+   `x-repoboard: 1`, which `lib/client/api.ts` sends. Anything that posts to
+   the API (scripts/demo.mjs) must send it too.
 
 ## Where things live
 
@@ -109,15 +114,19 @@ lib/
   templates.ts         .repoboard templates and README
 db/schema.ts           Drizzle schema; migrations in drizzle/ run on boot
 scripts/               mcp-server, demo + fake GitHub, doctor, native-binary fetcher, stop
+desktop/               the Electron app: main.cjs (starts the bundled server), preload, prepare.mjs
+                       (standalone build + better-sqlite3 for Electron + bundled MCP), after-pack
 demo/                  the made-up "Lumen" project used by npm run demo
 tests/                 parser, documents, filters, graph, conflicts, sync pipeline, scoping
 ```
 
 ## Screens
 
-Overview · My work · Boards → a board (board, list, calendar) → a card ·
-Documents · Code (graph, branches, commits, pull requests, issues) · Activity ·
-Settings.
+Inbox · Overview · My work · Boards → a board (board, list, calendar) → a
+card · Documents · Code (graph, branches, commits, pull requests, issues) ·
+Activity · Settings. The Inbox (`components/InboxScreen.tsx`) shows what
+others did since the person last looked (a timestamp in localStorage) and
+suggestions from GitHub, applied through `useCommitMove`.
 The sidebar lists the boards under "Boards"; the command menu has a Boards
 group. Overview opens with **Project life** (`components/ProjectStory.tsx`,
 model in `lib/client/story.ts`): the repository's history as a timeline of

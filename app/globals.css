@@ -1111,3 +1111,38 @@
 .dark .rb-board-canvas {
   background-image: radial-gradient(rgb(var(--ink) / 0.04) 1px, transparent 1px);
 }
+
+/* ------------------------------------------------ the desktop app (Electron) --
+   desktop/preload.cjs sets html.rb-desktop (+ -mac / -win). The window has
+   the system's material behind it (vibrancy on macOS, acrylic on Windows), so
+   the page is transparent and the desk only tints it; panels stay as they are.
+   A strip across the top holds the window buttons and drags the window. */
+.rb-desktop-titlebar {
+  display: none;
+}
+html.rb-desktop,
+html.rb-desktop body {
+  background: transparent;
+}
+html.rb-desktop .rb-desk {
+  background-color: rgb(var(--desk) / 0.74);
+  padding-top: 34px;
+}
+html.rb-desktop.dark .rb-desk {
+  background-color: rgb(var(--desk) / 0.68);
+}
+html.rb-desktop .rb-desktop-titlebar {
+  display: block;
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 34px;
+  z-index: 60;
+  -webkit-app-region: drag;
+}
+/* Windows draws its caption buttons at the top right, 36px high. */
+html.rb-desktop-win .rb-desk {
+  padding-top: 38px;
+}
+html.rb-desktop-win .rb-desktop-titlebar {
+  height: 38px;
+}

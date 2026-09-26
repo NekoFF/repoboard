@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CalendarDays, ChevronRight, Plus, User, X } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
+  newId,
   addItem,
   progress,
   setDone,
@@ -264,7 +265,7 @@ export function ChecklistItemDialog({
                 onSubmit={(event) => {
                   event.preventDefault();
                   if (!child.trim()) return;
-                  onChange(addItem(items, item.id, { id: crypto.randomUUID(), text: child.trim(), done: false, children: [], comments: [] }));
+                  onChange(addItem(items, item.id, { id: newId(), text: child.trim(), done: false, children: [], comments: [] }));
                   setChild("");
                 }}
               >
@@ -301,7 +302,7 @@ export function ChecklistItemDialog({
                     ...i,
                     comments: [
                       ...(i.comments ?? []),
-                      { id: crypto.randomUUID(), author: viewer ?? "me", kind: "person", text: comment.trim(), at: Date.now() },
+                      { id: newId(), author: viewer ?? "me", kind: "person", text: comment.trim(), at: Date.now() },
                     ],
                   }));
                   setComment("");

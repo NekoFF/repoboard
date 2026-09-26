@@ -60,19 +60,47 @@ const now = () => Date.now();
 // Assigned at the bottom; agentName() reads it once a client has connected.
 let server = null;
 
-/** The active project: from the environment, or the app's credentials file. */
+/**
+ * The repository the agent works in: the `origin` of the folder it was
+ * started from, when that repository is connected in RepoBoard. Agents run in
+ * their own checkout, so this keeps them on the right project even when the
+ * person switches projects in the app. REPOBOARD_REPO names one explicitly.
+ */
+function checkoutRepo() {
+  let dir = process.cwd();
+  for (let i = 0; i < 12; i += 1) {
+    const config = path.join(dir, ".git", "config");
+    if (fs.existsSync(config)) {
+      const text = fs.readFileSync(config, "utf8");
+      const origin = text.match(/\[remote "origin"\][^[]*?url\s*=\s*(\S+)/);
+      const slug = origin?.[1].match(/github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?$/i)?.[1];
+      return slug ?? null;
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
+/** The project: from the environment, the agent's checkout, or the app's active one. */
 function activeProject() {
-  let repo = process.env.GITHUB_REPO || null;
+  let repo = process.env.REPOBOARD_REPO || process.env.GITHUB_REPO || null;
   let token = process.env.GITHUB_PAT || null;
   if (!repo || !token) {
     try {
       const raw = JSON.parse(fs.readFileSync(credentialsFile(), "utf8"));
       if (raw?.version === 2) {
-        const found = (raw.projects ?? []).find(
-          (p) => raw.active && p.repo.toLowerCase() === raw.active.toLowerCase(),
-        );
+        const projects = raw.projects ?? [];
+        const same = (a, b) => a && b && a.toLowerCase() === b.toLowerCase();
+        const here = repo ? null : checkoutRepo();
+        const found =
+          projects.find((p) => same(p.repo, repo)) ??
+          projects.find((p) => same(p.repo, here)) ??
+          projects.find((p) => same(p.repo, raw.active));
         repo = repo ?? found?.repo ?? null;
-        token = token ?? found?.token ?? null;
+        // Only the token that belongs to this repository.
+        token = token ?? (found && same(found.repo, repo) ? found.token : null);
       } else {
         repo = repo ?? raw?.repo ?? null;
         token = token ?? raw?.token ?? null;
@@ -236,10 +264,29 @@ function dueValue(date) {
 function flattenItems(list) {
   return list.flatMap((i) => [i, ...flattenItems(i.children ?? [])]);
 }
-function findItem(list, text) {
-  const wanted = String(text).trim().toLowerCase();
-  return flattenItems(list).find((i) => i.text.trim().toLowerCase() === wanted) ?? null;
+/** Items numbered as the app shows them: 1, 1.1, 1.1.2. */
+function numbered(list, prefix = "") {
+  return list.flatMap((item, i) => {
+    const number = prefix ? `${prefix}.${i + 1}` : String(i + 1);
+    return [{ number, item }, ...numbered(item.children ?? [], number)];
+  });
 }
+/** An item by its number ("1.2") or its text; a number is never ambiguous. */
+function findItem(list, text) {
+  const wanted = String(text).trim();
+  if (/^\d+(\.\d+)*$/.test(wanted)) return numbered(list).find((n) => n.number === wanted)?.item ?? null;
+  const lower = wanted.toLowerCase();
+  return flattenItems(list).find((i) => i.text.trim().toLowerCase() === lower) ?? null;
+}
+function ancestorsOf(list, target, trail = []) {
+  for (const item of list) {
+    if (item === target) return trail;
+    const found = ancestorsOf(item.children ?? [], target, [...trail, item]);
+    if (found) return found;
+  }
+  return null;
+}
+const DONE_COLUMN = /^(done|complete|completed|shipped|closed)$/i;
 function allTexts(list) {
   return flattenItems(list).map((i) => i.text);
 }
@@ -262,7 +309,9 @@ function documents(repositoryId) {
 async function readFromGitHub(project, filePath) {
   if (!project.token) throw new Error("No token available to read from GitHub.");
   const base = process.env.GITHUB_API_URL || "https://api.github.com";
-  const url = `${base}/repos/${project.repo}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}`;
+  const segments = String(filePath).split("/").filter(Boolean);
+  if (segments.some((seg) => seg === "." || seg === "..")) throw new Error("Paths are relative to the repository root, without . or ..");
+  const url = `${base}/repos/${project.repo}/contents/${segments.map(encodeURIComponent).join("/")}`;
   const response = await fetch(url, {
     headers: { authorization: `Bearer ${project.token}`, accept: "application/vnd.github+json" },
   });
@@ -328,7 +377,7 @@ const tools = [
   {
     name: "move_card",
     description:
-      "Move a card to another column. A card that comes from the markdown file changes on the board only; the commit to GitHub waits for the person to review it in the app.",
+      "Move a card to another column — but not to Done: when you think it is finished, move it to Review and say how to check it with comment_on_card; the person moves it to Done. A card that comes from the markdown file changes on the board only; the commit waits for the person's review in the app.",
     inputSchema: {
       type: "object",
       properties: { card: { type: "string", description: "RB-12, 12 or the card id" }, column: text },
@@ -372,12 +421,18 @@ const tools = [
   {
     name: "set_checklist_item",
     description:
-      "Tick or untick a checklist item, found by its text at any depth. Prefer leaving ticking to the person unless they asked you to.",
+      "Reopen a checklist item (done: false), found by its number like 1.2 or its text. Agents do not tick items done: when one is finished, say so and how to check it with update_checklist_item's comment, and the person ticks it.",
     inputSchema: {
       type: "object",
       properties: { card: text, text, done: { type: "boolean" } },
       required: ["card", "text", "done"],
     },
+  },
+  {
+    name: "get_card",
+    description:
+      "One card in full: its fields, the numbered item tree (1, 1.1 …) with notes, assignees and comments, linked branches and pull requests, the comments on the card and its recent history.",
+    inputSchema: { type: "object", properties: { card: { type: "string", description: "RB-12, 12 or the card id" } }, required: ["card"] },
   },
   {
     name: "update_checklist_item",
@@ -575,6 +630,14 @@ const handlers = {
     const { repo } = requireBoard();
     const task = cardOf(card);
     const target = resolveColumn(task.board_id, column);
+    if (DONE_COLUMN.test(target.name.trim())) {
+      const review = columns(task.board_id).find((c) => /review|qa|verify|check/i.test(c.name));
+      throw new Error(
+        `Agents do not move cards to ${target.name}: a person does, after checking.${
+          review ? ` Move it to ${review.name} and say how to check it (comment_on_card).` : " Say it is ready and how to check it (comment_on_card)."
+        }`,
+      );
+    }
     const from = db.prepare("SELECT name FROM columns WHERE id = ?").get(task.column_id);
     const position = db
       .prepare("SELECT COUNT(*) AS n FROM tasks WHERE column_id = ? AND deleted_at IS NULL")
@@ -658,11 +721,14 @@ const handlers = {
     if (!item) {
       throw new Error(`No checklist item "${itemText}". Items: ${allTexts(list).join(", ") || "none"}`);
     }
-    const setAll = (i) => {
-      i.done = Boolean(done);
-      if (done) (i.children ?? []).forEach(setAll);
-    };
-    setAll(item);
+    if (done) {
+      throw new Error(
+        "Agents do not tick items done — the person does, after checking. Use update_checklist_item with a comment that says it is done and how to check it.",
+      );
+    }
+    // Reopening an item reopens what contains it, as in the app.
+    item.done = false;
+    for (const parent of ancestorsOf(list, item) ?? []) parent.done = false;
     saveChecklist(task.id, list);
     const { repo } = requireBoard();
     logActivity(repo.id, task.id, "card_updated", `${done ? "ticked" : "unticked"} “${item.text}” on ${task.title}`);
@@ -717,6 +783,34 @@ const handlers = {
     db.prepare("UPDATE tasks SET deleted_at = NULL, updated_at = ? WHERE id = ?").run(now(), task.id);
     logActivity(repo.id, task.id, "card_restored", `restored ${task.title}`);
     return serialiseCard(cardOf(task.id));
+  },
+
+  get_card({ card }) {
+    const { repo } = requireBoard();
+    const task = cardOf(card);
+    const list = task.checklist ? JSON.parse(task.checklist) : [];
+    const events = db
+      .prepare("SELECT type, message, actor, actor_kind, created_at FROM activity_events WHERE repository_id = ? AND task_id = ? ORDER BY created_at DESC LIMIT 60")
+      .all(repo.id, task.id);
+    const who = (e) => (e.actor ? `${e.actor}${e.actor_kind === "agent" ? " (AI)" : ""}` : null);
+    return {
+      ...serialiseCard(task),
+      items: numbered(list).map(({ number, item }) => ({
+        number,
+        text: item.text,
+        done: Boolean(item.done),
+        assignee: item.assignee ?? null,
+        notes: item.notes ?? null,
+        comments: (item.comments ?? []).map((c) => ({ by: c.author ?? null, text: c.text, at: c.at ? new Date(c.at).toISOString() : null })),
+      })),
+      comments: events
+        .filter((e) => e.type === "comment")
+        .map((e) => ({ by: who(e), text: e.message, at: new Date(e.created_at).toISOString() })),
+      history: events
+        .filter((e) => e.type !== "comment")
+        .slice(0, 20)
+        .map((e) => ({ by: who(e), what: e.message, at: new Date(e.created_at).toISOString() })),
+    };
   },
 
   comment_on_card({ card, message }) {
@@ -795,7 +889,7 @@ const handlers = {
 
 /* --------------------------------------------------------------- server -- */
 
-server = new Server({ name: "repoboard", version: "0.4.0" }, { capabilities: { tools: {} } });
+server = new Server({ name: "repoboard", version: "0.5.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 

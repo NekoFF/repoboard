@@ -12,6 +12,7 @@ import {
   GitBranch,
   GitPullRequest,
   CircleUserRound,
+  Inbox as InboxIcon,
   Home,
   Keyboard,
   Moon,
@@ -84,7 +85,7 @@ export function CommandPalette({
     if (open) setSearch(initialQuery);
   }, [open, initialQuery]);
 
-  const board = useResource(api.board, [open], { enabled: open && connected });
+  const board = useResource(api.projectCards, [open], { enabled: open && connected });
   const branches = useResource(api.branches, [], { enabled: open && connected });
   const pulls = useResource(api.pulls, [], { enabled: open && connected });
   const issues = useResource(api.issues, [], { enabled: open && connected });
@@ -130,7 +131,7 @@ export function CommandPalette({
               </Command.Empty>
 
               <Command.Group heading="Actions" className={groupClass}>
-                <Item value="New card" keywords={["create", "add", "task"]} icon={<Plus className="size-4" />} hint="C" onSelect={() => go(newCardHref())()}>
+                <Item value="New card" keywords={["create", "add", "task"]} icon={<Plus className="size-4" />} hint="C" onSelect={() => go(newCardHref(boards.map(boardHref)))()}>
                   New card
                 </Item>
                 <Item value="New document" keywords={["create", "markdown", "file", "policy", "checklist"]} icon={<FilePlus2 className="size-4" />} onSelect={go("/docs?new=1")}>
@@ -148,6 +149,7 @@ export function CommandPalette({
               </Command.Group>
 
               <Command.Group heading="Go to" className={groupClass}>
+                <Item value="Inbox" keywords={["new", "notifications", "unread"]} icon={<InboxIcon className="size-4" />} hint="G I" onSelect={go("/inbox")}>Inbox</Item>
                 <Item value="Overview" icon={<Home className="size-4" />} hint="G O" onSelect={go("/")}>Overview</Item>
                 <Item value="My work" keywords={["assigned", "me", "mine", "todo"]} icon={<CircleUserRound className="size-4" />} hint="G M" onSelect={go("/me")}>My work</Item>
                 <Item value="Boards" icon={<SquareKanban className="size-4" />} hint="G B" onSelect={go("/boards")}>Boards</Item>

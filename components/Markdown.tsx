@@ -25,10 +25,25 @@ function linkifyProse(text: string): string {
     .replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_m, target: string, label?: string) =>
       `[${(label ?? target).trim()}](/docs?path=${encodeURIComponent(resolveLink(target))})`,
     )
-    .replace(/\bRB-(\d{1,6})\b/g, (_m, n: string) => `[RB-${n}](/board?ref=${n})`);
+    // The card page finds a card on any board by its number.
+    .replace(/\bRB-(\d{1,6})\b/g, (_m, n: string) => `[RB-${n}](/board/card/RB-${n})`);
+}
+
+/**
+ * Where a link in a document goes inside RepoBoard: another markdown file of
+ * the repository (written relative to this one) opens as a document, an
+ * anchor stays on the page, anything else is left as it is.
+ */
+function resolveHref(href: string | undefined, basePath?: string): string | undefined {
+  if (!href || /^(https?:|mailto:|\/|#)/i.test(href) || !basePath) return href;
+  const [target, hash] = href.split("#");
+  if (!/\.md$/i.test(target)) return href;
+  const path = resolveRelative(basePath, decodeURIComponent(target));
+  return `/docs?path=${encodeURIComponent(path)}${hash ? `#${hash}` : ""}`;
 }
 
 function SmartLink({ href, children }: { href?: string; children?: ReactNode }) {
+  if (href?.startsWith("#")) return <a href={href}>{children}</a>;
   if (href?.startsWith("/")) {
     return (
       <Link href={href} className="font-medium">
@@ -245,7 +260,7 @@ export function Markdown({
       };
 
     return {
-      a: ({ href, children }) => <SmartLink href={href}>{children}</SmartLink>,
+      a: ({ href, children }) => <SmartLink href={resolveHref(href, basePath)}>{children}</SmartLink>,
       h1: heading("h1"),
       h2: heading("h2"),
       h3: heading("h3"),
@@ -305,7 +320,7 @@ export function Markdown({
   return (
     <div className={`rb-prose ${className}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {items ? hideComments(content) : linkify(hideComments(content))}
+        {linkify(hideComments(content))}
       </ReactMarkdown>
     </div>
   );

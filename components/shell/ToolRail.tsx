@@ -6,8 +6,9 @@ import type { ReactNode } from "react";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Tooltip } from "@/components/ui";
-import { modKey } from "@/lib/client/hotkeys";
+import { useModKey } from "@/lib/client/hotkeys";
 import { newCardHref } from "@/lib/client/current-board";
+import { boardHref } from "@/components/labelColor";
 
 function RailButton({
   label,
@@ -39,7 +40,8 @@ function RailButton({
  */
 export function ToolRail() {
   const router = useRouter();
-  const { openPalette, openShortcuts } = useShell();
+  const { openPalette, openShortcuts, boards } = useShell();
+  const mod = useModKey();
   const { resolved, toggle } = useTheme();
 
   return (
@@ -47,10 +49,10 @@ export function ToolRail() {
       aria-label="Tools"
       className="rb-rail absolute bottom-2.5 right-2.5 top-2.5 z-30 hidden w-11 flex-col items-center gap-1 rounded-full py-2 lg:flex"
     >
-      <RailButton label="Search and commands" shortcut={`${modKey()}K`} onClick={() => openPalette()}>
+      <RailButton label="Search and commands" shortcut={`${mod}K`} onClick={() => openPalette()}>
         <Search className="size-4" />
       </RailButton>
-      <RailButton label="New card" shortcut="C" onClick={() => router.push(newCardHref())}>
+      <RailButton label="New card" shortcut="C" onClick={() => router.push(newCardHref(boards.map(boardHref)))}>
         <Plus className="size-4" />
       </RailButton>
       <RailButton label="New document" onClick={() => router.push("/docs?new=1")}>

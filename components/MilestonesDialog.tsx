@@ -114,7 +114,10 @@ export function MilestonesDialog({ data, onClose }: { data: BoardData; onClose: 
               <button
                 className="rb-icon-btn"
                 aria-label={`Delete ${m.name}`}
-                onClick={() => act({ action: "milestone-delete", milestoneId: m.id }, `Deleted “${m.name}”; its cards stay`)}
+                onClick={() => {
+                  if (!window.confirm(`Delete the milestone “${m.name}”? Its cards stay, without a milestone.`)) return;
+                  void act({ action: "milestone-delete", milestoneId: m.id }, `Deleted “${m.name}”; its cards stay`);
+                }}
               >
                 <Trash2 className="size-3.5" />
               </button>

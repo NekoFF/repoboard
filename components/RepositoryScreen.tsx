@@ -41,18 +41,27 @@ import {
 
 type Tab = "graph" | "branches" | "commits" | "pulls" | "issues";
 
+/** Sits inside a row that is itself a link, so it cannot be one (no <a> in <a>). */
 function CardChip({ task }: { task: BoardTask | undefined }) {
+  const router = useRouter();
   if (!task) return null;
+  const open = (event: React.SyntheticEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    router.push(`/board/card/${task.id}`);
+  };
   return (
-    <Link
-      href={`/board/card/${task.id}`}
-      onClick={(event) => event.stopPropagation()}
-      className="hidden max-w-[200px] shrink-0 truncate rounded-sm bg-pill px-1.5 py-0.5 text-2xs text-muted hover:text-ink md:inline"
+    <span
+      role="link"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(event) => event.key === "Enter" && open(event)}
+      className="hidden max-w-[200px] shrink-0 cursor-pointer truncate rounded-sm bg-pill px-1.5 py-0.5 text-2xs text-muted hover:text-ink md:inline"
       title={task.title}
     >
       {task.number != null && <span className="font-mono">RB-{task.number} </span>}
       {task.title}
-    </Link>
+    </span>
   );
 }
 
@@ -174,8 +183,11 @@ export function RepositoryScreen({
 
   useEffect(() => {
     const t = params.get("tab") as Tab | null;
-    if (t) setTab(t);
+    if (t && (["graph", "branches", "commits", "pulls", "issues"] as string[]).includes(t)) setTab(t);
     setBranch(params.get("branch"));
+    // From the command menu: show that one pull request or issue.
+    const one = params.get("pr") ?? params.get("issue");
+    if (one) setQuery(`#${one}`);
   }, [params]);
 
   const go = (next: Tab, nextBranch: string | null = branch) => {
@@ -374,7 +386,7 @@ export function RepositoryScreen({
             {failed(pulls)}
             <Rows>
               {(pulls.data?.pulls ?? [])
-                .filter((p) => match(p.title, `#${p.number}`, p.head, p.author))
+                .filter((p) => (/^#\d+$/.test(q) ? `#${p.number}` === q : match(p.title, `#${p.number}`, p.head, p.author)))
                 .map((pr) => {
                   const merged = pr.mergeableState === "merged";
                   const Icon = merged ? GitMerge : pr.draft ? GitPullRequestDraft : GitPullRequest;
@@ -420,7 +432,7 @@ export function RepositoryScreen({
             {failed(issues)}
             <Rows>
               {(issues.data?.issues ?? [])
-                .filter((i) => match(i.title, `#${i.number}`, ...i.labels))
+                .filter((i) => (/^#\d+$/.test(q) ? `#${i.number}` === q : match(i.title, `#${i.number}`, ...i.labels)))
                 .map((issue) => {
                   const card = cardFor.issue(issue.number);
                   return (

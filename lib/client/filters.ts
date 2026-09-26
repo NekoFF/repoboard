@@ -137,8 +137,9 @@ export function applyFilter(
   if (isEmptyFilter(filter)) return tasks;
   const columnStatus = new Map(data.columns.map((c) => [c.id, statusOfColumn(c.name)]));
   const milestoneName = new Map(data.milestones.map((m) => [m.id, m.name.toLowerCase()]));
+  // The person's calendar date, as due dates are kept (midnight UTC of it).
   const today = new Date(now);
-  const startOfToday = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const startOfToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   const weekEnd = startOfToday + 7 * 86_400_000;
   const lc = (s: string) => s.toLowerCase();
 

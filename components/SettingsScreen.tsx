@@ -28,19 +28,36 @@ function Card({ title, icon, description, children }: { title: string; icon: Rea
 const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
 /** Ready-to-paste MCP configuration for the common AI clients. */
-function AgentSetup({ server }: { server: string }) {
+function AgentSetup({ server, node, env }: { server: string; node: string; env: Record<string, string> }) {
   const [client, setClient] = useState<"claude" | "codex" | "cursor" | "desktop" | "other">("claude");
+  const withAgent = (name: string) => ({ ...env, REPOBOARD_AGENT: name });
   const json = (name: string) =>
-    JSON.stringify({ mcpServers: { repoboard: { command: "node", args: [server], env: { REPOBOARD_AGENT: name } } } }, null, 2);
+    JSON.stringify({ mcpServers: { repoboard: { command: node, args: [server], env: withAgent(name) } } }, null, 2);
+  // TOML literal strings ('…') keep Windows backslashes as they are.
+  const toml = (value: string) => `'${value}'`;
+  const flags = (name: string) =>
+    Object.entries(withAgent(name))
+      .map(([k, v]) => `-e ${k}="${v}"`)
+      .join(" ");
   const snippets = {
-    claude: { where: "Run once in a terminal:", text: `claude mcp add repoboard -e REPOBOARD_AGENT="Claude Code" -- node "${server}"` },
+    claude: {
+      where: "Run once in a terminal. --scope user makes it available in every project, not only the folder you run it in:",
+      text: `claude mcp add --scope user repoboard ${flags("Claude Code")} -- "${node}" "${server}"`,
+    },
     codex: {
       where: "Add to ~/.codex/config.toml:",
-      text: `[mcp_servers.repoboard]\ncommand = "node"\nargs = ["${server}"]\nenv = { REPOBOARD_AGENT = "Codex" }`,
+      text: `[mcp_servers.repoboard]\ncommand = ${toml(node)}\nargs = [${toml(server)}]\nenv = { ${Object.entries(withAgent("Codex"))
+        .map(([k, v]) => `${k} = ${toml(v)}`)
+        .join(", ")} }`,
     },
     cursor: { where: "Add to ~/.cursor/mcp.json (or the project's .cursor/mcp.json):", text: json("Cursor") },
     desktop: { where: "Add to Claude Desktop's claude_desktop_config.json:", text: json("Claude Desktop") },
-    other: { where: "Any MCP client that speaks stdio:", text: `REPOBOARD_AGENT="My agent" node "${server}"` },
+    other: {
+      where: "Any MCP client that speaks stdio — the command, its argument and these environment variables:",
+      text: `${Object.entries(withAgent("My agent"))
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n")}\n"${node}" "${server}"`,
+    },
   } as const;
   const current = snippets[client];
   return (
@@ -95,11 +112,13 @@ export function SettingsScreen({
   tokenSource,
   managedByEnvironment,
   paths,
+  mcp,
 }: {
   authLabel: string;
   tokenSource: string | null;
   managedByEnvironment: boolean;
   paths: { database: string; credentials: string; mcpServer: string };
+  mcp: { node: string; env: Record<string, string> };
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -213,7 +232,10 @@ export function SettingsScreen({
                         aria-label={`Disconnect ${p.repo}`}
                         title="Disconnect — forgets the token; the board stays on this computer"
                         disabled={busy !== null}
-                        onClick={() => act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`)}
+                        onClick={() => {
+                          if (!window.confirm(`Disconnect ${p.repo}? Its token is removed from this computer; the boards stay here and on GitHub.`)) return;
+                          void act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`);
+                        }}
                       >
                         {busy === `remove-${p.repo}` ? <Spinner /> : <Trash2 className="size-3.5" />}
                       </button>
@@ -255,13 +277,14 @@ export function SettingsScreen({
                       <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
                         Create a token on GitHub <ExternalLink className="size-3" />
                       </a>{" "}
-                      with <em>Only select repositories</em> → this repository, and these permissions:
+                      with the repository's owner as <em>Resource owner</em>, <em>Only select repositories</em> → this repository, and these permissions:
                     </p>
                     <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <li><span className="text-ink">Contents</span> — read and write</li>
                       <li><span className="text-ink">Metadata</span> — read</li>
                       <li><span className="text-ink">Pull requests</span> — read</li>
                       <li><span className="text-ink">Issues</span> — read</li>
+                      <li><span className="text-ink">Checks</span> — read</li>
                     </ul>
                   </div>
                   {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}
@@ -314,7 +337,7 @@ export function SettingsScreen({
               </>
             }
           >
-            <AgentSetup server={paths.mcpServer} />
+            <AgentSetup server={paths.mcpServer} node={mcp.node} env={mcp.env} />
             <p className="text-sm text-muted">
               The rules agents follow — never tick an item themselves, mark it <code className="font-mono text-xs">[?]</code> and
               say how to verify it — are in <code className="font-mono text-xs">.repoboard/README.md</code>, which RepoBoard

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type CSSProperties } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, type CSSProperties } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Archive, LayoutGrid, MoreHorizontal, Pencil, Plus, Tag, User } from "lucide-react";
 import type { BoardSummary } from "@/lib/board-service";
 import { api, useResource } from "@/lib/client/api";
@@ -304,7 +304,15 @@ function BoardTile({ board, onEdit }: { board: BoardSummary; onEdit: () => void 
                 onSelect={async () => {
                   try {
                     await api.archiveBoard(board.id);
-                    toast.push({ kind: "info", message: `Archived ${board.name}`, detail: "Its cards are kept." });
+                    toast.push({
+                      kind: "info",
+                      message: `Archived ${board.name}`,
+                      detail: "Its cards are kept.",
+                      action: {
+                        label: "Undo",
+                        run: () => void api.restoreBoard(board.id).then(() => router.refresh()),
+                      },
+                    });
                     router.refresh();
                   } catch (error) {
                     toast.push({ kind: "error", message: "Could not archive", detail: (error as Error).message });
@@ -322,9 +330,26 @@ function BoardTile({ board, onEdit }: { board: BoardSummary; onEdit: () => void 
 }
 
 /** All boards of the project: the main one, then areas, then people. */
-export function BoardsScreen({ boards }: { boards: BoardSummary[] }) {
+export function BoardsScreen({
+  boards,
+  archived = [],
+}: {
+  boards: BoardSummary[];
+  archived?: { id: string; name: string; owner: string | null; archivedAt: number; cards: number }[];
+}) {
   const params = useSearchParams();
-  const [dialog, setDialog] = useState<null | "new" | BoardSummary>(params.get("new") ? "new" : null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const toast = useToast();
+  const [dialog, setDialog] = useState<null | "new" | BoardSummary>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  // ?new=1 opens the dialog whenever it appears — also from the sidebar or ⌘K
+  // while already here — and is then taken out of the address.
+  useEffect(() => {
+    if (!params.get("new")) return;
+    setDialog("new");
+    router.replace(pathname, { scroll: false });
+  }, [params, router, pathname]);
   const rank = (b: BoardSummary) => (b.primary ? 0 : b.owner ? 2 : 1);
   const ordered = [...boards].sort((a, b) => rank(a) - rank(b));
 
@@ -348,6 +373,40 @@ export function BoardsScreen({ boards }: { boards: BoardSummary[] }) {
               {ordered.map((b) => (
                 <BoardTile key={b.id} board={b} onEdit={() => setDialog(b)} />
               ))}
+            </div>
+          )}
+          {archived.length > 0 && (
+            <div className="mt-12 flex flex-col gap-2">
+              <button className="rb-btn-ghost w-fit" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived}>
+                <Archive className="size-3.5" /> {archived.length} archived board{archived.length === 1 ? "" : "s"}
+              </button>
+              {showArchived && (
+                <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+                  {archived.map((b) => (
+                    <li key={b.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      {b.owner && <ActorAvatar name={b.owner} size={18} />}
+                      <span className="min-w-0 flex-1 truncate text-ink">{b.name}</span>
+                      <span className="text-xs tabular-nums text-faint">
+                        {b.cards} card{b.cards === 1 ? "" : "s"}
+                      </span>
+                      <button
+                        className="rb-btn rb-btn-sm"
+                        onClick={async () => {
+                          try {
+                            await api.restoreBoard(b.id);
+                            toast.push({ kind: "success", message: `${b.name} is back` });
+                            router.refresh();
+                          } catch (error) {
+                            toast.push({ kind: "error", message: "Could not restore it", detail: (error as Error).message });
+                          }
+                        }}
+                      >
+                        Restore
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>

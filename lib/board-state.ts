@@ -91,14 +91,93 @@ export function serialiseBoardState(state: BoardState): string {
   return `${JSON.stringify({ ...state, cards: byId(state.cards), ...(boards ? { boards: byId(boards) } : {}) }, null, 2)}\n`;
 }
 
+/** A clock ahead of the others must not make its edits win every merge. */
+const latest = (t: unknown) => {
+  const n = typeof t === "number" && Number.isFinite(t) ? t : 0;
+  return Math.min(n, Date.now() + 5 * 60_000);
+};
+const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+const numbers = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is number => typeof x === "number") : []);
+const text = (v: unknown) => (typeof v === "string" ? v : null);
+
+function cleanCard(raw: unknown): BoardStateCard | null {
+  const c = raw as Record<string, unknown>;
+  if (!c || typeof c.id !== "string" || typeof c.title !== "string") return null;
+  return {
+    id: c.id,
+    number: typeof c.number === "number" ? c.number : null,
+    column: typeof c.column === "string" ? c.column : "Todo",
+    position: typeof c.position === "number" ? c.position : 0,
+    title: c.title,
+    description: text(c.description),
+    assignee: text(c.assignee),
+    dueDate: typeof c.dueDate === "number" ? c.dueDate : null,
+    checklist: Array.isArray(c.checklist) ? (c.checklist as BoardStateCard["checklist"]) : [],
+    labels: strings(c.labels),
+    branches: strings(c.branches),
+    pullRequests: numbers(c.pullRequests),
+    issues: numbers(c.issues),
+    markdownTaskId: text(c.markdownTaskId),
+    priority: typeof c.priority === "number" ? c.priority : 0,
+    milestone: text(c.milestone),
+    updatedAt: latest(c.updatedAt),
+    deletedAt: typeof c.deletedAt === "number" ? c.deletedAt : null,
+  };
+}
+
+function cleanMilestones(v: unknown): BoardStateMilestone[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((m): m is Record<string, unknown> => Boolean(m) && typeof (m as { name?: unknown }).name === "string")
+    .map((m) => ({ name: m.name as string, description: text(m.description), dueDate: typeof m.dueDate === "number" ? m.dueDate : null }));
+}
+
+function cleanMeta(raw: unknown): BoardStateMeta | null {
+  const b = raw as Record<string, unknown>;
+  if (!b || typeof b.name !== "string") return null;
+  return { name: b.name, description: text(b.description), color: text(b.color), art: text(b.art), owner: text(b.owner), updatedAt: latest(b.updatedAt) };
+}
+
+/**
+ * Reads the file defensively: what is malformed is dropped rather than half
+ * applied, so one bad card in a colleague's push cannot break a sync.
+ */
 export function parseBoardState(content: string): BoardState | null {
+  let parsed: Record<string, unknown>;
   try {
-    const parsed = JSON.parse(content) as BoardState;
-    if (parsed?.version !== 1 || !Array.isArray(parsed.cards)) return null;
-    return parsed;
+    parsed = JSON.parse(content);
   } catch {
     return null;
   }
+  if (parsed?.version !== 1 || !Array.isArray(parsed.cards)) return null;
+  const cards = (parsed.cards as unknown[]).map(cleanCard).filter((c): c is BoardStateCard => Boolean(c));
+  const board = cleanMeta(parsed.board);
+  const boards = Array.isArray(parsed.boards)
+    ? (parsed.boards as unknown[])
+        .map((raw): BoardStateBoard | null => {
+          const b = raw as Record<string, unknown>;
+          const meta = cleanMeta(b);
+          if (!meta || typeof b.id !== "string") return null;
+          return {
+            ...meta,
+            id: b.id,
+            position: typeof b.position === "number" ? b.position : 0,
+            archivedAt: typeof b.archivedAt === "number" ? b.archivedAt : null,
+            columns: strings(b.columns),
+            milestones: cleanMilestones(b.milestones),
+            cards: Array.isArray(b.cards) ? (b.cards as unknown[]).map(cleanCard).filter((c): c is BoardStateCard => Boolean(c)) : [],
+          };
+        })
+        .filter((b): b is BoardStateBoard => Boolean(b))
+    : undefined;
+  return {
+    version: 1,
+    columns: strings(parsed.columns),
+    cards,
+    milestones: cleanMilestones(parsed.milestones),
+    ...(board ? { board } : {}),
+    ...(boards ? { boards } : {}),
+  };
 }
 
 export interface MergeResult {

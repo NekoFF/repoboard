@@ -2,7 +2,7 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { Heading, List, ListItem, Root } from "mdast";
-import { stateFromChar, type ItemState } from "@/lib/markdown/format";
+import { lineEnding, stateFromChar, toLF, withLineEnding, type ItemState } from "@/lib/markdown/format";
 
 /**
  * Markdown ↔ board parsing.
@@ -70,7 +70,8 @@ export function parseTaskLine(
   };
 }
 
-export function parseMarkdown(content: string): ParsedMarkdown {
+export function parseMarkdown(raw: string): ParsedMarkdown {
+  const content = toLF(raw);
   const lines = content.split("\n");
   const tree = unified()
     .use(remarkParse)
@@ -129,7 +130,17 @@ export function parseMarkdown(content: string): ParsedMarkdown {
  * HTML comments invisibly, so the file still reads normally on github.com while
  * RepoBoard gains an identity that survives retitling and reordering.
  */
-export function ensureTaskIds(content: string): {
+export function ensureTaskIds(raw: string): {
+  content: string;
+  changed: boolean;
+  assigned: { line: number; id: string; title: string }[];
+} {
+  const eol = lineEnding(raw);
+  const result = ensureTaskIdsLF(toLF(raw));
+  return { ...result, content: withLineEnding(result.content, eol) };
+}
+
+function ensureTaskIdsLF(content: string): {
   content: string;
   changed: boolean;
   assigned: { line: number; id: string; title: string }[];
@@ -187,10 +198,34 @@ export interface MoveResult {
  * nothing is written to GitHub here.
  */
 export function moveTask(
-  content: string,
+  raw: string,
   taskId: string,
   targetHeading: string,
   doneHeading: string = DONE_HEADING,
+): MoveResult {
+  const eol = lineEnding(raw);
+  const result = moveTaskLF(toLF(raw), taskId, targetHeading, doneHeading);
+  return { ...result, content: withLineEnding(result.content, eol) };
+}
+
+/** The task's line and everything indented under it: sub-items, details, notes. */
+function blockEnd(lines: string[], start: number): number {
+  const indent = (lines[start].match(/^\s*/)?.[0] ?? "").length;
+  let end = start;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.trim() === "") continue;
+    if ((line.match(/^\s*/)?.[0] ?? "").length > indent) end = i;
+    else break;
+  }
+  return end;
+}
+
+function moveTaskLF(
+  content: string,
+  taskId: string,
+  targetHeading: string,
+  doneHeading: string,
 ): MoveResult {
   const parsed = parseMarkdown(content);
   const task = parsed.tasks.find((t) => t.id === taskId);
@@ -220,15 +255,15 @@ export function moveTask(
     };
   }
 
-  const movedLine = rewriteCheckbox(
-    parsed.lines[task.line],
-    targetHeading === doneHeading,
-  );
+  // The whole item moves — its sub-items, details and notes with it.
+  const end = blockEnd(parsed.lines, task.line);
+  const block = parsed.lines.slice(task.line, end + 1);
+  block[0] = rewriteCheckbox(block[0], targetHeading === doneHeading);
 
   // Remove first, then recompute the insertion point on the shortened file so
   // the indices cannot drift when moving a task upwards.
   const withoutTask = [...parsed.lines];
-  withoutTask.splice(task.line, 1);
+  withoutTask.splice(task.line, end - task.line + 1);
 
   const reparsed = parseMarkdown(withoutTask.join("\n"));
   const targetAfterRemoval = sectionBounds(reparsed, targetHeading);
@@ -246,7 +281,7 @@ export function moveTask(
     insertAt -= 1;
   }
 
-  withoutTask.splice(insertAt + 1, 0, movedLine);
+  withoutTask.splice(insertAt + 1, 0, ...block);
 
   return {
     content: withoutTask.join("\n"),

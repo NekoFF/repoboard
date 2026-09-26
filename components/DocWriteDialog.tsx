@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, GitCommitHorizontal } from "lucide-react";
 import type { DocChange } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
@@ -38,14 +38,23 @@ export function DocWriteDialog({
   const [busy, setBusy] = useState(false);
   const [compare, setCompare] = useState(false);
 
+  // Callers often pass a new array each render; the preview is fetched again
+  // only when what it describes changes, and a slower older answer never
+  // replaces a newer one.
+  const key = JSON.stringify([path, edits, baseSha, create, attachments?.map((a) => a.path)]);
+  const latest = useRef(0);
   const load = useCallback(() => {
     setError(null);
+    const ticket = ++latest.current;
     const request =
       create !== undefined
         ? api.previewDocCreate(path, create)
         : api.previewDocEdit(path, edits ?? [], baseSha ?? null, attachments);
-    request.then(setPreview).catch((err: Error) => setError(err.message));
-  }, [path, edits, baseSha, create, attachments]);
+    request
+      .then((result) => ticket === latest.current && setPreview(result))
+      .catch((err: Error) => ticket === latest.current && setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   useEffect(load, [load]);
 
