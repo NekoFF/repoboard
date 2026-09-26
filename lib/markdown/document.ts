@@ -271,7 +271,53 @@ export type DocEdit =
   | { type: "add"; section: string | null; title: string }
   /** A review note under an item: "> author date: text". */
   | { type: "note"; line: number; title: string; id?: string | null; author: string; text: string; date?: string }
+  /**
+   * Done, with evidence: sets the item's state and writes a `Proof:` line per
+   * piece of evidence and a `Checked:` line saying who and when. `place`
+   * proofs are turned into GitHub permalinks by the server before this runs.
+   */
+  | {
+      type: "proof";
+      line: number;
+      title: string;
+      id?: string | null;
+      state: ItemState;
+      proofs: Proof[];
+      by: string;
+      date?: string;
+    }
   | { type: "replace"; content: string };
+
+export type Proof =
+  /** A link: a permalink to lines in the repository, a pull request, a web page. */
+  | { kind: "link"; url: string; label: string }
+  /** Lines in a file of the repository; the server turns it into a permalink. */
+  | { kind: "place"; path: string; from?: number | null; to?: number | null }
+  /** The words themselves, copied from where they are written. */
+  | { kind: "quote"; text: string }
+  /** A screenshot, committed with the change; `path` is relative to the document. */
+  | { kind: "image"; path: string; alt: string };
+
+/** One `Proof:` line in the RepoBoard format. */
+export function proofLine(proof: Proof): string {
+  const flat = (text: string) => text.trim().replace(/\s*\n\s*/g, " ");
+  switch (proof.kind) {
+    case "link":
+      return `Proof: [${flat(proof.label).replace(/[[\]]/g, "")}](${proof.url})`;
+    case "place":
+      return `Proof: ${proof.path}${proof.from ? `, line ${proof.from}${proof.to && proof.to !== proof.from ? `–${proof.to}` : ""}` : ""}`;
+    case "quote":
+      // One line per detail: the quoted lines are kept apart with " / ".
+      return `Proof: “${proof.text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(" / ")
+        .replace(/[“”]/g, '"')}”`;
+    case "image":
+      return `Proof: ![${flat(proof.alt).replace(/[[\]]/g, "") || "Screenshot"}](${proof.path})`;
+  }
+}
 
 function findItem(parsed: ParsedDocument, edit: { line: number; title: string; id?: string | null }) {
   if (edit.id) {
@@ -315,6 +361,7 @@ export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
   const changed: Record<ItemState, number> = { todo: 0, doing: 0, review: 0, done: 0, cancelled: 0 };
   let added = 0;
   let noted = 0;
+  let proved = 0;
 
   for (const edit of edits) {
     const parsed = parseDocument(lines.join("\n"));
@@ -348,6 +395,29 @@ export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
       lines.splice(item.endLine + 1, 0, ...(lastIsQuote ? [`${indent}>`, quote] : [quote]));
       applied += 1;
       noted += 1;
+    } else if (edit.type === "proof") {
+      const item = findItem(parsed, edit);
+      if (!item) {
+        missed.push(edit.title);
+        continue;
+      }
+      if (item.state !== edit.state) {
+        lines[item.line] = setState(lines[item.line], edit.state);
+        changed[edit.state] += 1;
+      }
+      const lead = lines[item.line].match(/^((?:\s*>\s?)*\s*)[-*+]\s+/)?.[0] ?? "- ";
+      const indent = " ".repeat(lead.replace(/>/g, " ").length);
+      const date = edit.date ?? new Date().toISOString().slice(0, 10);
+      const evidence = edit.proofs.map((p) => `${indent}- ${proofLine(p)}`);
+      if (evidence.length) {
+        const by = edit.by.trim().replace(/\s+/g, "-") || "someone";
+        // After everything that belongs to the item, so its own details stay first.
+        const at = item.endLine + 1;
+        const afterQuote = /^\s*>/.test(lines[item.endLine] ?? "") && item.endLine > item.line;
+        lines.splice(at, 0, ...(afterQuote ? [""] : []), ...evidence, `${indent}- Checked: ${by}, ${date}`);
+        proved += evidence.length;
+      }
+      applied += 1;
     } else if (edit.type === "add") {
       const text = edit.title.trim().replace(/\s+/g, " ");
       if (!text) continue;
@@ -393,6 +463,7 @@ export function applyDocEdits(content: string, edits: DocEdit[]): EditResult {
   if (changed.cancelled) parts.push(`cancel ${plural(changed.cancelled)}`);
   if (added) parts.push(`add ${plural(added)}`);
   if (noted) parts.push(`add ${noted} note${noted === 1 ? "" : "s"}`);
+  if (proved) parts.push(`add ${proved} proof${proved === 1 ? "" : "s"}`);
 
   return {
     content: next,

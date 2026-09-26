@@ -105,16 +105,29 @@ export const api = {
     post<{ files: WorkspaceFile[]; existing: string[] }>("/api/docs", { action: "workspace-preview", templates, readme }),
   createWorkspace: (templates: string[], readme: boolean) =>
     post<{ commitSha: string; paths: string[] }>("/api/docs", { action: "workspace-create", templates, readme }),
-  previewDocEdit: (path: string, edits: DocEdit[], baseSha: string | null) =>
-    post<DocChange>("/api/docs", { action: "preview", path, edits, baseSha }),
-  commitDocEdit: (path: string, edits: DocEdit[], expectedSha: string, force?: boolean) =>
+  previewDocEdit: (path: string, edits: DocEdit[], baseSha: string | null, attachments?: { path: string }[]) =>
+    post<DocChange>("/api/docs", { action: "preview", path, edits, baseSha, attachments: attachments?.map((a) => a.path) }),
+  commitDocEdit: (
+    path: string,
+    edits: DocEdit[],
+    expectedSha: string,
+    force?: boolean,
+    attachments?: { path: string; base64: string }[],
+  ) =>
     post<{ commitSha: string; contentSha: string; summary: string }>("/api/docs", {
       action: "commit",
       path,
       edits,
       expectedSha,
       force,
+      attachments: attachments?.map(({ path: p, base64 }) => ({ path: p, base64 })),
     }),
+  /** Every file in the repository, for pointing at where something is written. */
+  repoFiles: () => request<{ files: string[] }>("/api/docs?all=1"),
+  /** A text file as it is now, to show the lines a proof points at. */
+  repoText: (path: string) => request<{ path: string; content: string; sha: string }>(`/api/docs?text=${encodeURIComponent(path)}`),
+  /** Where the browser can load an image or PDF from the repository. */
+  rawUrl: (path: string) => `/api/docs?raw=${encodeURIComponent(path)}`,
   previewDocCreate: (path: string, content: string) =>
     post<DocChange>("/api/docs", { action: "create-preview", path, content }),
   createDoc: (path: string, content: string) =>

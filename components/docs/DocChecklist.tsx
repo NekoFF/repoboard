@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, MessageSquareText, Plus, SquarePlus } from "lucide-react";
+import { CheckCheck, ChevronRight, MessageSquareText, Paperclip, Plus, SquarePlus } from "lucide-react";
 import type { DocItem, ParsedDocument } from "@/lib/markdown/document";
 import type { ItemNote, ItemState } from "@/lib/markdown/format";
 import { InlineMarkdown, ItemMetaChips } from "@/components/Markdown";
-import { Menu, MenuItem, ProgressBar, StatusIcon, Tooltip } from "@/components/ui";
+import { Menu, MenuItem, MenuSeparator, ProgressBar, StatusIcon, Tooltip } from "@/components/ui";
+import { api } from "@/lib/client/api";
 import { STATUS_LABEL } from "@/lib/status";
 
 export type ChecklistFilter = "all" | "open" | "review" | "done";
@@ -18,7 +19,41 @@ const DETAIL_LABEL: Record<string, string> = {
   source: "Source",
   note: "Note",
   done: "Done when",
+  proof: "Proof",
+  checked: "Checked",
 };
+
+/** A repository path written relative to the document, as a path from the repository root. */
+function resolveFrom(docPath: string, target: string): string {
+  const parts = docPath.split("/").slice(0, -1);
+  for (const piece of target.split("/")) {
+    if (piece === "..") parts.pop();
+    else if (piece !== "." && piece !== "") parts.push(piece);
+  }
+  return parts.join("/");
+}
+
+/**
+ * One piece of evidence: a screenshot as a picture that opens full size, a
+ * link, or the quoted words — whatever the `Proof:` line holds.
+ */
+function ProofText({ text, docPath }: { text: string; docPath: string }) {
+  const image = text.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+  if (image) {
+    const src = /^https?:\/\//.test(image[2]) ? image[2] : api.rawUrl(resolveFrom(docPath, image[2]));
+    return (
+      <a href={src} target="_blank" rel="noreferrer noopener" className="block w-fit">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={image[1]} className="max-h-48 max-w-full rounded-lg object-contain ring-1 ring-border" />
+      </a>
+    );
+  }
+  const quote = text.match(/^[“"](.+)[”"]$/s);
+  if (quote) {
+    return <blockquote className="border-l-2 border-state-done/50 pl-2.5 italic text-ink">{quote[1]}</blockquote>;
+  }
+  return <DetailText text={text} />;
+}
 
 const STATES: ItemState[] = ["todo", "doing", "review", "done", "cancelled"];
 
@@ -65,6 +100,9 @@ function ItemRow({
   onState,
   onNote,
   onCreateCard,
+  onProof,
+  docPath,
+  pendingProofs,
   author,
   depth,
 }: {
@@ -78,6 +116,9 @@ function ItemRow({
   onState: (state: ItemState) => void;
   onNote: (text: string) => void;
   onCreateCard?: () => void;
+  onProof?: () => void;
+  docPath: string;
+  pendingProofs: number;
   author: string;
   depth: number;
 }) {
@@ -114,6 +155,14 @@ function ItemRow({
               </button>
             }
           >
+            {onProof && (
+              <>
+                <MenuItem icon={<CheckCheck className="size-3.5" />} onSelect={onProof}>
+                  Done with proof…
+                </MenuItem>
+                <MenuSeparator />
+              </>
+            )}
             {STATES.map((s) => (
               <MenuItem key={s} icon={<StatusIcon status={s} />} checked={s === state} onSelect={() => onState(s)}>
                 {s === "review" ? "Needs checking" : STATUS_LABEL[s]}
@@ -132,13 +181,23 @@ function ItemRow({
               Needs your check
             </span>
           )}
-          {pending && <span className="ml-2 align-middle text-2xs font-medium text-state-review">not committed</span>}
+          {pending && (
+            <span className="ml-2 align-middle text-2xs font-medium text-state-review">
+              {pendingProofs > 0 ? `with ${pendingProofs} proof${pendingProofs === 1 ? "" : "s"}, not committed` : "not committed"}
+            </span>
+          )}
         </button>
 
         <span className="mt-0.5 flex shrink-0 items-center gap-2 text-2xs text-faint">
           {children.length > 0 && (
             <span className="tabular-nums" title="Sub-items">
               {childDone}/{children.length}
+            </span>
+          )}
+          {item.details.some((d) => d.key === "proof") && (
+            <span className="inline-flex items-center gap-0.5 text-state-done" title="Has proof">
+              <Paperclip className="size-3" />
+              {item.details.filter((d) => d.key === "proof").length}
             </span>
           )}
           {item.notes.length + pendingNotes.length > 0 && (
@@ -165,7 +224,7 @@ function ItemRow({
                 <div key={index} className="contents">
                   <dt className="pt-px text-xs font-medium text-faint">{detail.key ? DETAIL_LABEL[detail.key] : ""}</dt>
                   <dd className={`leading-relaxed ${detail.key === "verify" ? "text-ink" : "text-muted"}`}>
-                    <DetailText text={detail.text} />
+                    {detail.key === "proof" ? <ProofText text={detail.text} docPath={docPath} /> : <DetailText text={detail.text} />}
                   </dd>
                 </div>
               ))}
@@ -208,6 +267,12 @@ function ItemRow({
                 Add note
               </button>
             </form>
+            {onProof && (
+              <button className="rb-btn rb-btn-sm" onClick={onProof}>
+                {state === "done" ? <Paperclip className="size-3.5" /> : <CheckCheck className="size-3.5" />}
+                {state === "done" ? "Add proof" : "Done with proof"}
+              </button>
+            )}
             {onCreateCard && (
               <Tooltip content="Put this on the board as a card that links back here">
                 <button className="rb-btn-ghost" onClick={onCreateCard}>
@@ -238,6 +303,9 @@ export function DocChecklist({
   onNote,
   onAdd,
   onCreateCard,
+  onProof,
+  docPath,
+  pendingProofs,
 }: {
   doc: ParsedDocument;
   filter: ChecklistFilter;
@@ -249,6 +317,9 @@ export function DocChecklist({
   onNote: (item: DocItem, text: string) => void;
   onAdd: (section: string | null, title: string) => void;
   onCreateCard?: (item: DocItem) => void;
+  onProof?: (item: DocItem) => void;
+  docPath: string;
+  pendingProofs: Map<number, number>;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [adding, setAdding] = useState<number | null>(null);
@@ -316,6 +387,9 @@ export function DocChecklist({
           onState={(s) => onState(item, s)}
           onNote={(text) => onNote(item, text)}
           onCreateCard={onCreateCard ? () => onCreateCard(item) : undefined}
+          onProof={onProof ? () => onProof(item) : undefined}
+          docPath={docPath}
+          pendingProofs={pendingProofs.get(item.line) ?? 0}
           author={author}
           depth={depth}
         />

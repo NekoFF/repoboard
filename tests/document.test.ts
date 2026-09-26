@@ -219,3 +219,54 @@ describe("links between documents", () => {
     ]);
   });
 });
+
+describe("done with proof", () => {
+  const file = [
+    "# Privacy",
+    "",
+    "- [?] Every third party that receives data",
+    "  - Why: people must know who gets their data.",
+    "  > codex 2026-09-25: Sentry and the blocklist CDN are named.",
+    "- [ ] Retention periods",
+    "",
+  ].join("\n");
+
+  it("ticks the item and writes each proof and who checked it under it", () => {
+    const result = applyDocEdits(file, [
+      {
+        type: "proof",
+        line: 2,
+        title: "Every third party that receives data",
+        state: "done",
+        by: "neko",
+        date: "2026-09-26",
+        proofs: [
+          { kind: "link", url: "https://github.com/o/r/blob/abc/docs/privacy.md#L40-L45", label: "docs/privacy.md, lines 40–45" },
+          { kind: "quote", text: "We send crash reports to Sentry (EU)." },
+          { kind: "image", path: "../evidence/privacy-third-party.webp", alt: "Settings, About" },
+        ],
+      },
+    ]);
+    const parsed = parseDocument(result.content);
+    const item = parsed.items.find((i) => i.title.startsWith("Every third party"))!;
+    expect(item.state).toBe("done");
+    expect(item.details.filter((d) => d.key === "proof").map((d) => d.text)).toEqual([
+      "[docs/privacy.md, lines 40–45](https://github.com/o/r/blob/abc/docs/privacy.md#L40-L45)",
+      "“We send crash reports to Sentry (EU).”",
+      "![Settings, About](../evidence/privacy-third-party.webp)",
+    ]);
+    expect(item.details.find((d) => d.key === "checked")?.text).toBe("neko, 2026-09-26");
+    // Its own details and notes stay; the next item is untouched.
+    expect(item.details[0].key).toBe("why");
+    expect(item.notes).toHaveLength(1);
+    expect(parsed.items.find((i) => i.title === "Retention periods")?.details).toEqual([]);
+    expect(result.summary).toBe("Tick 1 item, add 3 proofs");
+  });
+
+  it("without proof it only changes the state", () => {
+    const result = applyDocEdits(file, [
+      { type: "proof", line: 5, title: "Retention periods", state: "done", by: "neko", proofs: [] },
+    ]);
+    expect(result.content).toBe(file.replace("- [ ] Retention periods", "- [x] Retention periods"));
+  });
+});

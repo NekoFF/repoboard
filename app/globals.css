@@ -766,3 +766,48 @@
 .rb-tile-flat::before {
   content: none;
 }
+
+/* Export as PDF: only the document is printed, on white, in the page's own
+   type — the app around it is hidden (see DocScreen). */
+.rb-print-root {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  body > *:not(.rb-print-root) {
+    display: none !important;
+  }
+  /* Paper is white whatever the theme: the light colours, always. */
+  .rb-print-root {
+    display: block;
+    font-size: 11pt;
+    --surface: 255 255 255;
+    --border: 231 233 237;
+    --ink: 17 17 17;
+    --muted: 70 74 82;
+    --faint: 120 126 136;
+    --pill: 237 239 242;
+    --code-bg: 245 246 249;
+    --accent: 52 98 204;
+    color: rgb(var(--ink));
+  }
+  .rb-print-root .group\/code button {
+    display: none;
+  }
+  .rb-print-root h1,
+  .rb-print-root h2,
+  .rb-print-root h3 {
+    break-after: avoid;
+  }
+  .rb-print-root pre,
+  .rb-print-root table,
+  .rb-print-root img {
+    break-inside: avoid;
+  }
+}

@@ -546,6 +546,98 @@ export class GitHubClient {
     return { commitSha: commit.sha };
   }
 
+  /** The commit the default branch points at now — what a permalink should name. */
+  async headCommit(): Promise<string> {
+    const repo = await this.getRepo();
+    const { data } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${repo.defaultBranch}` });
+    return data.object.sha;
+  }
+
+  /** Every file in the repository (paths only), for pickers. */
+  async listFiles(): Promise<string[]> {
+    const repo = await this.getRepo();
+    const data = await this.octokit.rest.git
+      .getTree({ owner: this.owner, repo: this.repo, tree_sha: repo.defaultBranch, recursive: "1" })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error) || (error as { status?: number }).status === 404) return { tree: [] };
+        throw error;
+      });
+    return data.tree
+      .filter((n) => n.type === "blob" && n.path)
+      .map((n) => n.path!)
+      .sort();
+  }
+
+  /** A file's bytes — for images and PDFs, which must not pass through a string. */
+  async getFileBytes(path: string): Promise<{ bytes: Buffer; sha: string }> {
+    const { data } = await this.octokit.rest.repos.getContent({ owner: this.owner, repo: this.repo, path });
+    if (Array.isArray(data) || data.type !== "file") throw new Error(`${path} is not a file`);
+    if (data.content) return { bytes: Buffer.from(data.content, "base64"), sha: data.sha };
+    // Files over 1 MB come without content; the blob has them.
+    const blob = await this.octokit.rest.git.getBlob({ owner: this.owner, repo: this.repo, file_sha: data.sha });
+    return { bytes: Buffer.from(blob.data.content, "base64"), sha: data.sha };
+  }
+
+  /**
+   * One commit that edits files and adds new ones — a checklist and the
+   * screenshot that proves an item, together or not at all. Every edited file
+   * must still be at `expectedSha` and every new file must not exist yet;
+   * the branch moves without force, so a push in between makes it fail.
+   */
+  async commitChanges(args: {
+    message: string;
+    edits: { path: string; content: string; expectedSha: string }[];
+    adds: { path: string; base64: string }[];
+  }): Promise<{ commitSha: string }> {
+    const repo = await this.getRepo();
+    const branch = repo.defaultBranch;
+    const { data: ref } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` });
+    const { data: head } = await this.octokit.rest.git.getCommit({ owner: this.owner, repo: this.repo, commit_sha: ref.object.sha });
+
+    for (const edit of args.edits) {
+      const current = await this.getFile(edit.path, ref.object.sha);
+      if (current.sha !== edit.expectedSha) {
+        const error = new Error(`${edit.path} changed on GitHub meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+    }
+    for (const add of args.adds) {
+      const exists = await this.getFile(add.path, ref.object.sha).then(
+        () => true,
+        () => false,
+      );
+      if (exists) throw new Error(`${add.path} already exists`);
+    }
+
+    const blobs = await Promise.all(
+      args.adds.map((add) =>
+        this.octokit.rest.git
+          .createBlob({ owner: this.owner, repo: this.repo, content: add.base64, encoding: "base64" })
+          .then((r) => ({ path: add.path, sha: r.data.sha })),
+      ),
+    );
+    const { data: tree } = await this.octokit.rest.git.createTree({
+      owner: this.owner,
+      repo: this.repo,
+      base_tree: head.tree.sha,
+      tree: [
+        ...args.edits.map((e) => ({ path: e.path, mode: "100644" as const, type: "blob" as const, content: e.content })),
+        ...blobs.map((b) => ({ path: b.path, mode: "100644" as const, type: "blob" as const, sha: b.sha })),
+      ],
+    });
+    const { data: commit } = await this.octokit.rest.git.createCommit({
+      owner: this.owner,
+      repo: this.repo,
+      message: args.message,
+      tree: tree.sha,
+      parents: [head.sha],
+    });
+    await this.octokit.rest.git.updateRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}`, sha: commit.sha, force: false });
+    return { commitSha: commit.sha };
+  }
+
   /**
    * Writes a file back. `expectedSha` is passed straight to the Contents API,
    * which rejects the write if the blob moved underneath us — the server-side

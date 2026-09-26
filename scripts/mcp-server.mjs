@@ -275,7 +275,8 @@ async function readFromGitHub(project, filePath) {
 const FORMAT_HINT =
   "Format: - [ ] todo, - [/] in progress, - [?] needs a person to check, - [x] done (people only), - [-] won't do. " +
   "Details as nested bullets (- Why: / - Do: / - Verify: / - Source:), review notes as a nested quote (> yourname YYYY-MM-DD: text). " +
-  "Edit the file in your working copy and push; never mark items [x] yourself.";
+  "When you set [?], add evidence as - Proof: lines (a link to the file and lines, or the quoted words). " +
+  "Edit the file in your working copy and push; never mark items [x] yourself and never write - Checked: (people only).";
 
 /* ---------------------------------------------------------------- tools -- */
 

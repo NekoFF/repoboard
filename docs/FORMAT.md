@@ -73,6 +73,27 @@ shown as a plain remark:
 | `Source:` | a link that backs it up |
 | `Done when:` | the acceptance criterion |
 | `Note:` | anything else worth keeping |
+| `Proof:` | evidence that it is done: a link, the quoted words, or a screenshot |
+| `Checked:` | who checked it and when — `name, YYYY-MM-DD` |
+
+### Proof
+
+When a person marks an item done with proof, RepoBoard writes one `Proof:`
+line per piece of evidence and a `Checked:` line under the item, in the same
+commit as the tick:
+
+```markdown
+- [x] Every third party that receives data #privacy
+  - Proof: [docs/legal/privacy-policy.md, lines 40–52](https://github.com/o/r/blob/3f2a…/docs/legal/privacy-policy.md#L40-L52)
+  - Proof: “We send crash reports to Sentry, hosted in the EU.”
+  - Proof: ![Settings, About, Privacy](../evidence/privacy-policy-every-third-party-20260926-101500.webp)
+  - Checked: neko, 2026-09-26
+```
+
+A file reference is a permalink to the commit it was checked at, so it keeps
+pointing at the words that were checked. Screenshots live in
+`.repoboard/evidence/`, linked relative to the checklist so they show on
+GitHub too. A multi-line quote keeps its lines apart with ` / `.
 
 Review notes are a nested quote, one paragraph per note, starting with who
 wrote it and when:
@@ -93,8 +114,10 @@ into one paragraph. RepoBoard does this when it adds a note.
 ## Rules for AI agents
 
 1. Read `.repoboard/` first; it is the shared state between people and agents.
-2. Never set `[x]`. When something is finished, set `[?]` and make sure the
-   item has a `Verify:` line a person can follow.
+2. Never set `[x]`, and never write `Checked:`. When something is finished,
+   set `[?]`, make sure the item has a `Verify:` line a person can follow,
+   and add `Proof:` lines — where it is written, the words — so the person
+   checking starts from evidence.
 3. Add, do not rewrite. Missing something? Add an item. Disagree or know
    more? Add a note under the item.
 4. Cite sources for anything legal, licensing or security related.

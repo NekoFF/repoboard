@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,6 +9,7 @@ import {
   ChevronLeft,
   Copy,
   ExternalLink,
+  FileDown,
   FileText,
   ListChecks,
   MoreHorizontal,
@@ -28,6 +30,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Markdown } from "@/components/Markdown";
 import { DocChecklist, type ChecklistFilter } from "@/components/docs/DocChecklist";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
+import { ProofDialog, type ProofAttachment, type ProofDraft } from "@/components/docs/ProofDialog";
 import {
   EmptyState,
   Menu,
@@ -65,6 +68,10 @@ export function DocScreen({ path }: { path: string }) {
   const [mode, setMode] = useState<Mode>("checklist");
   const [filter, setFilter] = useState<ChecklistFilter>("all");
   const [edits, setEdits] = useState<DocEdit[]>([]);
+  // Screenshots proving items, committed together with the edits.
+  const [attachments, setAttachments] = useState<ProofAttachment[]>([]);
+  const [proving, setProving] = useState<DocItem | null>(null);
+  const [printing, setPrinting] = useState(false);
   const [raw, setRaw] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -81,6 +88,7 @@ export function DocScreen({ path }: { path: string }) {
   // Moving to another document starts clean.
   useEffect(() => {
     setEdits([]);
+    setAttachments([]);
     setRaw(null);
     setMode("checklist");
     setFilter("all");
@@ -88,9 +96,24 @@ export function DocScreen({ path }: { path: string }) {
 
   const states = useMemo(() => {
     const map = new Map<number, ItemState>();
-    for (const e of edits) if (e.type === "state") map.set(e.line, e.state);
+    for (const e of edits) if (e.type === "state" || e.type === "proof") map.set(e.line, e.state);
     return map;
   }, [edits]);
+  const pendingProofs = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const e of edits) if (e.type === "proof") map.set(e.line, (map.get(e.line) ?? 0) + e.proofs.length);
+    return map;
+  }, [edits]);
+
+  const addProof = useCallback((draft: ProofDraft) => {
+    // A proof replaces a plain tick of the same item; it carries the state itself.
+    setEdits((prev) => [
+      ...prev.filter((e) => !((e.type === "state" || e.type === "proof") && e.line === draft.edit.line)),
+      draft.edit,
+    ]);
+    setAttachments((prev) => [...prev, ...draft.attachments]);
+    setProving(null);
+  }, []);
   const pendingNotes = useMemo(() => {
     const map = new Map<number, ItemNote[]>();
     for (const e of edits) {
@@ -109,6 +132,7 @@ export function DocScreen({ path }: { path: string }) {
       const rest = prev.filter((e) => !(e.type === "state" && e.line === item.line));
       // Setting it back to what the file says is simply undoing the change.
       if (state === item.state) return rest;
+      if (prev.some((e) => e.type === "proof" && e.line === item.line)) return prev;
       return [...rest, { type: "state", line: item.line, title: item.text, id: item.id, state }];
     });
   }, []);
@@ -181,6 +205,35 @@ export function DocScreen({ path }: { path: string }) {
     }
   };
 
+  // Export: the document alone, laid out for paper, through the browser's
+  // own "Save as PDF" — the result looks like the text, not like the app.
+  useEffect(() => {
+    if (!printing) return;
+    let cancelled = false;
+    const run = async () => {
+      const images = Array.from(document.querySelectorAll<HTMLImageElement>(".rb-print-root img"));
+      await Promise.race([
+        Promise.all(images.map((img) => (img.complete ? null : new Promise((r) => img.addEventListener("load", r, { once: true }))))),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+      if (cancelled) return;
+      const before = document.title;
+      document.title = parsed?.title ?? path.split("/").pop() ?? "Document";
+      const done = () => {
+        document.title = before;
+        setPrinting(false);
+      };
+      window.addEventListener("afterprint", done, { once: true });
+      window.print();
+      // Some browsers do not send afterprint; print() has returned by now anyway.
+      setTimeout(done, 1000);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [printing, parsed, path]);
+
   const kind = kindOfPath(path);
   const tracked = data?.tracked ?? null;
   const githubUrl = repo ? `https://github.com/${repo}/blob/HEAD/${path.split("/").map(encodeURIComponent).join("/")}` : null;
@@ -210,6 +263,13 @@ export function DocScreen({ path }: { path: string }) {
                 {doc.refreshing ? <Spinner /> : <RefreshCw className="size-4" />}
               </button>
             </Tooltip>
+            {data && kind === "document" && (
+              <Tooltip content="Export as PDF">
+                <button className="rb-icon-btn" onClick={() => setPrinting(true)} aria-label="Export as PDF" disabled={printing}>
+                  <FileDown className="size-4" />
+                </button>
+              </Tooltip>
+            )}
             {githubUrl && (
               <Tooltip content="Open on GitHub">
                 <a className="rb-icon-btn" href={githubUrl} target="_blank" rel="noreferrer noopener" aria-label="Open on GitHub">
@@ -225,6 +285,11 @@ export function DocScreen({ path }: { path: string }) {
                 </button>
               }
             >
+              {data && kind !== "document" && (
+                <MenuItem icon={<FileDown className="size-3.5" />} onSelect={() => setPrinting(true)}>
+                  Export as PDF
+                </MenuItem>
+              )}
               <MenuItem
                 icon={<Copy className="size-3.5" />}
                 onSelect={() => navigator.clipboard?.writeText(`[[${path}]]`).then(() => toast.push({ kind: "success", message: "Link copied", detail: `[[${path}]]` }))}
@@ -328,7 +393,10 @@ export function DocScreen({ path }: { path: string }) {
                   <span className="mx-2">in</span>
                   <span className="font-mono">{path}</span>
                 </p>
-                <h1 className="text-2xl font-semibold tracking-[-0.02em] text-ink">{parsed.title}</h1>
+                {/* Reading, the file's own first heading is the title; do not say it twice. */}
+                {!(mode === "read" && /^\s*(?:<!--[\s\S]*?-->\s*)*#\s/.test(data.content)) && (
+                  <h1 className="text-2xl font-semibold tracking-[-0.02em] text-ink">{parsed.title}</h1>
+                )}
               </div>
               {parsed.total > 0 && (
                 <div className="flex flex-col gap-2.5">
@@ -365,9 +433,12 @@ export function DocScreen({ path }: { path: string }) {
                 onNote={addNote}
                 onAdd={addItem}
                 onCreateCard={createCard}
+                onProof={setProving}
+                docPath={path}
+                pendingProofs={pendingProofs}
               />
             ) : (
-              <Markdown content={data.content} items={parsed.items} sections={parsed.sections} states={states} onItemState={setState} className="max-w-none" />
+              <Markdown content={data.content} items={parsed.items} sections={parsed.sections} states={states} onItemState={setState} onItemProof={setProving} basePath={path} className="max-w-none" />
             )}
           </div>
         )}
@@ -396,6 +467,7 @@ export function DocScreen({ path }: { path: string }) {
               className="rb-btn-ghost"
               onClick={() => {
                 setEdits([]);
+                setAttachments([]);
                 if (data) setRaw(data.content);
               }}
             >
@@ -408,15 +480,35 @@ export function DocScreen({ path }: { path: string }) {
         </div>
       )}
 
+      {printing &&
+        data &&
+        createPortal(
+          <div className="rb-print-root">
+            <Markdown content={data.content} basePath={path} className="max-w-none" />
+          </div>,
+          document.body,
+        )}
+
+      {proving && (
+        <ProofDialog
+          docPath={path}
+          item={{ line: proving.line, text: proving.text, title: proving.title, id: proving.id }}
+          onClose={() => setProving(null)}
+          onDone={addProof}
+        />
+      )}
+
       {reviewing && data && (
         <DocWriteDialog
           path={path}
           edits={pendingEdits}
           baseSha={data.sha}
+          attachments={mode === "edit" ? undefined : attachments}
           onClose={() => setReviewing(false)}
           onDone={() => {
             setReviewing(false);
             setEdits([]);
+            setAttachments([]);
             setRaw(null);
             if (mode === "edit") setMode("checklist");
             doc.reload();

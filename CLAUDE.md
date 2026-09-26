@@ -54,7 +54,9 @@ Project (a GitHub repository)
    write goes through a dialog that re-fetches the file, shows the diff and
    commits with the SHA it was computed on: `MarkdownWriteDialog` (board ↔
    markdown), `DocWriteDialog` (documents), the workspace setup preview, and
-   the "Save to repo" confirmation for `board.json`. If the remote SHA moved,
+   the "Save to repo" confirmation for `board.json`; a tick with screenshots
+   goes through `DocWriteDialog` too and lands as one commit
+   (`GitHubClient.commitChanges`, which checks every edited file's SHA). If the remote SHA moved,
    the write is refused until the user decides. Do not add a code path that
    calls the Contents or Git Data API from anywhere else.
 2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),

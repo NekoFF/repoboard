@@ -22,6 +22,7 @@ import { api, useResource } from "@/lib/client/api";
 import { useShell } from "@/components/shell/ShellContext";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
+import { ProofDialog, type ProofAttachment } from "@/components/docs/ProofDialog";
 import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 import { milestoneProgress } from "@/components/MilestonesDialog";
 import {
@@ -111,7 +112,9 @@ export function OverviewScreen({
 }) {
   const router = useRouter();
   const { repo } = useShell();
-  const [verify, setVerify] = useState<{ path: string; edits: DocEdit[]; sha: string | null } | null>(null);
+  const [verify, setVerify] = useState<{ path: string; edits: DocEdit[]; sha: string | null; attachments: ProofAttachment[] } | null>(null);
+  // "I checked it" asks for proof first (optional), then shows the change.
+  const [checking, setChecking] = useState<{ doc: TrackedDoc; item: TrackedDoc["items"][number] } | null>(null);
 
   const commits = useResource(() => api.commits(), [], { enabled: connected });
   const pulls = useResource(api.pulls, [], { enabled: connected });
@@ -328,20 +331,7 @@ export function OverviewScreen({
                     </Link>
                     <button
                       className="rb-btn rb-btn-sm"
-                      onClick={() =>
-                        setVerify({
-                          path: entry.doc.path,
-                          sha: entry.doc.sha,
-                          edits: [
-                            {
-                              type: "state",
-                              line: entry.item.line,
-                              title: entry.item.text ?? entry.item.title,
-                              state: "done",
-                            },
-                          ],
-                        })
-                      }
+                      onClick={() => setChecking({ doc: entry.doc, item: entry.item })}
                     >
                       <CheckCheck className="size-3.5" /> I checked it
                     </button>
@@ -486,11 +476,29 @@ export function OverviewScreen({
         </div>
       </div>
 
+      {checking && (
+        <ProofDialog
+          docPath={checking.doc.path}
+          item={{
+            line: checking.item.line,
+            text: checking.item.text ?? checking.item.title,
+            title: checking.item.title,
+            id: null,
+          }}
+          onClose={() => setChecking(null)}
+          onDone={(draft) => {
+            setVerify({ path: checking.doc.path, sha: checking.doc.sha, edits: [draft.edit], attachments: draft.attachments });
+            setChecking(null);
+          }}
+        />
+      )}
+
       {verify && (
         <DocWriteDialog
           path={verify.path}
           edits={verify.edits}
           baseSha={verify.sha}
+          attachments={verify.attachments}
           onClose={() => setVerify(null)}
           onDone={() => {
             setVerify(null);

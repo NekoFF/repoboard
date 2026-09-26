@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
 import { markdownSources, type DocSnapshot } from "@/db/schema";
 import { GitHubClient } from "@/lib/github/client";
@@ -10,6 +10,7 @@ import {
   SNAPSHOT_VERSION,
   toSnapshot,
   type DocEdit,
+  type Proof,
   type ParsedDocument,
 } from "@/lib/markdown/document";
 import { buildDiff, type DiffLine } from "@/lib/markdown/sync";
@@ -37,7 +38,71 @@ import {
 type DocsGitHub = MarkdownGitHub & {
   listMarkdownFiles?: () => Promise<string[]>;
   createFiles?: (args: { files: { path: string; content: string }[]; message: string }) => Promise<{ commitSha: string }>;
+  headCommit?: () => Promise<string>;
+  commitChanges?: (args: {
+    message: string;
+    edits: { path: string; content: string; expectedSha: string }[];
+    adds: { path: string; base64: string }[];
+  }) => Promise<{ commitSha: string }>;
 };
+
+/** A screenshot sent with a proof: committed next to the checklist, in the same commit. */
+export interface Attachment {
+  path: string;
+  base64: string;
+}
+
+export const EVIDENCE_DIR = `${WORKSPACE_DIR}/evidence`;
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function checkAttachments(attachments: { path: string; base64?: string }[]): void {
+  for (const a of attachments) {
+    if (!a.path.startsWith(`${EVIDENCE_DIR}/`) || a.path.includes("..") || !/^[\w./-]+\.(png|jpe?g|webp)$/i.test(a.path)) {
+      throw new Error(`Screenshots go in ${EVIDENCE_DIR}/ as .png, .jpg or .webp`);
+    }
+    if (a.base64 && Buffer.byteLength(a.base64, "base64") > MAX_ATTACHMENT_BYTES) {
+      throw new Error("A screenshot may be at most 5 MB");
+    }
+  }
+}
+
+/** The SHA GitHub gives a blob with this content — so the snapshot can name the new version. */
+function blobShaOf(content: string): string {
+  return createHash("sha1").update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest("hex");
+}
+
+/**
+ * "Lines 40–45 of docs/privacy.md" becomes a permalink to those lines in the
+ * commit the branch is at now, so the proof keeps pointing at the words that
+ * were checked even after the file changes.
+ */
+async function resolveProofs(edits: DocEdit[], gh: DocsGitHub): Promise<DocEdit[]> {
+  if (!edits.some((e) => e.type === "proof" && e.proofs.some((p) => p.kind === "place"))) return edits;
+  const repository = requireRepository();
+  const head = gh.headCommit ? await gh.headCommit() : null;
+  return Promise.all(
+    edits.map(async (edit) => {
+      if (edit.type !== "proof") return edit;
+      const proofs: Proof[] = await Promise.all(
+        edit.proofs.map(async (proof): Promise<Proof> => {
+          if (proof.kind !== "place") return proof;
+          const path = proof.path.replace(/^\/+/, "");
+          const file = await gh.getFile(path).catch(() => null);
+          if (!file) throw new Error(`${path} is not in the repository`);
+          const count = file.content.split("\n").length;
+          const from = proof.from ? Math.min(Math.max(1, proof.from), count) : null;
+          const to = from && proof.to ? Math.min(Math.max(from, proof.to), count) : from;
+          const anchor = from ? `#L${from}${to && to !== from ? `-L${to}` : ""}` : "";
+          const ref = head ?? "HEAD";
+          const url = `https://github.com/${repository.owner}/${repository.name}/blob/${ref}/${path.split("/").map(encodeURIComponent).join("/")}${anchor}`;
+          const label = `${path}${from ? `, line${to && to !== from ? `s ${from}–${to}` : ` ${from}`}` : ""}`;
+          return { kind: "link", url, label };
+        }),
+      );
+      return { ...edit, proofs };
+    }),
+  );
+}
 type ClientFactory = () => Promise<DocsGitHub>;
 const defaultClientFactory: ClientFactory = () => GitHubClient.create();
 
@@ -223,6 +288,8 @@ export interface DocChange {
   baseSha: string;
   /** True when the file is being created. */
   creating: boolean;
+  /** Screenshots that go into the same commit. */
+  attachments: string[];
   missed: string[];
   conflict: null | { expectedSha: string | null; currentSha: string; remoteContent: string };
 }
@@ -239,13 +306,14 @@ function commitMessage(path: string, summary: string, creating: boolean): string
  * on, the preview says so and the commit needs an explicit go-ahead.
  */
 export async function previewDocEdit(
-  args: { path: string; edits: DocEdit[]; baseSha: string | null },
+  args: { path: string; edits: DocEdit[]; baseSha: string | null; attachments?: string[] },
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<DocChange> {
   requireRepository();
+  checkAttachments((args.attachments ?? []).map((path) => ({ path })));
   const gh = await clientFactory();
   const file = await gh.getFile(args.path);
-  const result = applyDocEdits(file.content, args.edits);
+  const result = applyDocEdits(file.content, await resolveProofs(args.edits, gh));
   const moved = Boolean(args.baseSha) && args.baseSha !== file.sha;
   return {
     path: args.path,
@@ -256,6 +324,7 @@ export async function previewDocEdit(
     after: result.content,
     baseSha: file.sha,
     creating: false,
+    attachments: args.attachments ?? [],
     missed: result.missed,
     conflict: moved
       ? { expectedSha: args.baseSha, currentSha: file.sha, remoteContent: file.content }
@@ -264,7 +333,7 @@ export async function previewDocEdit(
 }
 
 export async function commitDocEdit(
-  args: { path: string; edits: DocEdit[]; expectedSha: string; force?: boolean },
+  args: { path: string; edits: DocEdit[]; expectedSha: string; force?: boolean; attachments?: Attachment[] },
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<{ commitSha: string; contentSha: string; summary: string }> {
   const repository = requireRepository();
@@ -282,12 +351,27 @@ export async function commitDocEdit(
     throw error;
   }
 
-  const result = applyDocEdits(file.content, args.edits);
-  if (result.content === file.content) {
+  const attachments = args.attachments ?? [];
+  checkAttachments(attachments);
+  const result = applyDocEdits(file.content, await resolveProofs(args.edits, gh));
+  if (result.content === file.content && attachments.length === 0) {
     return { commitSha: "", contentSha: file.sha, summary: "Nothing to commit" };
   }
 
   const message = commitMessage(args.path, result.summary, false);
+  if (attachments.length) {
+    if (!gh.commitChanges) throw new Error("This connection cannot commit screenshots");
+    // The checklist and its screenshots in one commit: both land, or neither.
+    const { commitSha } = await gh.commitChanges({
+      message,
+      edits: [{ path: args.path, content: result.content, expectedSha: file.sha }],
+      adds: attachments,
+    });
+    const contentSha = blobShaOf(result.content);
+    saveSnapshot(repository.id, args.path, parseDocument(result.content, fileName(args.path)), contentSha);
+    logActivity({ repositoryId: repository.id, type: "doc_changed", message });
+    return { commitSha, contentSha, summary: result.summary };
+  }
   const written = await gh.putFile({
     path: args.path,
     content: result.content,
@@ -323,6 +407,7 @@ export async function previewDocCreate(
     after: args.content,
     baseSha: "",
     creating: true,
+    attachments: [],
     missed: [],
     conflict: null,
   };
@@ -337,7 +422,8 @@ export async function commitDocCreate(
   const gh = await clientFactory();
   // No expected SHA: the Contents API refuses to create over an existing file.
   const written = await gh.putFile({ path, content: args.content, message: commitMessage(path, "", true) });
-  trackDoc(path);
+  // Checklists go to the sidebar; notes, decisions and texts for people stay on Documents.
+  trackDoc(path, { pinned: kindOfPath(path) === "checklist" });
   saveSnapshot(repository.id, path, parseDocument(args.content, fileName(path)), written.contentSha);
   logActivity({ repositoryId: repository.id, type: "doc_changed", message: `created ${path}` });
   return { ...written, path };

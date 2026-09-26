@@ -18,6 +18,7 @@ export function DocWriteDialog({
   edits,
   baseSha,
   create,
+  attachments,
   onClose,
   onDone,
 }: {
@@ -26,6 +27,8 @@ export function DocWriteDialog({
   baseSha?: string | null;
   /** New file content: the dialog creates the file instead of editing it. */
   create?: string;
+  /** Screenshots proving items: committed in the same commit as the edits. */
+  attachments?: { path: string; base64: string; url: string }[];
   onClose: () => void;
   onDone: (result: { path: string }) => void;
 }) {
@@ -40,9 +43,9 @@ export function DocWriteDialog({
     const request =
       create !== undefined
         ? api.previewDocCreate(path, create)
-        : api.previewDocEdit(path, edits ?? [], baseSha ?? null);
+        : api.previewDocEdit(path, edits ?? [], baseSha ?? null, attachments);
     request.then(setPreview).catch((err: Error) => setError(err.message));
-  }, [path, edits, baseSha, create]);
+  }, [path, edits, baseSha, create, attachments]);
 
   useEffect(load, [load]);
 
@@ -58,7 +61,7 @@ export function DocWriteDialog({
       } else {
         // Committing against the SHA the preview was computed on: if GitHub
         // moved again in between, the server refuses and we show the new diff.
-        const result = await api.commitDocEdit(path, edits ?? [], preview.baseSha, Boolean(preview.conflict));
+        const result = await api.commitDocEdit(path, edits ?? [], preview.baseSha, Boolean(preview.conflict), attachments);
         toast.push({ kind: "success", message: "Committed to GitHub", detail: result.summary });
         onDone({ path });
       }
@@ -165,6 +168,25 @@ export function DocWriteDialog({
             </div>
           ) : (
             <DiffView diff={preview.diff} />
+          )}
+
+          {attachments && attachments.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium text-muted">
+                Also adds {attachments.length} screenshot{attachments.length === 1 ? "" : "s"}, in the same commit
+              </span>
+              <div className="flex flex-wrap gap-3">
+                {attachments.map((a) => (
+                  <figure key={a.path} className="flex w-40 flex-col gap-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.url} alt="" className="h-24 w-40 rounded-lg object-cover ring-1 ring-border" />
+                    <figcaption className="truncate font-mono text-2xs text-faint" title={a.path}>
+                      {a.path.split("/").pop()}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
           )}
 
           <p className="text-xs text-muted">

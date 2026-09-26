@@ -31,7 +31,7 @@
  */
 
 /** Detail keys with a fixed meaning; anything else is shown as plain text. */
-export const DETAIL_KEYS = ["why", "do", "how", "verify", "source", "note", "done"] as const;
+export const DETAIL_KEYS = ["why", "do", "how", "verify", "source", "note", "done", "proof", "checked"] as const;
 
 export interface ItemDetail {
   key: string | null;

@@ -149,25 +149,26 @@ const server = http.createServer(async (req, res) => {
     if (!full.startsWith(ROOT)) return notFound(res);
     if (req.method === "GET") {
       if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) return notFound(res);
-      const content = fs.readFileSync(full, "utf8");
+      // Bytes, not text: screenshots and PDFs live here too.
+      const content = fs.readFileSync(full);
       return send(res, 200, {
         type: "file",
         path: file,
         sha: blobSha(content),
-        content: Buffer.from(content).toString("base64"),
+        content: content.toString("base64"),
         encoding: "base64",
       });
     }
     if (req.method === "PUT") {
       const body = await readBody(req);
       const exists = fs.existsSync(full);
-      const current = exists ? blobSha(fs.readFileSync(full, "utf8")) : null;
+      const current = exists ? blobSha(fs.readFileSync(full)) : null;
       if (exists && body.sha !== current) {
         return send(res, 409, { message: `${file} does not match ${body.sha}` });
       }
       if (!exists && body.sha) return send(res, 422, { message: "sha provided for a new file" });
       if (exists && !body.sha) return send(res, 422, { message: '"sha" wasn\'t supplied.' });
-      const content = Buffer.from(body.content, "base64").toString("utf8");
+      const content = Buffer.from(body.content, "base64");
       fs.mkdirSync(path.dirname(full), { recursive: true });
       fs.writeFileSync(full, content);
       const commit = addCommit(body.message, [file]);
@@ -191,6 +192,18 @@ const server = http.createServer(async (req, res) => {
   if (rest.startsWith("/git/commits/") && req.method === "GET") {
     return send(res, 200, { sha: rest.split("/").pop(), tree: { sha: "tree-" + rest.split("/").pop() } });
   }
+  if (rest === "/git/blobs" && req.method === "POST") {
+    const body = await readBody(req);
+    const bytes = Buffer.from(body.content, body.encoding === "base64" ? "base64" : "utf8");
+    const sha = blobSha(bytes);
+    blobs.set(sha, bytes);
+    return send(res, 201, { sha });
+  }
+  if (rest.startsWith("/git/blobs/") && req.method === "GET") {
+    const bytes = blobs.get(rest.split("/").pop());
+    if (!bytes) return notFound(res);
+    return send(res, 200, { content: bytes.toString("base64"), encoding: "base64" });
+  }
   if (rest === "/git/trees" && req.method === "POST") {
     const body = await readBody(req);
     const id = fakeSha();
@@ -203,7 +216,7 @@ const server = http.createServer(async (req, res) => {
     for (const f of files) {
       const full = path.join(ROOT, f.path);
       fs.mkdirSync(path.dirname(full), { recursive: true });
-      fs.writeFileSync(full, f.content);
+      fs.writeFileSync(full, f.sha && blobs.has(f.sha) ? blobs.get(f.sha) : f.content);
     }
     const commit = addCommit(body.message, files.map((f) => f.path));
     console.log(`[demo-github] commit ${commit.sha.slice(0, 7)} ${body.message}`);
@@ -294,6 +307,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 const pendingTrees = new Map();
+// Blobs created ahead of a tree (binary files), by SHA.
+const blobs = new Map();
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`[demo-github] ${OWNER}/${REPO} on http://127.0.0.1:${PORT} (files in ${ROOT})`);

@@ -4,10 +4,11 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { Children, Fragment, isValidElement, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, CheckCheck, Copy } from "lucide-react";
 import { resolveLink, type DocItem, type DocSection } from "@/lib/markdown/document";
 import type { ItemState } from "@/lib/markdown/format";
-import { DueLabel, Menu, MenuItem, PriorityIcon, ProgressBar, StatusIcon } from "@/components/ui";
+import { DueLabel, Menu, MenuItem, MenuSeparator, PriorityIcon, ProgressBar, StatusIcon } from "@/components/ui";
+import { api } from "@/lib/client/api";
 import { STATUS_LABEL } from "@/lib/status";
 
 /** [[docs/PRIVACY.md]] → a link to that document inside RepoBoard. */
@@ -40,6 +41,29 @@ function SmartLink({ href, children }: { href?: string; children?: ReactNode }) 
       {children}
     </a>
   );
+}
+
+/** `target` written relative to the file at `from`, as a path from the repository root. */
+function resolveRelative(from: string, target: string): string {
+  const parts = from.split("/").slice(0, -1);
+  for (const piece of target.replace(/^\//, "").split("/")) {
+    if (piece === "..") parts.pop();
+    else if (piece !== "." && piece !== "") parts.push(piece);
+  }
+  return parts.join("/");
+}
+
+/**
+ * HTML comments are notes for whoever edits the file (and hold rb: ids); like
+ * GitHub, the rendered page leaves them out. Each is replaced by as many line
+ * breaks as it spanned, so line numbers — which items are matched by — stay.
+ * Comments inside code are code.
+ */
+function hideComments(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, index) => (index % 2 === 1 ? part : part.replace(/<!--[\s\S]*?-->/g, (c) => "\n".repeat(c.split("\n").length - 1))))
+    .join("");
 }
 
 /** A code block with a copy button, so a command can go straight into a terminal. */
@@ -97,10 +121,12 @@ function ItemStateButton({
   item,
   state,
   onChange,
+  onProof,
 }: {
   item: DocItem;
   state: ItemState;
   onChange?: (item: DocItem, state: ItemState) => void;
+  onProof?: (item: DocItem) => void;
 }) {
   const icon = <StatusIcon status={state} size={15} />;
   if (!onChange) return <span className="mt-[3px] shrink-0">{icon}</span>;
@@ -123,6 +149,14 @@ function ItemStateButton({
           </button>
         }
       >
+        {onProof && (
+          <>
+            <MenuItem icon={<CheckCheck className="size-3.5" />} onSelect={() => onProof(item)}>
+              Done with proof…
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         {STATES.map((s) => (
           <MenuItem key={s} icon={<StatusIcon status={s} />} checked={s === state} onSelect={() => onChange(item, s)}>
             {STATUS_LABEL[s]}
@@ -166,6 +200,8 @@ export function Markdown({
   sections,
   states,
   onItemState,
+  onItemProof,
+  basePath,
   className = "",
 }: {
   content: string;
@@ -174,6 +210,9 @@ export function Markdown({
   /** Pending, not-yet-committed states by line — shown instead of the file's. */
   states?: Map<number, ItemState>;
   onItemState?: (item: DocItem, state: ItemState) => void;
+  onItemProof?: (item: DocItem) => void;
+  /** The document's path: pictures written relative to it are loaded from the repository. */
+  basePath?: string;
   className?: string;
 }) {
   const byLine = useMemo(() => new Map((items ?? []).map((i) => [i.line, i])), [items]);
@@ -230,7 +269,7 @@ export function Markdown({
                 pending ? "bg-state-review/10" : "hover:bg-hover"
               }`}
             >
-              <ItemStateButton item={item} state={state} onChange={onItemState} />
+              <ItemStateButton item={item} state={state} onChange={onItemState} onProof={onItemProof} />
               <span className={`min-w-0 flex-1 ${closed ? "text-muted" : ""} ${state === "cancelled" ? "line-through decoration-faint" : ""}`}>
                 <InlineMarkdown text={item.title} />
                 <ItemMetaChips item={item} />
@@ -245,18 +284,28 @@ export function Markdown({
       },
       input: () => null,
       pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+      img: ({ src, alt }) => {
+        const url = typeof src === "string" ? src : "";
+        const resolved = /^(https?:|data:|blob:)/.test(url) || !basePath ? url : api.rawUrl(url.startsWith("/") ? url.slice(1) : resolveRelative(basePath, url));
+        return (
+          <a href={resolved} target="_blank" rel="noreferrer noopener" className="inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={resolved} alt={alt ?? ""} className="max-h-72 max-w-full rounded-lg ring-1 ring-border" />
+          </a>
+        );
+      },
       table: ({ children }) => (
         <div className="overflow-x-auto">
           <table>{children}</table>
         </div>
       ),
     };
-  }, [byLine, sectionByLine, states, onItemState]);
+  }, [byLine, sectionByLine, states, onItemState, onItemProof, basePath]);
 
   return (
     <div className={`rb-prose ${className}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {items ? content : linkify(content)}
+        {items ? hideComments(content) : linkify(hideComments(content))}
       </ReactMarkdown>
     </div>
   );

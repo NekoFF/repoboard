@@ -20,6 +20,13 @@ what is left, and what still needs your own eyes before it counts.
   do* and *how to verify* it, and carries notes from people and AI agents.
 - **Needs your check** — agents mark finished work as `[?]`; only you tick it
   off. One queue shows everything waiting for you.
+- **Done with proof** — tick an item and say why: the file and lines where it
+  is written (saved as a permalink to that exact version), the words
+  themselves, a screenshot. It all goes under the item, with your name and the
+  date, in one commit.
+- **Texts for people** — write the privacy policy or the Impressum itself
+  from a template, keep it wherever your project keeps it, edit it here, and
+  export it as a PDF.
 - **Overview** — one square per item across the board and every checklist,
   so nothing hides behind a percentage.
 - **Code** — the repository's history drawn as lines that branch and merge;
@@ -80,6 +87,7 @@ On macOS you can also double-click **`RepoBoard — Start.command`**.
   checklists/      what must be done and checked
   notes/           how to run things, where they live
   decisions/       what was decided and why, with sources
+  evidence/        screenshots that prove checklist items
   board.json       every board, its cards, order and checklists (written by RepoBoard)
 ```
 

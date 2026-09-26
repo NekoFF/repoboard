@@ -35,7 +35,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { DocsGraph } from "@/components/docs/DocsGraph";
-import { KIND_FOLDER, TEMPLATES, WORKSPACE_DIR, templatePath, type DocKind } from "@/lib/templates";
+import { DOCUMENT_TEMPLATES, KIND_FOLDER, TEMPLATES, WORKSPACE_DIR, templatePath, type DocKind } from "@/lib/templates";
 
 const GROUPS: { kind: DocKind; title: string; blurb: string; icon: React.ReactNode }[] = [
   {
@@ -245,17 +245,27 @@ function NewDocDialog({ onClose }: { onClose: () => void }) {
   const [templateId, setTemplateId] = useState<string>("blank-checklist");
   const [name, setName] = useState("");
   const [ready, setReady] = useState<{ path: string; content: string } | null>(null);
+  // Where a document for people goes; typed by the person, or the template's default.
+  const [where, setWhere] = useState<string | null>(null);
 
   const options = [
     { id: "blank-checklist", title: "Empty checklist", summary: "Your own list of things to do and check.", kind: "checklist" as const },
     { id: "blank-note", title: "Empty note", summary: "Anything worth remembering.", kind: "note" as const },
     ...TEMPLATES,
   ];
-  const chosen = options.find((o) => o.id === templateId)!;
-  const folder = `${WORKSPACE_DIR}/${KIND_FOLDER[chosen.kind]}/`;
+  const documents = DOCUMENT_TEMPLATES;
+  const chosen = [...options, ...documents].find((o) => o.id === templateId)!;
+  const isDocument = chosen.kind === "document";
+  const slugName = name.trim().replace(/\s+/g, "-").toLowerCase();
+  const folder = chosen.kind === "document" ? "" : `${WORKSPACE_DIR}/${KIND_FOLDER[chosen.kind]}/`;
   const defaultName = "file" in chosen ? chosen.file.replace(/\.md$/, "") : "";
-  const fileName = (name.trim() || defaultName || "untitled").replace(/\s+/g, "-").toLowerCase();
-  const title = name.trim() || ("file" in chosen ? chosen.title : "Untitled");
+  const fileName = (slugName || defaultName || "untitled");
+  const title = name.trim() || ("file" in chosen || chosen.kind === "document" ? chosen.title.replace(/ \(text\)$/, "").replace(/^Empty document$/, "Untitled") : "Untitled");
+  const documentPath =
+    chosen.kind === "document"
+      ? (where ?? (slugName ? chosen.path.replace(/[^/]+\.md$/, `${slugName}.md`) : chosen.path))
+      : "";
+  const targetPath = isDocument ? documentPath.trim().replace(/^\/+/, "") : `${folder}${fileName}.md`;
 
   const content =
     "content" in chosen
@@ -286,13 +296,11 @@ function NewDocDialog({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={
         <>
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">
-            {folder}
-            {fileName}.md
-          </span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{isDocument ? "" : targetPath}</span>
           <button
             className="rb-btn-primary"
-            onClick={() => setReady({ path: `${folder}${fileName}.md`, content: "content" in chosen && !name.trim() ? content : content.replace(/^# .*$/m, `# ${title}`) })}
+            disabled={!/\.md$/i.test(targetPath) || targetPath.includes("..")}
+            onClick={() => setReady({ path: targetPath, content: "content" in chosen && !name.trim() ? content : content.replace(/^# .*$/m, `# ${title}`) })}
           >
             Review
           </button>
@@ -310,6 +318,7 @@ function NewDocDialog({ onClose }: { onClose: () => void }) {
             onChange={(event) => setName(event.target.value)}
           />
         </label>
+        <p className="-mb-2 text-xs font-medium text-muted">For the team</p>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {options.map((o) => (
             <button
@@ -327,6 +336,38 @@ function NewDocDialog({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+        <p className="-mb-2 text-xs font-medium text-muted">For people to read — kept in your project, exported as PDF</p>
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {documents.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => {
+                setTemplateId(o.id);
+                setWhere(null);
+              }}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                o.id === templateId ? "border-ink/50 bg-canvas" : "border-border hover:bg-hover"
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium text-ink">
+                <FileText className="size-3.5 text-muted" />
+                {o.title}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted">{o.summary}</span>
+            </button>
+          ))}
+        </div>
+        {isDocument && (
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Where in the project
+            <input
+              className="rb-input font-mono text-xs"
+              value={documentPath}
+              onChange={(event) => setWhere(event.target.value)}
+              spellCheck={false}
+            />
+          </label>
+        )}
       </div>
     </Modal>
   );

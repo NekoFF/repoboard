@@ -58,6 +58,7 @@ shows as checklists, notes and progress.
 | \`checklists/\` | Things that must be done **and checked**: a release, the privacy policy, licences. |
 | \`notes/\` | Knowledge: how to run and test the project, where things live, commands. |
 | \`decisions/\` | What was decided and why, with sources, so nobody re-argues it later. |
+| \`evidence/\` | Screenshots that prove checklist items, added by RepoBoard when an item is ticked with proof. |
 | \`board.json\` | Written by RepoBoard: every board — for people and areas — with its cards, order, checklists and links. |
 
 ## Items
@@ -84,9 +85,10 @@ Details go underneath as plain bullets, review notes as a quote:
 ## Rules for AI agents
 
 1. **Read this folder first.** It is the shared state between people and agents.
-2. **Never mark an item \`[x]\`.** When you think something is finished, set it to
-   \`[?]\` and write under \`Verify:\` exactly how a person can check it. Only a
-   person ticks items off.
+2. **Never mark an item \`[x]\`**, and never write \`Checked:\`. When you think
+   something is finished, set it to \`[?]\`, write under \`Verify:\` exactly how a
+   person can check it, and add \`Proof:\` lines — the file and lines, or a link,
+   and the words — so the check starts from evidence. Only a person ticks items off.
 3. **Add, do not rewrite.** If something is missing, add an item. If you disagree
    or know more, add a note (\`> yourname date: …\`) under the item instead of
    editing someone else's text.
@@ -340,3 +342,143 @@ A short tour for a new person — or a new AI session — so nobody has to redis
 export function templateById(id: string): DocTemplate | undefined {
   return TEMPLATES.find((t) => t.id === id);
 }
+
+/* ------------------------------------------------ documents for people -- */
+
+/**
+ * The texts themselves — what users read — as opposed to the checklists that
+ * say what those texts must contain. They live wherever the project keeps
+ * them (the person picks the path), and export to PDF from the document page.
+ * The note at the top is an HTML comment: invisible on GitHub and in the PDF.
+ */
+export interface DocumentTemplate {
+  id: string;
+  kind: "document";
+  title: string;
+  summary: string;
+  /** Where it goes unless the person says otherwise. */
+  path: string;
+  content: string;
+}
+
+const DRAFT_NOTE = (checklist: string) =>
+  `<!-- A starting point written with RepoBoard. It is not legal advice: have it checked before you publish it. Fill in everything in [brackets], delete what does not apply, and use ${checklist} to check that nothing is missing. -->`;
+
+export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
+  {
+    id: "doc-blank",
+    kind: "document",
+    title: "Empty document",
+    summary: "Any text for people to read: terms, a manual, a press sheet.",
+    path: "docs/untitled.md",
+    content: "# Untitled\n\n",
+  },
+  {
+    id: "doc-privacy",
+    kind: "document",
+    title: "Privacy policy (text)",
+    summary: "The policy itself, laid out the way GDPR Art. 13 asks, to fill in.",
+    path: "docs/legal/privacy-policy.md",
+    content: `${DRAFT_NOTE("[[.repoboard/checklists/privacy-policy.md]]")}
+
+# Privacy policy
+
+Last updated: [date]
+
+## Who is responsible
+
+[Name or company]\\
+[Street and number]\\
+[Postcode, city, country]\\
+Email: [address]
+
+## What we process, why, and for how long
+
+### [For example: crash reports]
+
+- **What:** [the data, e.g. device model, app version, the error — no names or browsing history]
+- **Why:** [the purpose, e.g. to find and fix crashes]
+- **Legal basis:** [e.g. Art. 6(1)(f) GDPR — our legitimate interest in a working app]
+- **How long:** [e.g. 90 days, then deleted]
+
+### [Next kind of data]
+
+- **What:**
+- **Why:**
+- **Legal basis:**
+- **How long:**
+
+## Who receives data
+
+| Recipient | What they receive | Where | Safeguard |
+| --------- | ----------------- | ----- | --------- |
+| [Hosting provider] | [e.g. IP address when the app loads updates] | [EU] | — |
+| [Crash reporting service] | [crash reports] | [country] | [e.g. EU standard contractual clauses] |
+
+## Transfers outside the EU
+
+[Say which data leaves the EU/EEA, to which country, and on what basis — or that none does.]
+
+## Your rights
+
+You can ask us for access to your data (Art. 15 GDPR), to correct it (Art. 16), to delete it (Art. 17), to restrict its processing (Art. 18), to receive it in a portable format (Art. 20), and you can object to processing based on legitimate interests (Art. 21). Where we rely on your consent, you can withdraw it at any time; this does not affect what was done before (Art. 7(3)). Write to [email address].
+
+You also have the right to complain to a data protection supervisory authority (Art. 77 GDPR), for example [the authority where you live or where we are based].
+
+## Do you have to give us this data?
+
+[Say whether the data is needed to use the app, and what happens if someone does not want to give it.]
+
+## Automated decisions
+
+[We do not make decisions about you by automated means, including profiling.]
+
+## Changes to this policy
+
+We update this policy when what we do with data changes. The date at the top shows the current version.
+`,
+  },
+  {
+    id: "doc-impressum",
+    kind: "document",
+    title: "Impressum (text)",
+    summary: "The provider identification itself, in German, under § 5 DDG.",
+    path: "docs/legal/impressum.md",
+    content: `${DRAFT_NOTE("[[.repoboard/checklists/impressum.md]]")}
+
+# Impressum
+
+## Angaben gemäß § 5 DDG
+
+[Vorname Nachname oder Firma, mit Rechtsform]\\
+[Straße und Hausnummer — kein Postfach]\\
+[Postleitzahl und Ort]\\
+[Land]
+
+## Kontakt
+
+E-Mail: [Adresse]\\
+Telefon: [Nummer, oder ein anderer schneller und direkter Weg, uns zu erreichen]
+
+## Vertreten durch
+
+[Nur bei Firmen: die vertretungsberechtigte Person]
+
+## Registereintrag
+
+[Nur wenn vorhanden: Registergericht und Registernummer]
+
+## Umsatzsteuer-ID
+
+[Nur wenn vorhanden: Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG]
+
+## Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV
+
+[Nur bei journalistisch-redaktionellen Inhalten: Name und Anschrift]
+
+## Verbraucherstreitbeilegung
+
+[Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.]
+`,
+  },
+];
