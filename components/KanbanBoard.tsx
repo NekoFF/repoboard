@@ -213,6 +213,24 @@ export function KanbanBoard({
   const openCard = useCallback((id: string) => router.push(`/board/card/${id}`), [router]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState<string | null>(null);
+  // Whether columns continue past either edge, for the fade that says so.
+  const scroller = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ left: false, right: false });
+  const measureMore = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const left = el.scrollLeft > 2;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setMore((m) => (m.left === left && m.right === right ? m : { left, right }));
+  }, []);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    measureMore();
+    const resize = new ResizeObserver(measureMore);
+    resize.observe(el);
+    return () => resize.disconnect();
+  }, [measureMore, data.columns.length]);
 
   useEffect(() => setTasks(data.tasks), [data.tasks]);
 
@@ -512,10 +530,15 @@ export function KanbanBoard({
             setTasks(data.tasks);
           }}
         >
+          {/* The background runs behind the rail; the scrolling columns stop
+              short of it, and fade at the edge when there are more. */}
+          <div className="rb-board-canvas flex min-h-0 w-full flex-1" style={{ paddingRight: "var(--rb-rail)" }}>
           <div
-            className="rb-board-canvas flex min-h-0 w-full flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4"
-            // The background runs behind the rail; the columns stop short of it.
-            style={{ paddingRight: "calc(var(--rb-rail) + 16px)" }}
+            ref={scroller}
+            className="rb-board-scroll flex min-h-0 min-w-0 flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4"
+            data-more={more.right ? "right" : undefined}
+            data-less={more.left ? "left" : undefined}
+            onScroll={measureMore}
           >
             {data.columns.map((column) => (
               <Column
@@ -536,6 +559,7 @@ export function KanbanBoard({
                 setComposerOpen={setComposerOpen}
               />
             ))}
+          </div>
           </div>
 
           <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.22,1,0.36,1)" }}>

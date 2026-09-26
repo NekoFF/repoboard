@@ -804,7 +804,9 @@ export function CardPage({
                     {commits.data?.commits.slice(0, 4).map((commit) => (
                       <div key={commit.sha} className="flex items-center gap-2 pl-5 text-xs">
                         <span className="font-mono text-faint">{commit.sha.slice(0, 7)}</span>
-                        <span className="min-w-0 flex-1 truncate text-muted">{commit.message}</span>
+                        <span className="min-w-0 flex-1 truncate text-muted" title={commit.message}>
+                          {commit.message}
+                        </span>
                         <RelativeTime value={commit.date} className="shrink-0 text-faint" />
                       </div>
                     ))}
@@ -814,7 +816,9 @@ export function CardPage({
                   <div key={pr.number} className="flex items-center gap-2 px-3 py-2.5">
                     <GitPullRequest className={`size-3.5 ${pr.mergeableState === "merged" ? "text-state-review" : pr.state === "open" ? "text-state-done" : "text-muted"}`} />
                     <span className="font-mono text-xs text-faint">#{pr.number}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{pr.title}</span>
+                    <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm text-ink" title={pr.title}>
+                      {pr.title}
+                    </span>
                     {pr.checks && (
                       <span className={pr.checks.passed === pr.checks.total ? "rb-pill-ok" : "rb-pill-warn"}>
                         checks {pr.checks.passed}/{pr.checks.total}
@@ -830,7 +834,9 @@ export function CardPage({
                   <div key={issue.number} className="flex items-center gap-2 px-3 py-2.5">
                     <CircleDot className={`size-3.5 ${issue.state === "open" ? "text-state-done" : "text-state-review"}`} />
                     <span className="font-mono text-xs text-faint">#{issue.number}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.title}</span>
+                    <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm text-ink" title={issue.title}>
+                      {issue.title}
+                    </span>
                     <span className="rb-pill">{issue.state}</span>
                     <button className="rb-icon-btn size-6" aria-label="Unlink issue" onClick={() => unlink({ issue: issue.number }, `issue #${issue.number}`)}>
                       <X className="size-3.5" />
@@ -852,7 +858,9 @@ export function CardPage({
                       <GitPullRequest className={`size-3.5 ${m.state === "merged" ? "text-state-review" : m.state === "open" ? "text-state-done" : "text-muted"}`} />
                     )}
                     <span className="font-mono text-xs text-faint">{m.ref}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{m.title}</span>
+                    <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm text-ink" title={m.title}>
+                      {m.title}
+                    </span>
                     {m.author && <span className="hidden text-2xs text-faint sm:inline">{m.author}</span>}
                     <RelativeTime value={m.date} className="shrink-0 text-2xs text-faint" />
                     <ExternalLink className="size-3 text-faint opacity-0 group-hover:opacity-100" />

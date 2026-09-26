@@ -1301,3 +1301,16 @@ html.rb-desktop-win .rb-desktop-titlebar {
   z-index: -1;
   image-rendering: pixelated;
 }
+/* The board's columns scroll sideways; a soft fade at an edge says more are there. */
+.rb-board-scroll[data-more="right"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.rb-board-scroll[data-less="left"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px);
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+.rb-board-scroll[data-less="left"][data-more="right"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
