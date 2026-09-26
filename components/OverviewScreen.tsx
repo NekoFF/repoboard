@@ -22,6 +22,7 @@ import { api, useResource } from "@/lib/client/api";
 import { useShell } from "@/components/shell/ShellContext";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
+import { ProjectStory } from "@/components/ProjectStory";
 import { ProofDialog, type ProofAttachment } from "@/components/docs/ProofDialog";
 import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 import { milestoneProgress } from "@/components/MilestonesDialog";
@@ -75,7 +76,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex min-w-0 flex-col gap-3">
+    <section className="rb-card flex min-w-0 flex-col gap-3 p-5">
       <div className="flex h-7 items-center gap-2">
         <span className="text-muted">{icon}</span>
         <h2 className="text-md font-semibold text-ink">{title}</h2>
@@ -215,13 +216,13 @@ export function OverviewScreen({
   const [owner, name] = (repo ?? `${header.owner ?? ""}/${header.name ?? ""}`).split("/");
 
   return (
-    <div className="rb-scroll-thin rb-clear-rail min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-[1080px] flex-col gap-12 px-6 pb-20 pt-8 sm:px-10">
+    <div className="rb-overview rb-scroll-thin rb-clear-rail min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 pb-20 pt-8 sm:px-8">
         {/* ----------------------------------------------------- header -- */}
-        <header className="flex flex-wrap items-center gap-4">
-          <ProjectMark repo={repo} size={40} />
+        <header className="flex flex-wrap items-center gap-4 px-1 pb-2">
+          <ProjectMark repo={repo} size={44} />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-semibold tracking-[-0.015em] text-ink">{name || "Your project"}</h1>
+            <h1 className="truncate text-2xl font-semibold tracking-[-0.02em] text-ink">{name || "Your project"}</h1>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-sm text-muted">
               <span>{owner}</span>
               {header.defaultBranch && <span className="font-mono text-xs">{header.defaultBranch}</span>}
@@ -233,11 +234,13 @@ export function OverviewScreen({
             </p>
           </div>
           {repo && (
-            <a className="rb-btn" href={`https://github.com/${repo}`} target="_blank" rel="noreferrer noopener">
+            <a className="rb-btn rb-glass" href={`https://github.com/${repo}`} target="_blank" rel="noreferrer noopener">
               GitHub <ExternalLink className="size-3.5" />
             </a>
           )}
         </header>
+
+        <ProjectStory repo={repo} connected={connected} card />
 
         {/* ------------------------------------------------------- hero -- */}
         {totals.total === 0 ? (
@@ -257,8 +260,8 @@ export function OverviewScreen({
             }
           />
         ) : (
-          <section className="grid gap-8 lg:grid-cols-[minmax(240px,300px)_1fr]">
-            <div className="flex flex-col gap-3">
+          <section className="grid gap-5 lg:grid-cols-[minmax(260px,340px)_1fr]">
+            <div className="rb-card flex flex-col gap-3 p-6">
               <p className="text-[64px] font-semibold leading-none tracking-[-0.04em] text-ink tabular-nums">
                 {percent(totals.done, totals.total)}
                 <span className="text-[32px] text-faint">%</span>
@@ -287,7 +290,7 @@ export function OverviewScreen({
             </div>
 
             {/* The item map: one square per thing, so nothing hides in a total. */}
-            <div className="flex flex-col gap-4 rounded-2xl border border-border bg-canvas p-5">
+            <div className="rb-card flex flex-col gap-4 p-6">
               {groups.map((group) => {
                 const open = group.cells.filter((c) => c.status !== "cancelled");
                 const done = open.filter((c) => c.status === "done").length;
@@ -320,7 +323,7 @@ export function OverviewScreen({
         {/* ------------------------------------------- needs your check -- */}
         {toCheck.length > 0 && (
           <Section title="Needs your check" icon={<CheckCheck className="size-4" />}>
-            <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-state-review/30 bg-surface">
+            <div className="-mx-1 flex flex-col divide-y divide-border overflow-hidden rounded-xl bg-surface/70 ring-1 ring-state-review/25">
               {toCheck.map((entry) =>
                 entry.kind === "doc" ? (
                   <div key={`${entry.doc.id}-${entry.item.line}`} className="flex items-center gap-3 px-4 py-3">
@@ -354,7 +357,7 @@ export function OverviewScreen({
           </Section>
         )}
 
-        <div className="grid gap-12 lg:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           {/* ---------------------------------------------- coming up -- */}
           <Section title="Coming up" icon={<CalendarClock className="size-4" />}>
             {upcoming.length === 0 ? (

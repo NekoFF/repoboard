@@ -119,7 +119,11 @@ Overview · My work · Boards → a board (board, list, calendar) → a card ·
 Documents · Code (graph, branches, commits, pull requests, issues) · Activity ·
 Settings.
 The sidebar lists the boards under "Boards"; the command menu has a Boards
-group.
+group. Overview opens with **Project life** (`components/ProjectStory.tsx`,
+model in `lib/client/story.ts`): the repository's history as a timeline of
+the main line, branches leaving and merging, and open branches, read from
+`/api/github?resource=story` (300 commits of the default branch, 40 of each
+other). Nodes sit on springs; long stretches of work are grouped per month.
 
 If you remove or rename a screen, update `components/shell/Sidebar.tsx`, the
 command menu in `components/shell/CommandPalette.tsx`, the `G` shortcuts in

@@ -263,8 +263,9 @@ const server = http.createServer(async (req, res) => {
   if (rest === "/commits") {
     const sha = url.searchParams.get("sha");
     const perPage = Number(url.searchParams.get("per_page") ?? 30);
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const list = sha ? history(branchHead(sha) ?? sha) : history(branchHead(META.defaultBranch));
-    return send(res, 200, list.slice(0, perPage).map(commitJson));
+    return send(res, 200, list.slice((page - 1) * perPage, page * perPage).map(commitJson));
   }
 
   if (rest === "/pulls") {

@@ -397,7 +397,11 @@ export class GitHubClient {
    * lines that split and merge. Limited to recent commits on the most
    * recently active branches — enough to see the shape of the work.
    */
-  async commitGraph(limitPerBranch = 40, maxBranches = 12): Promise<GraphCommit[]> {
+  /**
+   * `mainLimit` reaches further back on the default branch than on the
+   * others, so the whole life of a project can be drawn: 100 per page.
+   */
+  async commitGraph(limitPerBranch = 40, maxBranches = 12, mainLimit = limitPerBranch): Promise<GraphCommit[]> {
     const repo = await this.getRepo();
     const branches = await this.octokit.rest.repos
       .listBranches({ owner: this.owner, repo: this.repo, per_page: 100 })
@@ -416,9 +420,19 @@ export class GitHubClient {
     const byShaMap = new Map<string, GraphCommit>();
     await Promise.all(
       ordered.map(async (branch) => {
-        const { data } = await this.octokit.rest.repos
-          .listCommits({ owner: this.owner, repo: this.repo, sha: branch.name, per_page: limitPerBranch })
-          .catch(() => ({ data: [] as Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"] }));
+        const wanted = branch.name === repo.defaultBranch ? mainLimit : limitPerBranch;
+        const perPage = Math.min(wanted, 100);
+        const pages = Math.ceil(wanted / perPage);
+        const data = (
+          await Promise.all(
+            Array.from({ length: pages }, (_, i) =>
+              this.octokit.rest.repos
+                .listCommits({ owner: this.owner, repo: this.repo, sha: branch.name, per_page: perPage, page: i + 1 })
+                .then((r) => r.data)
+                .catch(() => [] as Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"]),
+            ),
+          )
+        ).flat();
         for (const c of data) {
           if (byShaMap.has(c.sha)) continue;
           byShaMap.set(c.sha, {

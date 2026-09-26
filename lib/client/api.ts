@@ -135,6 +135,8 @@ export const api = {
 
   refs: () => request<{ refs: CardReference[] }>("/api/github?resource=refs"),
   graph: () => request<{ commits: GraphCommit[] }>("/api/github?resource=graph"),
+  /** The project's history for the timeline: the default branch far back, the others recent. */
+  story: () => request<{ commits: GraphCommit[]; defaultBranch: string }>("/api/github?resource=story"),
   people: () => request<{ people: { login: string; avatarUrl: string }[] }>("/api/github?resource=people"),
 
   board: (boardId?: string | null) =>

@@ -935,3 +935,133 @@
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 0 0 1px rgb(var(--ink) / 0.05);
 }
+
+/* The project's life (ProjectStory): the same surface as the documents graph. */
+.rb-story {
+  background-color: rgb(var(--canvas));
+  background-image: radial-gradient(rgb(var(--ink) / 0.08) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06);
+  cursor: grab;
+  isolation: isolate;
+}
+.rb-story:active {
+  cursor: grabbing;
+}
+.rb-story-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  outline: none;
+  background-color: rgb(var(--glass) / 0.66);
+  backdrop-filter: blur(12px) saturate(170%);
+  -webkit-backdrop-filter: blur(12px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 2px var(--branch),
+    0 6px 14px -6px rgb(var(--shadow) / 0.3);
+  transition:
+    scale 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease,
+    box-shadow 160ms ease;
+  cursor: pointer;
+}
+.rb-story-node-on,
+.rb-story-node:focus-visible {
+  scale: 1.18;
+  z-index: 2;
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 2px var(--branch),
+    0 0 0 6px rgb(var(--accent) / 0.14),
+    0 10px 22px -8px rgb(var(--shadow) / 0.35);
+}
+/* Where work is still going on: a slow ring breathing out. */
+.rb-story-live::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--branch);
+  animation: rb-story-pulse 2.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes rb-story-pulse {
+  from {
+    opacity: 0.7;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 1.9;
+  }
+}
+.rb-story-branch {
+  position: absolute;
+  left: 0;
+  translate: -12px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: rgb(var(--ink));
+  background-color: rgb(var(--glass) / 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1px rgb(var(--ink) / 0.06);
+  pointer-events: none;
+}
+.rb-story-date {
+  position: absolute;
+  left: 0;
+  translate: -50% 0;
+  white-space: nowrap;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--faint));
+  pointer-events: none;
+}
+.rb-story-flow {
+  animation: rb-edge-flow 700ms linear infinite;
+}
+/* The glass card that follows the pointer. */
+.rb-story-card {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background-color: rgb(var(--glass) / 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.07),
+    0 18px 40px -16px rgb(var(--shadow) / 0.4);
+  animation: rb-pop-sm 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Overview: glass cards on a calm, cool surface with two faint lights. */
+.rb-overview {
+  background:
+    radial-gradient(60% 45% at 8% 0%, rgb(var(--accent) / 0.07), transparent 70%),
+    radial-gradient(50% 40% at 96% 28%, rgb(var(--state-review) / 0.055), transparent 70%),
+    rgb(var(--canvas));
+  background-attachment: local;
+}
+.rb-card {
+  border-radius: 20px;
+  background-color: rgb(var(--glass) / 0.64);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.055),
+    0 14px 34px -22px rgb(var(--shadow) / 0.3);
+}
