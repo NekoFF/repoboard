@@ -138,12 +138,29 @@ export function cardNumbersIn(text: string | null | undefined): number[] {
  * screen of a fresh repository wait ~15 seconds for nothing.
  */
 function makeOctokit(token: string): Octokit {
-  return new Octokit({
+  const octokit = new Octokit({
     auth: token,
     // Only for the demo and tests (scripts/demo-github.mjs); unset in real use.
     ...(process.env.GITHUB_API_URL ? { baseUrl: process.env.GITHUB_API_URL } : {}),
     retry: { doNotRetry: [400, 401, 403, 404, 409, 410, 422, 451] },
   });
+  // Any key can read public repositories, so one can open a repository it
+  // was never given — and GitHub refuses only when something is saved. Say
+  // that in words, wherever the save happens.
+  octokit.hook.error("request", (error, options) => {
+    const e = error as { status?: number; message?: string };
+    if (e.status === 403 && /not accessible by (personal access token|integration)/i.test(e.message ?? "")) {
+      const slug = String(options.url ?? "").match(/\/repos\/([^/]+\/[^/]+)/)?.[1];
+      const [owner, name] = (slug ?? "").split("/");
+      const which = owner && name ? `${decodeURIComponent(owner)}/${decodeURIComponent(name)}` : "this repository";
+      throw new GitHubAccessError(
+        "no_access",
+        `This key can read ${which} but may not save to it. On GitHub, edit the key: under Repository access, tick ${which}, and give Contents "Read and write".`,
+      );
+    }
+    throw error;
+  });
+  return octokit;
 }
 
 /** GitHub's answer for a repository that has no commits yet. */
