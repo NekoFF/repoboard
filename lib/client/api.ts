@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardData, PendingChange } from "@/lib/board-service";
+import type { BoardData, BoardSummary, PendingChange } from "@/lib/board-service";
+import type { DocChange, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
+import type { DocEdit } from "@/lib/markdown/document";
 import type {
   BranchSummary,
+  CardReference,
+  GraphCommit,
   CommitDetail,
   CommitSummary,
   IssueSummary,
@@ -15,6 +19,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly conflict = false,
+    /** The full error body, for errors that carry data (e.g. needsIds). */
+    readonly body: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -37,6 +43,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       body.error ?? `Request failed (${response.status})`,
       response.status,
       Boolean(body.conflict),
+      body,
     );
   }
   return body as T;
@@ -44,8 +51,102 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 /* ------------------------------------------------------------- resources -- */
 
+export interface ProjectInfo {
+  repo: string;
+  savedAt: string;
+  active: boolean;
+  open?: number;
+  done?: number;
+  lastSyncAt?: number | null;
+}
+
+export interface ConnectionInfo {
+  connected: boolean;
+  managedByEnvironment: boolean;
+  tokenSource: "env" | "file" | null;
+  authLabel: string;
+  projects: ProjectInfo[];
+  live?: { owner: string; name: string; defaultBranch: string; visibility: string; htmlUrl: string };
+}
+
+const post = <T>(url: string, body: unknown) =>
+  request<T>(url, { method: "POST", body: JSON.stringify(body) });
+
 export const api = {
-  board: () => request<BoardData>("/api/board"),
+  connection: () => request<ConnectionInfo>("/api/repo"),
+
+  connectRepository: (token: string, repo: string) =>
+    post<{
+      connected: boolean;
+      repo: { owner: string; name: string; defaultBranch: string; visibility: string };
+      projects: ProjectInfo[];
+    }>("/api/repo", { token, repo }),
+
+  switchProject: (repo: string) =>
+    post<{ switched: string; projects: ProjectInfo[] }>("/api/repo", { action: "switch", repo }),
+
+  removeProject: (repo: string) =>
+    post<{ removed: string; projects: ProjectInfo[] }>("/api/repo", { action: "remove", repo }),
+
+  disconnectRepository: () =>
+    request<{ connected: boolean; projects: ProjectInfo[] }>("/api/repo", { method: "DELETE" }),
+
+  /* documents */
+  docs: () => request<{ docs: TrackedDoc[] }>("/api/docs"),
+  doc: (path: string) => request<DocView>(`/api/docs?path=${encodeURIComponent(path)}`),
+  markdownFiles: () => request<{ files: string[] }>("/api/docs?files=1"),
+  trackDoc: (path: string) => post<TrackedDoc>("/api/docs", { action: "track", path }),
+  untrackDoc: (id: string) => post<{ ok: true }>("/api/docs", { action: "untrack", id }),
+  pinDoc: (id: string, pinned: boolean) => post<{ ok: true }>("/api/docs", { action: "pin", id, pinned }),
+  refreshDocs: () => post<{ refreshed: number; failed: string[] }>("/api/docs", { action: "refresh" }),
+  syncWorkspace: () =>
+    post<{ exists: boolean; added: string[]; removed: string[] }>("/api/docs", { action: "sync-workspace" }),
+  previewWorkspace: (templates: string[], readme: boolean) =>
+    post<{ files: WorkspaceFile[]; existing: string[] }>("/api/docs", { action: "workspace-preview", templates, readme }),
+  createWorkspace: (templates: string[], readme: boolean) =>
+    post<{ commitSha: string; paths: string[] }>("/api/docs", { action: "workspace-create", templates, readme }),
+  previewDocEdit: (path: string, edits: DocEdit[], baseSha: string | null, attachments?: { path: string }[]) =>
+    post<DocChange>("/api/docs", { action: "preview", path, edits, baseSha, attachments: attachments?.map((a) => a.path) }),
+  commitDocEdit: (
+    path: string,
+    edits: DocEdit[],
+    expectedSha: string,
+    force?: boolean,
+    attachments?: { path: string; base64: string }[],
+  ) =>
+    post<{ commitSha: string; contentSha: string; summary: string }>("/api/docs", {
+      action: "commit",
+      path,
+      edits,
+      expectedSha,
+      force,
+      attachments: attachments?.map(({ path: p, base64 }) => ({ path: p, base64 })),
+    }),
+  /** Every file in the repository, for pointing at where something is written. */
+  repoFiles: () => request<{ files: string[] }>("/api/docs?all=1"),
+  /** A text file as it is now, to show the lines a proof points at. */
+  repoText: (path: string) => request<{ path: string; content: string; sha: string }>(`/api/docs?text=${encodeURIComponent(path)}`),
+  /** Where the browser can load an image or PDF from the repository. */
+  rawUrl: (path: string) => `/api/docs?raw=${encodeURIComponent(path)}`,
+  previewDocCreate: (path: string, content: string) =>
+    post<DocChange>("/api/docs", { action: "create-preview", path, content }),
+  createDoc: (path: string, content: string) =>
+    post<{ commitSha: string; path: string }>("/api/docs", { action: "create", path, content }),
+
+  refs: () => request<{ refs: CardReference[] }>("/api/github?resource=refs"),
+  graph: () => request<{ commits: GraphCommit[] }>("/api/github?resource=graph"),
+  /** The project's history for the timeline: the default branch far back, the others recent. */
+  story: () => request<{ commits: GraphCommit[]; defaultBranch: string }>("/api/github?resource=story"),
+  people: () => request<{ people: { login: string; avatarUrl: string }[] }>("/api/github?resource=people"),
+
+  board: (boardId?: string | null) =>
+    request<BoardData>(`/api/board${boardId ? `?board=${encodeURIComponent(boardId)}` : ""}`),
+  boards: () => request<{ boards: BoardSummary[] }>("/api/board?list=1"),
+  createBoard: (fields: { name: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
+    post<{ id: string }>("/api/board", { action: "board-create", ...fields }),
+  updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
+    post<{ ok: true }>("/api/board", { action: "board-update", boardId, ...fields }),
+  archiveBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-archive", boardId }),
 
   boardAction: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/api/board", {
@@ -77,6 +178,8 @@ export const api = {
         type: string;
         message: string;
         taskId: string | null;
+        actor: string | null;
+        actorKind: "person" | "agent" | null;
         createdAt: number;
       }[];
     }>(`/api/activity?limit=${limit}`),
@@ -143,10 +246,10 @@ export const api = {
       body: JSON.stringify({ action: "preview-all" }),
     }),
 
-  importIssues: (numbers: number[], columnId: string) =>
+  importIssues: (numbers: number[], columnId: string, boardId?: string | null) =>
     request<{ created: number; skipped: number }>("/api/board", {
       method: "POST",
-      body: JSON.stringify({ action: "import-issues", numbers, columnId }),
+      body: JSON.stringify({ action: "import-issues", numbers, columnId, boardId }),
     }),
 };
 

@@ -1,44 +1,56 @@
 import { NextResponse } from "next/server";
+import { runAs } from "@/lib/actor";
+import { getViewer } from "@/lib/github/access";
+
 import { z } from "zod";
 import {
   connectRepository,
   getBoardData,
   getRepoIdentity,
+  projectSummaries,
 } from "@/lib/board-service";
 import {
-  clearStoredCredentials,
   getAuthProvider,
-  writeStoredCredentials,
+  isEnvironmentConfigured,
+  listProjects,
+  removeProject,
+  saveProject,
+  setActiveProject,
 } from "@/lib/github/auth-provider";
-import { GitHubClient } from "@/lib/github/client";
+import { getVerifiedRepository, invalidateAccessCache } from "@/lib/github/access";
 
 export const dynamic = "force-dynamic";
 
+function projects() {
+  const list = listProjects();
+  const stats = projectSummaries(list.map((p) => p.repo));
+  return list.map((p) => ({ ...p, ...stats.get(p.repo.toLowerCase()) }));
+}
+
 export async function GET() {
-  const identity = getRepoIdentity();
-  const token = await getAuthProvider().getToken();
   const provider = getAuthProvider();
-
-  let live = null;
-  if (token && identity.configured) {
-    try {
-      const gh = await GitHubClient.create();
-      live = await gh.getRepo();
-    } catch (error) {
-      return NextResponse.json({
-        connected: false,
-        error: (error as Error).message,
-        authKind: provider.kind,
-        stored: identity.stored,
-      });
-    }
-  }
-
-  return NextResponse.json({
-    connected: Boolean(token && identity.configured),
+  const token = await provider.getToken();
+  const live = await getVerifiedRepository();
+  const base = {
     authKind: provider.kind,
     authLabel: provider.label,
     tokenSource: process.env.GITHUB_PAT ? "env" : token ? "file" : null,
+    managedByEnvironment: isEnvironmentConfigured(),
+    // Names and counts only — tokens never leave the server.
+    projects: projects(),
+  };
+  if (!live) {
+    return NextResponse.json({
+      connected: false,
+      ...base,
+      projects: listProjects(),
+    });
+  }
+
+  const identity = getRepoIdentity();
+  return NextResponse.json({
+    connected: true,
+    ...base,
     repo: identity.configured,
     stored: identity.stored,
     live,
@@ -46,38 +58,73 @@ export async function GET() {
   });
 }
 
-const connectSchema = z.object({
-  token: z.string().min(10, "Token looks too short"),
-  repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "Use owner/name"),
-});
+const slug = z.string().regex(/^[^/\s]+\/[^/\s]+$/, "Use owner/name");
 
+const bodySchema = z.union([
+  z.object({
+    action: z.literal("connect").optional(),
+    token: z.string().min(10, "Token looks too short"),
+    repo: slug,
+  }),
+  z.object({ action: z.literal("switch"), repo: slug }),
+  z.object({ action: z.literal("remove"), repo: slug }),
+]);
+
+/** Every change made through this route is attributed to the token's owner. */
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const parsed = connectSchema.safeParse(body);
-  if (!parsed.success) {
+  const login = await getViewer().catch(() => null);
+  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
+  if (isEnvironmentConfigured()) {
     return NextResponse.json(
-      { error: parsed.error.issues[0].message },
-      { status: 400 },
+      {
+        error:
+          "This instance is configured through environment variables. Change GITHUB_REPO / GITHUB_PAT to switch repositories.",
+      },
+      { status: 409 },
     );
   }
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+  }
+  const body = parsed.data;
 
   try {
-    const summary = await connectRepository(parsed.data.token, parsed.data.repo);
-    writeStoredCredentials({
-      token: parsed.data.token,
-      repo: parsed.data.repo,
-      savedAt: new Date().toISOString(),
-    });
-    return NextResponse.json({ connected: true, repo: summary });
+    if ("token" in body) {
+      const summary = await connectRepository(body.token.trim(), body.repo.trim());
+      // Stored under GitHub's spelling of the name, so it matches the board row.
+      saveProject(`${summary.owner}/${summary.name}`, body.token.trim());
+      invalidateAccessCache();
+      return NextResponse.json({ connected: true, repo: summary, projects: projects() });
+    }
+    if (body.action === "switch") {
+      if (!setActiveProject(body.repo)) {
+        return NextResponse.json({ error: `${body.repo} is not connected` }, { status: 404 });
+      }
+      invalidateAccessCache();
+      return NextResponse.json({ switched: body.repo, projects: projects() });
+    }
+    removeProject(body.repo);
+    invalidateAccessCache();
+    return NextResponse.json({ removed: body.repo, projects: projects() });
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
 }
 
+/** Disconnects the active project (its board stays in the database). */
 export async function DELETE() {
-  clearStoredCredentials();
-  return NextResponse.json({ connected: false });
+  if (isEnvironmentConfigured()) {
+    return NextResponse.json(
+      { error: "This instance is configured through environment variables." },
+      { status: 409 },
+    );
+  }
+  const active = listProjects().find((p) => p.active);
+  if (active) removeProject(active.repo);
+  invalidateAccessCache();
+  return NextResponse.json({ connected: false, projects: projects() });
 }

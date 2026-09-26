@@ -2,171 +2,489 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Colour tokens as RGB channels so Tailwind's opacity modifiers work
+ * (bg-ink/10). The light theme is the default; `.dark` on <html> switches.
+ */
 @layer base {
+  /* Cool, soft neutrals with a blue cast, near-white panels on a light grey
+     desk, graphite text instead of black, and one calm blue for actions. */
+  :root {
+    --canvas: 245 246 248;
+    --surface: 255 255 255;
+    --raised: 255 255 255;
+    --border: 231 233 237;
+    --border-strong: 212 215 221;
+    --ink: 31 35 41;
+    --on-ink: 255 255 255;
+    --muted: 99 106 117;
+    --faint: 152 158 168;
+    --pill: 237 239 242;
+    --hover: 243 244 247;
+    /* The desk the panels sit on, the recessed navigation panel, the tool rail. */
+    --desk: 241 242 245;
+    --panel-back: 250 250 252;
+    --rail: 244 245 248;
+    --accent: 72 118 224;
+    --on-accent: 255 255 255;
+    /* Glass: the tint, how much of it, and the lit edge along the top. */
+    --glass: 255 255 255;
+    --glass-alpha: 0.48;
+    --glass-edge: 255 255 255;
+    --glass-edge-alpha: 0.85;
+
+    --state-todo: 152 158 168;
+    --state-doing: 204 138 32;
+    --state-review: 118 104 222;
+    --state-done: 36 150 96;
+    --state-cancelled: 182 187 196;
+    --done-bg: 230 245 237;
+    --doing-bg: 252 244 228;
+    --doing-border: 236 209 150;
+    --danger: 205 70 66;
+    --danger-bg: 253 238 237;
+    --code-bg: 245 246 249;
+    --shadow: 28 36 52;
+    color-scheme: light;
+  }
+
+  /* Dark: near-neutral blacks in layers — the desk deepest, the panel a step
+     up, cards a step above that — with hairline edges instead of contrast.
+     The faintest cool cast keeps it from going muddy. */
+  .dark {
+    --canvas: 12 13 14;
+    --surface: 17 18 19;
+    --raised: 25 26 28;
+    --border: 38 39 42;
+    --border-strong: 54 56 60;
+    --ink: 238 239 241;
+    --on-ink: 17 18 19;
+    --muted: 146 149 156;
+    --faint: 99 102 109;
+    --pill: 31 32 35;
+    --hover: 27 28 31;
+    --desk: 8 9 10;
+    --panel-back: 13 14 15;
+    --rail: 22 23 25;
+    --accent: 116 154 245;
+    --on-accent: 14 17 26;
+    --glass: 24 25 27;
+    --glass-alpha: 0.6;
+    --glass-edge: 255 255 255;
+    --glass-edge-alpha: 0.06;
+
+    --state-todo: 124 130 142;
+    --state-doing: 230 170 70;
+    --state-review: 156 146 248;
+    --state-done: 76 194 130;
+    --state-cancelled: 92 97 107;
+    --done-bg: 24 46 36;
+    --doing-bg: 52 41 21;
+    --doing-border: 108 84 38;
+    --danger: 240 116 110;
+    --danger-bg: 58 29 29;
+    --code-bg: 12 13 14;
+    --shadow: 0 0 0;
+    color-scheme: dark;
+  }
+
   html,
   body {
     @apply h-full;
   }
   body {
-    @apply bg-canvas text-ink antialiased;
-    font-family:
-      Inter,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      system-ui,
-      sans-serif;
-    font-feature-settings:
-      "cv02" 1,
-      "cv03" 1,
-      "cv04" 1,
-      "tnum" 0;
+    @apply bg-canvas font-sans text-base text-ink antialiased;
+    font-feature-settings: "ss02" 1;
+    text-rendering: optimizeLegibility;
   }
   button,
   input,
   textarea,
   select {
     font: inherit;
+    color: inherit;
   }
   * {
     @apply border-border;
   }
 
-  /* One focus language everywhere: a thin dark ring, never a browser default. */
-  :focus-visible {
-    @apply outline-none ring-2 ring-ink/80 ring-offset-1 ring-offset-surface;
+  /* One focus language everywhere: a thin ring in the ink colour. Text fields
+     are the exception — the caret (and .rb-input's border) already say where
+     focus is, and a ring around a borderless title field looks broken. */
+  :focus-visible:not(input):not(textarea) {
+    @apply outline-none ring-2 ring-accent/55 ring-offset-1 ring-offset-surface;
+  }
+  input:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none;
+  }
+  input[type="checkbox"]:focus-visible,
+  input[type="radio"]:focus-visible {
+    @apply ring-2 ring-accent/55 ring-offset-1 ring-offset-surface;
   }
 
   ::selection {
-    @apply bg-ink text-white;
+    @apply bg-accent/20;
   }
 
-  /* Quiet scrollbars — the board scrolls a lot and chrome should not shout. */
+  /* No visible scrollbars anywhere: everything still scrolls with the
+     trackpad, wheel and keyboard, but no track or thumb is drawn. */
+  * {
+    scrollbar-width: none;
+  }
   ::-webkit-scrollbar {
-    @apply h-2 w-2;
+    display: none;
+    width: 0;
+    height: 0;
   }
-  ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-black/15;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-black/25;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+
+  code,
+  kbd,
+  pre {
+    @apply font-mono;
   }
 }
 
 @layer components {
+  /* ------------------------------------------------------------- buttons -- */
+  .rb-btn {
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-3 text-sm font-medium text-ink
+      shadow-card transition-[background-color,border-color,transform] duration-100
+      hover:border-border-strong hover:bg-hover active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-primary {
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-accent px-3 text-sm font-medium text-on-accent
+      transition-[opacity,transform] duration-100 hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-ghost {
+    @apply inline-flex h-7 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium text-muted
+      transition-colors duration-100 hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-danger {
+    @apply inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm font-medium text-danger
+      transition-colors duration-100 hover:bg-danger-bg disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-icon-btn {
+    @apply inline-grid size-7 shrink-0 select-none place-items-center rounded-md text-muted transition-colors duration-100
+      hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+  }
+  .rb-btn-sm {
+    @apply h-7 px-2.5 text-xs;
+  }
+
+  /* -------------------------------------------------------------- inputs -- */
+  .rb-input {
+    @apply h-8 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-ink transition-colors duration-100
+      placeholder:text-faint hover:border-border-strong focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/15;
+  }
+  textarea.rb-input {
+    @apply h-auto py-2;
+  }
+
+  .rb-kbd {
+    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm border border-border bg-surface px-1
+      font-sans text-2xs font-medium text-muted shadow-card;
+  }
+
+  /* ---------------------------------------------------------- pills/chips -- */
   .rb-pill {
-    @apply inline-flex items-center gap-1 rounded-sm bg-pill px-2 py-1 text-[11px] font-medium leading-none text-ink;
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-pill px-1.5 text-2xs font-medium text-muted;
   }
   .rb-pill-ok {
-    @apply inline-flex items-center gap-1 rounded-sm bg-success-bg px-2 py-1 text-[11px] font-medium leading-none text-success-fg;
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-success-bg px-1.5 text-2xs font-medium text-success-fg;
   }
   .rb-pill-warn {
-    @apply inline-flex items-center gap-1 rounded-sm bg-warn-bg px-2 py-1 text-[11px] font-medium leading-none text-warn-fg;
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-warn-bg px-1.5 text-2xs font-medium text-warn-fg;
+  }
+  .rb-pill-danger {
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-danger-bg px-1.5 text-2xs font-medium text-danger;
+  }
+  /* A property you can click to change: status, priority, due date… */
+  .rb-chip {
+    @apply inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-2 text-xs text-ink
+      transition-colors duration-100 hover:border-border-strong hover:bg-hover;
   }
 
   .rb-card {
     @apply rounded-lg border border-border bg-surface;
   }
 
-  .rb-btn {
-    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-[7px] text-[12px] font-medium text-ink transition-colors duration-150
-      hover:bg-pill active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
-  }
-  .rb-btn-primary {
-    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-md bg-active px-[13px] py-[7px] text-[12px] font-medium text-white transition-colors duration-150
-      hover:bg-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
-  }
-  .rb-btn-ghost {
-    @apply inline-flex select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-medium text-muted transition-colors duration-150
-      hover:bg-pill hover:text-ink disabled:pointer-events-none disabled:opacity-40;
-  }
-
-  .rb-input {
-    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink transition-colors duration-150
-      placeholder:text-muted/70 hover:border-ink/25 focus:border-ink focus:outline-none focus:ring-0;
-  }
-
-  .rb-kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-border bg-surface px-1
-      font-sans text-[10px] font-medium text-muted;
-  }
-
-  /* Skeletons carry the same radius as the thing they stand in for, so the
-     swap to real content never shifts the layout. */
   .rb-skeleton {
-    @apply animate-rb-pulse rounded-md bg-black/[0.06];
+    @apply animate-rb-pulse rounded-md bg-ink/[0.06];
   }
 
-  /* The board reads as a board because the columns are visible containers
-     sitting on a textured surface, not cards floating on white. */
+  /* ---------------------------------------------------------------- menus -- */
+  .rb-menu {
+    @apply z-[90] min-w-[200px] overflow-hidden rounded-xl p-1 text-sm text-ink;
+    background-color: rgb(var(--raised) / 0.78);
+    -webkit-backdrop-filter: blur(22px) saturate(1.8);
+    backdrop-filter: blur(22px) saturate(1.8);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      0 0 0 1px rgb(var(--ink) / 0.07),
+      0 18px 50px -12px rgb(var(--shadow) / 0.3);
+    animation: rb-pop-sm 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .rb-menu-item {
+    @apply flex h-8 cursor-default select-none items-center gap-2 rounded-md px-2 text-sm text-ink outline-none
+      data-[disabled]:pointer-events-none data-[highlighted]:bg-hover data-[disabled]:opacity-40;
+  }
+  .rb-menu-label {
+    @apply px-2 pb-1 pt-2 text-2xs font-medium text-faint;
+  }
+  .rb-menu-sep {
+    @apply my-1 h-px bg-border;
+  }
+
+  /* --------------------------------------------------------------- board -- */
+  /* The desk: a quiet dot grid with two soft washes of colour, so the glass
+     panels on top have something to blur. */
+  .rb-desk {
+    background-color: rgb(var(--desk));
+    background-image:
+      radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1.2px),
+      radial-gradient(55% 60% at 4% 6%, rgb(var(--accent) / 0.2), transparent 70%),
+      radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.15), transparent 70%);
+    background-size: 22px 22px, 100% 100%, 100% 100%;
+    background-attachment: fixed;
+  }
+
+  /* Glass, the way Apple draws it: a translucent tint, heavy blur with a bit
+     of extra saturation, a lit edge along the top and a soft drop shadow. */
+  .rb-glass {
+    background-color: rgb(var(--glass) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(24px) saturate(1.8);
+    backdrop-filter: blur(24px) saturate(1.8);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      inset 0 0 0 1px rgb(var(--glass-edge) / calc(var(--glass-edge-alpha) * 0.35)),
+      0 0 0 1px rgb(var(--ink) / 0.05),
+      0 16px 40px -22px rgb(var(--shadow) / 0.28);
+  }
+  /* Glass for things that float over the page: dialogs, sheets, the command
+     menu, toasts. More opaque, so text on it always reads. */
+  .rb-glass-strong {
+    background-color: rgb(var(--raised) / 0.84);
+    -webkit-backdrop-filter: blur(28px) saturate(1.8);
+    backdrop-filter: blur(28px) saturate(1.8);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      0 0 0 1px rgb(var(--ink) / 0.07),
+      0 24px 64px -16px rgb(var(--shadow) / 0.32);
+  }
+  .rb-scrim {
+    background-color: rgb(var(--shadow) / 0.16);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+
+  /* The tool rail: a glass pill at the page's right edge. Every page keeps
+     clear of it (--rb-rail), so it never covers anything. Its shadow falls
+     to the left, in the same tone as the main panel's. */
+  .rb-rail {
+    background-color: rgb(var(--glass) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(22px) saturate(1.8);
+    backdrop-filter: blur(22px) saturate(1.8);
+    box-shadow:
+      0 0 0 1px rgb(var(--ink) / 0.05),
+      -14px 0 34px -20px rgb(var(--shadow) / 0.16),
+      -3px 0 10px -6px rgb(var(--shadow) / 0.07);
+  }
+  /* Room reserved on the right for the floating rail (lg and up). */
+  .rb-page {
+    --rb-rail: 0px;
+  }
+  @media (min-width: 1024px) {
+    .rb-page {
+      --rb-rail: 64px;
+    }
+  }
+  .rb-clear-rail {
+    padding-right: var(--rb-rail);
+  }
+
+  /* Glass laid over content inside a panel: lighter, no drop shadow. */
+  .rb-glass-bar {
+    background-color: rgb(var(--surface) / 0.72);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    backdrop-filter: blur(20px) saturate(1.8);
+  }
+
+  .rb-panel-back {
+    border-radius: 22px;
+  }
+  .rb-panel-main {
+    border-radius: 22px;
+    background-color: rgb(var(--surface));
+    /* A quiet shadow to the left (it lies on the navigation), plus a lit top
+       edge and a faint lower shade for a little volume. */
+    box-shadow:
+      inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+      inset 0 -1px 0 rgb(var(--ink) / 0.03),
+      -16px 0 40px -24px rgb(var(--shadow) / 0.13),
+      -3px 0 10px -6px rgb(var(--shadow) / 0.06),
+      0 22px 50px -30px rgb(var(--shadow) / 0.14),
+      0 0 0 1px rgb(var(--ink) / 0.035);
+  }
+
   .rb-board-canvas {
-    background-color: #fff;
-    background-image: radial-gradient(
-      rgba(32, 33, 36, 0.08) 1px,
-      transparent 1px
-    );
-    background-size: 16px 16px;
+    background-color: rgb(var(--canvas));
+    background-image: radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1px);
+    background-size: 18px 18px;
   }
-
   .rb-column {
-    @apply flex min-w-0 flex-col rounded-lg border border-border bg-pill;
+    @apply flex min-w-0 flex-col rounded-xl bg-pill/70;
   }
-
   .rb-task {
-    @apply w-full rounded-md border border-border bg-surface p-3 text-left shadow-card transition-[border-color,box-shadow] duration-150;
+    @apply w-full rounded-lg border border-border bg-surface p-2.5 text-left shadow-card transition-[border-color,box-shadow] duration-100;
   }
   .rb-task:hover {
-    @apply border-ink/25 shadow-card;
+    @apply border-border-strong;
+  }
+  .rb-task[data-selected="true"] {
+    @apply border-accent/60 ring-2 ring-accent/15;
   }
 
-  .rb-view-tab {
-    @apply rounded-[5px] px-3 py-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink;
+  /* ----------------------------------------------------------- headers -- */
+  /* Page headers float over the page as glass; what scrolls passes under them.
+     The scroll area after a header reserves its height with .rb-under-header. */
+  .rb-page {
+    --rb-header-h: 56px;
   }
-  .rb-view-tab-active {
-    @apply bg-surface text-ink shadow-card;
+  .rb-page:has(> .rb-header[data-rows="2"]) {
+    --rb-header-h: 100px;
   }
-  .rb-filter-field {
-    @apply mb-3 block text-[11px] font-medium text-muted;
+  .rb-under-header {
+    padding-top: var(--rb-header-h);
+    padding-right: var(--rb-rail);
+    scroll-padding-top: var(--rb-header-h);
+  }
+  .rb-header {
+    padding-right: var(--rb-rail);
+  }
+  /* The board's background runs to the panel's edge, behind the rail, so no
+     strip of white shows there; the columns themselves stop short of it. */
+  .rb-under-header.rb-full-bleed {
+    padding-right: 0;
+  }
+
+  /* ---------------------------------------------------- rendered markdown -- */
+  .rb-prose {
+    @apply max-w-[72ch] text-base leading-[1.65] text-ink;
+  }
+  .rb-prose > * + * {
+    @apply mt-3;
+  }
+  .rb-prose h1 {
+    @apply mt-0 text-2xl font-semibold tracking-[-0.015em];
+  }
+  .rb-prose h2 {
+    @apply mt-9 border-b border-border pb-1.5 text-lg font-semibold tracking-[-0.01em];
+  }
+  .rb-prose h3 {
+    @apply mt-6 text-md font-semibold;
+  }
+  .rb-prose h4,
+  .rb-prose h5,
+  .rb-prose h6 {
+    @apply mt-5 text-base font-semibold;
+  }
+  .rb-prose a {
+    @apply text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink;
+  }
+  .rb-prose ul,
+  .rb-prose ol {
+    @apply pl-5;
+  }
+  .rb-prose ul {
+    @apply list-disc;
+  }
+  .rb-prose ol {
+    @apply list-decimal;
+  }
+  .rb-prose li + li {
+    @apply mt-1;
+  }
+  .rb-prose li > ul,
+  .rb-prose li > ol {
+    @apply mt-1;
+  }
+  .rb-prose ul.contains-task-list {
+    @apply list-none pl-0;
+  }
+  .rb-prose li.task-list-item > ul.contains-task-list {
+    @apply pl-6;
+  }
+  .rb-prose blockquote {
+    @apply border-l-2 border-border-strong pl-4 text-muted;
+  }
+  .rb-prose code {
+    @apply rounded-sm bg-code-bg px-1 py-px text-[0.88em];
+  }
+  .rb-prose pre {
+    @apply overflow-x-auto rounded-lg border border-border bg-code-bg p-3 text-sm leading-relaxed;
+  }
+  .rb-prose pre code {
+    @apply bg-transparent p-0;
+  }
+  .rb-prose table {
+    @apply w-full border-collapse text-sm;
+  }
+  .rb-prose th,
+  .rb-prose td {
+    @apply border border-border px-2.5 py-1.5 text-left align-top;
+  }
+  .rb-prose th {
+    @apply bg-pill font-semibold;
+  }
+  .rb-prose hr {
+    @apply my-8 border-border;
+  }
+  .rb-prose img {
+    @apply max-w-full rounded-md;
   }
 }
 
 @layer utilities {
   .rb-enter {
-    animation: rb-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rb-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  .rb-panel-in {
-    animation: rb-panel-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  .rb-sheet-in {
+    animation: rb-sheet-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .rb-fade-in {
-    animation: rb-fade 140ms ease-out both;
+    animation: rb-fade 120ms ease-out both;
   }
   .rb-pop {
-    animation: rb-pop 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rb-pop 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .rb-scroll-thin {
+    scrollbar-width: none;
   }
 }
 
+/* Animations use the individual `translate` / `scale` properties, never
+   `transform`: centred dialogs are positioned with a transform, and an
+   animation ending on `transform: none` would knock them off centre. */
 @keyframes rb-enter {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    translate: 0 3px;
   }
   to {
     opacity: 1;
-    transform: none;
+    translate: 0 0;
   }
 }
 
-@keyframes rb-panel-in {
+@keyframes rb-sheet-in {
   from {
-    opacity: 0;
-    transform: translateX(16px);
+    opacity: 0.4;
+    translate: 24px 0;
   }
   to {
     opacity: 1;
-    transform: none;
+    translate: 0 0;
   }
 }
 
@@ -180,14 +498,261 @@
 }
 
 @keyframes rb-pop {
-  0% {
+  from {
     opacity: 0;
-    transform: scale(0.97) translateY(6px);
+    scale: 0.98;
+    translate: 0 4px;
   }
-  100% {
+  to {
     opacity: 1;
-    transform: none;
+    scale: 1;
+    translate: 0 0;
   }
+}
+
+@keyframes rb-pop-sm {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Board tiles (Boards screen). A tile is a window: an abstract picture in the
+   board's colour, a glass plate with its name floating over it, and a second
+   window stacked behind. The tile sets --h and --s; each theme sets the
+   lightness, so one hue reads well on both. */
+.rb-tile {
+  --tl-bg: 94%;
+  --tl-mid: 84%;
+  --tl-deep: 70%;
+  --tl-line: 42%;
+  --tl-solid: 58%;
+  --tl-stroke: hsl(var(--h) calc(var(--s) * 1%) var(--tl-line));
+  --tl-bgc: hsl(var(--h) calc(var(--s) * 1%) var(--tl-bg));
+  --tl-fill-soft: hsl(var(--h) calc(var(--s) * 1%) var(--tl-mid));
+  --tl-fill-1: hsl(var(--h) calc(var(--s) * 1%) var(--tl-deep));
+  --tl-fill-2: hsl(calc(var(--h) + 38) calc(var(--s) * 1%) var(--tl-deep));
+  --tl-fill-3: hsl(calc(var(--h) - 42) calc(var(--s) * 1%) var(--tl-deep));
+  --tl-blend: multiply;
+  position: relative;
+  isolation: isolate;
+}
+.dark .rb-tile {
+  --tl-blend: screen;
+  --tl-bg: 19%;
+  --tl-mid: 27%;
+  --tl-deep: 40%;
+  --tl-line: 68%;
+  --tl-solid: 40%;
+}
+
+/* The window behind: a strip of glass peeking out above the tile. */
+.rb-tile::before {
+  content: "";
+  position: absolute;
+  inset: -8px 16px auto 16px;
+  height: 48px;
+  z-index: -1;
+  border-radius: 14px 14px 0 0;
+  background-color: hsl(var(--h) calc(var(--s) * 0.7%) var(--tl-mid) / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.05);
+  transition: translate 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rb-tile-window {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 11;
+  overflow: hidden;
+  border-radius: 18px;
+  background-color: hsl(var(--h) calc(var(--s) * 1%) var(--tl-bg));
+  box-shadow:
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 2px 4px -1px hsl(var(--h) 30% 20% / 0.08),
+    0 16px 30px -14px hsl(var(--h) 45% 25% / 0.3),
+    0 34px 60px -34px hsl(var(--h) 45% 20% / 0.35);
+  transition:
+    translate 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease;
+}
+.rb-tile:hover .rb-tile-window,
+.rb-tile:focus-within .rb-tile-window {
+  translate: 0 -3px;
+  box-shadow:
+    0 0 0 1px rgb(var(--ink) / 0.08),
+    0 4px 8px -2px hsl(var(--h) 30% 20% / 0.1),
+    0 22px 40px -16px hsl(var(--h) 45% 25% / 0.38),
+    0 44px 70px -36px hsl(var(--h) 45% 20% / 0.42);
+}
+.rb-tile:hover::before,
+.rb-tile:focus-within::before {
+  translate: 0 -5px;
+}
+
+.rb-tile-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.rb-tile-art--solid {
+  background-color: hsl(var(--h) calc(var(--s) * 1%) var(--tl-solid));
+}
+.rb-tile-blob {
+  position: absolute;
+  width: 95%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(
+    closest-side,
+    hsl(calc(var(--h) + var(--shift, 0)) calc(var(--s) * 1%) var(--tl-deep) / 0.9),
+    hsl(calc(var(--h) + var(--shift, 0)) calc(var(--s) * 1%) var(--tl-deep) / 0)
+  );
+  animation: rb-drift-1 20s ease-in-out infinite alternate;
+}
+/* Film grain, so the light has texture instead of a flat gradient. */
+.rb-tile-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.32;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* Inside the SVG pictures `transform` is safe: nothing else positions them.
+   Each class names a motion; duration and delay come from the element. */
+.rb-a-flow { animation: rb-flow 30s linear infinite; }
+.rb-a-spin,
+.rb-a-ripple,
+.rb-a-bob,
+.rb-a-breathe,
+.rb-a-sway,
+.rb-a-bar,
+.rb-a-rise,
+.rb-a-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.rb-a-spin { animation: rb-spin 70s linear infinite; }
+.rb-a-ripple { animation: rb-ripple 8s ease-out infinite; }
+.rb-a-bob { animation: rb-bob 9s ease-in-out infinite alternate; }
+.rb-a-breathe { animation: rb-breathe 8s ease-in-out infinite alternate; }
+.rb-a-sway { animation: rb-sway 10s ease-in-out infinite alternate; }
+.rb-a-bar { transform-origin: 50% 100%; animation: rb-bar 3s ease-in-out infinite alternate; }
+.rb-a-rise { animation: rb-rise 14s linear infinite; }
+.rb-a-twinkle { animation: rb-twinkle 4s ease-in-out infinite alternate; }
+/* A radar's sweep and a plasma's colours are HTML layers, turned by `rotate`. */
+.rb-tile-sweep {
+  position: absolute;
+  width: 170%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg, transparent 0 72%, hsl(var(--h) calc(var(--s) * 1%) var(--tl-deep) / 0.75) 100%);
+  animation: rb-turn 7s linear infinite;
+}
+.rb-tile-plasma {
+  position: absolute;
+  inset: -60%;
+  filter: blur(22px);
+  background: conic-gradient(
+    from 0deg,
+    var(--tl-fill-1),
+    var(--tl-fill-2),
+    var(--tl-fill-soft),
+    var(--tl-fill-3),
+    var(--tl-fill-1)
+  );
+  animation: rb-turn 28s linear infinite;
+}
+/* Previews in the picker hold still until pointed at or chosen. */
+.rb-tile-still *,
+.rb-tile-still {
+  animation-play-state: paused !important;
+}
+.rb-art-choice:hover .rb-tile-still *,
+.rb-art-choice[aria-checked="true"] .rb-tile-still * {
+  animation-play-state: running !important;
+}
+
+/* The glass plate carrying the board's name. */
+.rb-tile-plate {
+  position: absolute;
+  inset: auto 10px 10px 10px;
+  display: flex;
+  height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 14px;
+  border-radius: 12px;
+  background-color: rgb(var(--glass) / 0.5);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--glass-edge) / calc(var(--glass-edge-alpha) * 0.4)),
+    0 8px 20px -10px rgb(0 0 0 / 0.25);
+}
+
+@keyframes rb-drift-1 {
+  0% { translate: 0 0; scale: 1; }
+  50% { translate: 14% -10%; scale: 1.12; }
+  100% { translate: -8% 12%; scale: 0.94; }
+}
+@keyframes rb-drift-2 {
+  0% { translate: 0 0; scale: 1.05; }
+  50% { translate: -16% 8%; scale: 0.92; }
+  100% { translate: 10% -12%; scale: 1.1; }
+}
+@keyframes rb-drift-3 {
+  0% { translate: 0 0; scale: 0.95; }
+  50% { translate: 12% 14%; scale: 1.08; }
+  100% { translate: -14% -6%; scale: 1; }
+}
+@keyframes rb-flow {
+  to { transform: translateX(-200px); }
+}
+@keyframes rb-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes rb-turn {
+  to { rotate: 360deg; }
+}
+@keyframes rb-ripple {
+  from { transform: scale(0.08); opacity: 0.9; }
+  to { transform: scale(1); opacity: 0; }
+}
+@keyframes rb-bob {
+  from { transform: translateY(6px); }
+  to { transform: translateY(-8px); }
+}
+@keyframes rb-breathe {
+  from { transform: scale(0.9); }
+  to { transform: scale(1.08); }
+}
+@keyframes rb-sway {
+  from { transform: rotate(-6deg) translateY(4px); }
+  to { transform: rotate(6deg) translateY(-4px); }
+}
+@keyframes rb-bar {
+  from { transform: scaleY(0.35); }
+  to { transform: scaleY(1); }
+}
+@keyframes rb-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(-185px); opacity: 0; }
+}
+@keyframes rb-twinkle {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -198,4 +763,351 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Small tiles (the picture picker) have no window stacked behind. */
+.rb-tile-flat::before {
+  content: none;
+}
+
+/* Export as PDF: only the document is printed, on white, in the page's own
+   type — the app around it is hidden (see DocScreen). */
+.rb-print-root {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  body > *:not(.rb-print-root) {
+    display: none !important;
+  }
+  /* Paper is white whatever the theme: the light colours, always. */
+  .rb-print-root {
+    display: block;
+    font-size: 11pt;
+    --surface: 255 255 255;
+    --border: 231 233 237;
+    --ink: 17 17 17;
+    --muted: 70 74 82;
+    --faint: 120 126 136;
+    --pill: 237 239 242;
+    --code-bg: 245 246 249;
+    --accent: 52 98 204;
+    color: rgb(var(--ink));
+  }
+  .rb-print-root .group\/code button {
+    display: none;
+  }
+  .rb-print-root h1,
+  .rb-print-root h2,
+  .rb-print-root h3 {
+    break-after: avoid;
+  }
+  .rb-print-root pre,
+  .rb-print-root table,
+  .rb-print-root img {
+    break-inside: avoid;
+  }
+}
+
+/* The documents graph: glass nodes over slowly moving light, on a dot grid
+   that pans and zooms with the world (DocsGraph sets its position and size). */
+.rb-graph {
+  background-color: rgb(var(--canvas));
+  background-image: radial-gradient(rgb(var(--ink) / 0.09) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06);
+  cursor: grab;
+  isolation: isolate;
+}
+.rb-graph.cursor-grabbing {
+  cursor: grabbing;
+}
+.rb-graph-glow {
+  position: absolute;
+  z-index: -1;
+  width: 46%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  /* Barely there: enough for the glass to have something to blur. */
+  background: radial-gradient(closest-side, rgb(var(--glow) / 0.08), rgb(var(--glow) / 0));
+  animation: rb-drift-1 28s ease-in-out infinite alternate;
+}
+.dark .rb-graph-glow {
+  background: radial-gradient(closest-side, rgb(var(--glow) / 0.07), rgb(var(--glow) / 0));
+}
+
+.rb-graph-edge {
+  stroke: rgb(var(--ink) / 0.16);
+  stroke-width: 1.4;
+  transition:
+    opacity 160ms ease,
+    stroke 160ms ease;
+}
+.rb-graph-edge-on {
+  stroke: url(#rb-edge-lit);
+  stroke-width: 2.2;
+  stroke-dasharray: 2 9;
+  stroke-linecap: round;
+  animation: rb-edge-flow 900ms linear infinite;
+}
+@keyframes rb-edge-flow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.rb-graph-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  outline: none;
+  transition:
+    scale 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+.rb-graph-node-on,
+.rb-graph-node:focus-visible {
+  scale: 1.12;
+  z-index: 2;
+}
+.rb-graph-node:focus-visible .rb-graph-disc {
+  box-shadow:
+    0 0 0 3px rgb(var(--accent) / 0.35),
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha));
+}
+.rb-graph-node-dim {
+  opacity: 0.28;
+}
+
+/* A node: frosted glass with a lit top edge and a soft shadow below. */
+.rb-graph-disc {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: 9999px;
+  background-color: rgb(var(--glass) / 0.62);
+  backdrop-filter: blur(14px) saturate(170%);
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.07),
+    0 6px 16px -6px rgb(var(--shadow) / 0.28),
+    0 18px 34px -20px rgb(var(--shadow) / 0.3);
+}
+.rb-graph-node-on .rb-graph-disc {
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--accent) / 0.35),
+    0 10px 24px -8px rgb(var(--accent) / 0.4),
+    0 24px 44px -22px rgb(var(--shadow) / 0.35);
+}
+.rb-graph-ghost {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  border: 1.5px dashed rgb(var(--ink) / 0.3);
+  background-color: rgb(var(--glass) / 0.35);
+}
+
+.rb-graph-label {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  border-radius: 9999px;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  background-color: rgb(var(--glass) / 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1px rgb(var(--ink) / 0.05);
+}
+
+/* The project's life (ProjectStory): the same surface as the documents graph. */
+.rb-story {
+  background-color: rgb(var(--canvas));
+  background-image: radial-gradient(rgb(var(--ink) / 0.08) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06);
+  cursor: grab;
+  isolation: isolate;
+}
+.rb-story:active {
+  cursor: grabbing;
+}
+.rb-story-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  outline: none;
+  background-color: rgb(var(--glass) / 0.66);
+  backdrop-filter: blur(12px) saturate(170%);
+  -webkit-backdrop-filter: blur(12px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 2px var(--branch),
+    0 6px 14px -6px rgb(var(--shadow) / 0.3);
+  transition:
+    scale 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease,
+    box-shadow 160ms ease;
+  cursor: pointer;
+}
+.rb-story-node-on,
+.rb-story-node:focus-visible {
+  scale: 1.18;
+  z-index: 2;
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 2px var(--branch),
+    0 0 0 6px rgb(var(--accent) / 0.14),
+    0 10px 22px -8px rgb(var(--shadow) / 0.35);
+}
+/* Where work is still going on: a slow ring breathing out. */
+.rb-story-live::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--branch);
+  animation: rb-story-pulse 2.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes rb-story-pulse {
+  from {
+    opacity: 0.7;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 1.9;
+  }
+}
+.rb-story-branch {
+  position: absolute;
+  left: 0;
+  translate: -12px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: rgb(var(--ink));
+  background-color: rgb(var(--glass) / 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1px rgb(var(--ink) / 0.06);
+  pointer-events: none;
+}
+.rb-story-date {
+  position: absolute;
+  left: 0;
+  translate: -50% 0;
+  white-space: nowrap;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--faint));
+  pointer-events: none;
+}
+.rb-story-flow {
+  animation: rb-edge-flow 700ms linear infinite;
+}
+/* The glass card that follows the pointer. */
+.rb-story-card {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background-color: rgb(var(--glass) / 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.07),
+    0 18px 40px -16px rgb(var(--shadow) / 0.4);
+  animation: rb-pop-sm 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Overview: glass cards on a calm, cool surface with two faint lights. */
+.rb-overview {
+  background:
+    radial-gradient(60% 45% at 8% 0%, rgb(var(--accent) / 0.07), transparent 70%),
+    radial-gradient(50% 40% at 96% 28%, rgb(var(--state-review) / 0.055), transparent 70%),
+    rgb(var(--canvas));
+  background-attachment: local;
+}
+.rb-card {
+  border-radius: 20px;
+  background-color: rgb(var(--glass) / 0.64);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.055),
+    0 14px 34px -22px rgb(var(--shadow) / 0.3);
+}
+
+/* Dark: the desk is almost flat black, the colour in it a whisper; panels and
+   cards are told apart by hairlines, as light does it with shadows. */
+.dark .rb-desk {
+  background-image:
+    radial-gradient(rgb(var(--ink) / 0.035) 1px, transparent 1.2px),
+    radial-gradient(55% 60% at 4% 6%, rgb(var(--accent) / 0.07), transparent 70%),
+    radial-gradient(55% 60% at 100% 100%, rgb(var(--state-review) / 0.05), transparent 70%);
+}
+.dark .rb-panel-main {
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / 0.05),
+    0 0 0 1px rgb(var(--ink) / 0.075),
+    -16px 0 40px -24px rgb(0 0 0 / 0.6);
+}
+.dark .rb-task {
+  border-color: rgb(var(--ink) / 0.075);
+  background-color: rgb(var(--raised));
+}
+.dark .rb-task:hover {
+  border-color: rgb(var(--ink) / 0.14);
+}
+.dark .rb-card,
+.dark .rb-glass,
+.dark .rb-rail {
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.07),
+    0 18px 40px -24px rgb(0 0 0 / 0.7);
+}
+.dark .rb-overview {
+  background:
+    radial-gradient(60% 45% at 8% 0%, rgb(var(--accent) / 0.05), transparent 70%),
+    radial-gradient(50% 40% at 96% 28%, rgb(var(--state-review) / 0.04), transparent 70%),
+    rgb(var(--canvas));
+}
+.dark .rb-column {
+  background-color: rgb(var(--ink) / 0.025);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.045);
+}
+.dark .rb-board-canvas {
+  background-image: radial-gradient(rgb(var(--ink) / 0.04) 1px, transparent 1px);
 }

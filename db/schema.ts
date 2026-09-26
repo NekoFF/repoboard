@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import type { ChecklistItem } from "@/lib/checklist";
 
 // RepoBoard's SQLite schema. GitHub stays the source of truth for git data
 // (branches, commits, PRs, issues are fetched live, never mirrored here).
@@ -21,10 +22,25 @@ export const repositories = sqliteTable("repositories", {
   lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
 });
 
+// A project (repository) has several boards: one per person ("Dima",
+// "Intern") or per area ("Design", "Core"). The first one, board_<repo>, is
+// the primary board: the one the markdown file and board.json follow.
 export const boards = sqliteTable("boards", {
   id: text("id").primaryKey(),
   repositoryId: text("repository_id").notNull(),
   name: text("name").notNull(),
+  description: text("description"),
+  /** One of the label hues, by name — see components/labelColor.ts. */
+  color: text("color"),
+  /** The picture on the board's tile, by name — see components/BoardArt.tsx. */
+  art: text("art"),
+  /** A person the board belongs to, for per-person boards. */
+  owner: text("owner"),
+  position: integer("position").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }),
+  /** Last change to the board itself (name, colour, picture, owner, archive), for board.json merges. */
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
 });
 
 export const columns = sqliteTable("columns", {
@@ -43,9 +59,8 @@ export const tasks = sqliteTable("tasks", {
   description: text("description"),
   assignee: text("assignee"),
   dueDate: integer("due_date", { mode: "timestamp_ms" }),
-  checklist: text("checklist", { mode: "json" }).$type<
-    { id: string; text: string; done: boolean }[]
-  >(),
+  // A tree of ChecklistItem (lib/checklist.ts); older rows hold flat items.
+  checklist: text("checklist", { mode: "json" }).$type<ChecklistItem[]>(),
   // stable id embedded in markdown as <!-- rb:task_xxx -->, links a card
   // back to its Markdown line across syncs regardless of position/text edits
   markdownTaskId: text("markdown_task_id"),
@@ -53,11 +68,27 @@ export const tasks = sqliteTable("tasks", {
   // card find that commit — the one thing a board wired to git can do that a
   // generic board cannot.
   cardNumber: integer("card_number"),
+  // 0 none · 1 urgent · 2 high · 3 medium · 4 low — Linear's order, so sorting
+  // ascending (with 0 last) reads most-urgent first.
+  priority: integer("priority").notNull().default(0),
+  milestoneId: text("milestone_id"),
   // Deleting is reversible: the row stays so the undo toast has something to
   // bring back, and the board filters these out.
   deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+// A goal with a date: "Public beta", "CRA compliance". Cards point at one, and
+// its progress is simply how many of those cards are done.
+export const milestones = sqliteTable("milestones", {
+  id: text("id").primaryKey(),
+  boardId: text("board_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  dueDate: integer("due_date", { mode: "timestamp_ms" }),
+  position: integer("position").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
 export const taskLabels = sqliteTable("task_labels", {
@@ -96,7 +127,42 @@ export const markdownSources = sqliteTable("markdown_sources", {
   path: text("path").notNull(), // e.g. ROADMAP.md
   lastKnownSha: text("last_known_sha"),
   autoSync: integer("auto_sync", { mode: "boolean" }).notNull().default(false),
+  // "board": headings drive the board's columns (at most one per repository).
+  // "checklist": a tracked document — its checkboxes are counted, shown and
+  // ticked, but they do not become cards.
+  role: text("role", { enum: ["board", "checklist"] }).notNull().default("board"),
+  // The last parsed copy, so progress shows instantly and offline. GitHub stays
+  // the source of truth: this is refreshed whenever the file is read.
+  snapshot: text("snapshot", { mode: "json" }).$type<DocSnapshot>(),
+  snapshotSha: text("snapshot_sha"),
+  snapshotAt: integer("snapshot_at", { mode: "timestamp_ms" }),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(true),
 });
+
+export interface DocSnapshot {
+  version?: number;
+  title: string;
+  /** Other documents this one links to with [[…]], as repository paths. */
+  links?: string[];
+  total: number;
+  done: number;
+  doing?: number;
+  review?: number;
+  cancelled?: number;
+  sections: { heading: string; depth: number; total: number; done: number; doing?: number; review?: number }[];
+  /** Compact per-item state for the overview's item map and "due soon". */
+  items: {
+    title: string;
+    text?: string;
+    state?: "todo" | "doing" | "review" | "done" | "cancelled";
+    done: boolean;
+    section: number;
+    line: number;
+    priority?: number;
+    due?: string | null;
+    owners?: string[];
+  }[];
+}
 
 export const markdownTaskMappings = sqliteTable("markdown_task_mappings", {
   id: text("id").primaryKey(),
@@ -112,6 +178,10 @@ export const activityEvents = sqliteTable("activity_events", {
   taskId: text("task_id"),
   type: text("type").notNull(), // card_created | card_moved | markdown_changed | ...
   message: text("message").notNull(),
+  // Who did it: a GitHub login for people using the app, an agent's name
+  // ("Claude Code", "Codex") for changes made through the MCP server.
+  actor: text("actor"),
+  actorKind: text("actor_kind", { enum: ["person", "agent"] }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 

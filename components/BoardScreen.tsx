@@ -1,20 +1,43 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { BoardDialog, BoardMark } from "@/components/BoardsScreen";
+import {
+  CalendarDays,
+  CloudUpload,
+  Columns3,
+  Flag,
+  GitCommitHorizontal,
+  List,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Download,
+  Pencil,
+  SquareKanban,
+} from "lucide-react";
 import type { BoardData, RepoHeader } from "@/lib/board-service";
-import { KanbanBoard } from "@/components/KanbanBoard";
-import { TopBar } from "@/components/TopBar";
+import { KanbanBoard, type BoardView } from "@/components/KanbanBoard";
+import { PageHeader } from "@/components/PageHeader";
 import { ImportIssuesDialog } from "@/components/ImportIssuesDialog";
 import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
-import { Spinner, useToast } from "@/components/ui";
-import { api, useResource } from "@/lib/client/api";
+import { DocWriteDialog } from "@/components/DocWriteDialog";
+import { NewCardDialog } from "@/components/NewCardDialog";
+import { MilestonesDialog } from "@/components/MilestonesDialog";
+import { FilterBar, type FilterBarHandle } from "@/components/FilterBar";
+import { Menu, MenuItem, MenuSeparator, Modal, Segmented, Spinner, Tooltip, useToast } from "@/components/ui";
+import { api, ApiError, useResource } from "@/lib/client/api";
+import { applyFilter, parseFilter } from "@/lib/client/filters";
+import { useHotkeys } from "@/lib/client/hotkeys";
+import { setCurrentBoard } from "@/lib/client/current-board";
+import { statusOfColumn } from "@/lib/status";
 
-const displayLabel = (label: string) => label.replace(/^[^:]+:/, "").replace(/[-_]/g, " ");
+const VIEW_KEY = "rb-board-view";
 
 export function BoardScreen({
   data,
-  header,
   connected,
 }: {
   data: BoardData;
@@ -22,27 +45,60 @@ export function BoardScreen({
   connected: boolean;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const [editing, setEditing] = useState(false);
   const toast = useToast();
-  const [search, setSearch] = useState("");
-  const [labelFilter, setLabelFilter] = useState<string | null>(null);
-  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
-  const [dueFilter, setDueFilter] = useState<"all" | "overdue" | "upcoming" | "none">("all");
-  const [view, setView] = useState<"board" | "calendar">("board");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<FilterBarHandle>(null);
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<BoardView>("board");
   const [syncing, setSyncing] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [committing, setCommitting] = useState(false);
+  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save">(null);
   const [saving, setSaving] = useState(false);
+  const [ids, setIds] = useState<{ path: string; content: string; baseSha: string; count: number } | null>(null);
 
-  // What the board says that the markdown file does not say yet. Moves pile up
-  // here instead of committing one at a time.
-  const pending = useResource(api.pending, [], {
-    enabled: connected && Boolean(data.markdownSource),
-  });
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_KEY);
+      if (stored === "list" || stored === "calendar" || stored === "board") setView(stored);
+    } catch {
+      /* keep the default */
+    }
+  }, []);
+  const changeView = (next: BoardView) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* not remembered, still switched */
+    }
+  };
 
-  // How far the board has drifted from the copy stored in the repository.
+  useEffect(() => setCurrentBoard(pathname), [pathname]);
+
+  // Deep links: ?new=1 opens the form, ?ref=12 opens card RB-12, ?q= filters.
+  useEffect(() => {
+    if (params.get("new")) {
+      setDialog("new");
+      router.replace(pathname, { scroll: false });
+    }
+    const ref = params.get("ref");
+    if (ref) {
+      const task = data.tasks.find((t) => t.number === Number(ref));
+      router.replace(task ? `/board/card/${task.id}` : pathname, { scroll: false });
+      if (!task) toast.push({ kind: "info", message: `RB-${ref} is not on this board` });
+    }
+    const q = params.get("q");
+    if (q) setQuery(q);
+  }, [params, data.tasks, router, toast]);
+
+  // What the board says that the markdown file does not say yet.
+  // The markdown file belongs to the main board only; board.json holds every board.
+  const primary = data.board?.primary ?? true;
+  const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
+  // How far the boards have drifted from the copy stored in the repository.
   const boardState = useResource(api.boardStatus, [], { enabled: connected });
+  const refs = useResource(api.refs, [], { enabled: connected });
 
   useEffect(() => {
     const onChanged = () => {
@@ -53,247 +109,257 @@ export function BoardScreen({
     return () => window.removeEventListener("rb:pending-changed", onChanged);
   }, [pending, boardState]);
 
-  const labels = useMemo(
-    () =>
-      Array.from(new Set(data.tasks.flatMap((t) => t.labels)))
-        .sort()
-        .map((label) => ({
-          label,
-          count: data.tasks.filter((t) => t.labels.includes(label)).length,
-        })),
-    [data.tasks],
-  );
+  const mentions = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const r of refs.data?.refs ?? []) map.set(r.card, (map.get(r.card) ?? 0) + 1);
+    return map;
+  }, [refs.data]);
 
-  const assignees = useMemo(
-    () =>
-      Array.from(
-        new Set(data.tasks.map((t) => t.assignee).filter(Boolean) as string[]),
-      ).sort(),
-    [data.tasks],
-  );
+  const filter = useMemo(() => parseFilter(query), [query]);
+  const matches = useMemo(() => applyFilter(data.tasks, filter, data).length, [data, filter]);
 
-  const activeFilterCount = Number(Boolean(labelFilter)) + Number(Boolean(assigneeFilter)) + Number(dueFilter !== "all");
-
-  useEffect(() => {
-    if (!filtersOpen) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!filterRef.current?.contains(event.target as Node)) setFiltersOpen(false);
-    };
-    const closeEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFiltersOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeEscape);
-    };
-  }, [filtersOpen]);
-
-  useEffect(() => {
-    // "s" syncs, matching the Sync button — muscle memory beats hunting a button.
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      if (event.metaKey || event.ctrlKey || event.altKey || document.querySelector('[role="dialog"]')) return;
-      if (event.key.toLowerCase() === "s" && !filtersOpen) {
-        event.preventDefault();
-        sync();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  const counts = useMemo(() => {
+    const status = new Map(data.columns.map((c) => [c.id, statusOfColumn(c.name)]));
+    const done = data.tasks.filter((t) => status.get(t.columnId) === "done").length;
+    return { open: data.tasks.length - done, done };
+  }, [data]);
 
   const sync = async () => {
-    if (!data.markdownSource) {
-      toast.push({
-        kind: "info",
-        message: "No markdown source yet",
-        detail: "Pick a file on the Markdown Sync screen first.",
-        action: {
-          label: "Open",
-          run: () => router.push("/markdown-sync"),
-        },
-      });
-      return;
-    }
     setSyncing(true);
     try {
-      // Take the repository's copy of the board first, then the roadmap file.
-      await api.boardPull().catch(() => null);
-      const result = await api.markdownAction<{
-        created: number;
-        updated: number;
-        idsAssigned: number;
-        path: string;
-      }>({ action: "sync" });
-      toast.push({
-        kind: "success",
-        message: `Synced ${result.path}`,
-        detail:
-          `${result.created} created · ${result.updated} updated` +
-          (result.idsAssigned
-            ? ` · ${result.idsAssigned} task id(s) written back`
-            : ""),
-      });
+      // The repository's copy of the board first, then the roadmap file.
+      const pulled = await api.boardPull().catch(() => null);
+      if (data.markdownSource) {
+        const result = await api.markdownAction<{ created: number; updated: number; idsAssigned: number; path: string }>({
+          action: "sync",
+        });
+        toast.push({
+          kind: "success",
+          message: `Synced with ${result.path}`,
+          detail: [
+            `${result.created} new, ${result.updated} updated`,
+            result.idsAssigned ? `${result.idsAssigned} ids written to the file` : null,
+          ]
+            .filter(Boolean)
+            .join(", "),
+        });
+      } else {
+        toast.push({
+          kind: "success",
+          message: "Board is up to date",
+          detail: pulled && (pulled.added || pulled.updated) ? `${pulled.added} new, ${pulled.updated} updated from the repository` : undefined,
+        });
+      }
       boardState.reload();
+      pending.reload();
       router.refresh();
     } catch (error) {
-      toast.push({
-        kind: "error",
-        message: "Sync failed",
-        detail: (error as Error).message,
-      });
+      const body = (error as ApiError).body;
+      if (body?.needsIds) {
+        // First sync of a file without ids: show the exact change before writing it.
+        setIds(body as unknown as { path: string; content: string; baseSha: string; count: number });
+      } else {
+        toast.push({ kind: "error", message: "Sync failed", detail: (error as Error).message });
+      }
     } finally {
       setSyncing(false);
     }
   };
 
-  const filtersActive = Boolean(search || activeFilterCount);
+  const saveBoard = async () => {
+    setSaving(true);
+    try {
+      const result = await api.boardPush();
+      toast.push({ kind: "success", message: "Boards saved to the repository", detail: `${result.changes.length} changes in .repoboard/board.json` });
+      boardState.reload();
+      setDialog(null);
+    } catch (error) {
+      toast.push({ kind: "error", message: "Could not save the board", detail: (error as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useHotkeys({
+    "/": () => filterRef.current?.focus(),
+    s: () => !syncing && sync(),
+    m: () => setDialog("milestones"),
+  });
+
+  const pendingMoves = pending.data?.moves.length ?? 0;
+  const boardChanges = boardState.data?.changes.length ?? 0;
 
   return (
     <>
-      <TopBar
-        owner={header.owner}
-        repo={header.name}
-        defaultBranch={header.defaultBranch}
-        lastSyncAt={header.lastSyncAt}
-        connected={connected}
-      />
-
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto bg-canvas p-4 lg:p-5">
-        <div className="flex flex-wrap items-center gap-3 px-1">
-          <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-            <h1 className="text-[21px] font-semibold tracking-[-0.025em] text-ink">Board</h1>
-            <p className="mt-0.5 truncate text-[12px] text-muted">
-              {data.tasks.length} cards · {data.columns.length} lists
-            </p>
-          </div>
-          <button className="rb-btn" onClick={sync} disabled={syncing} title="Sync markdown (s)">
-            {syncing && <Spinner />}{syncing ? "Syncing" : "Sync markdown"}
-          </button>
-          {(boardState.data?.changes.length ?? 0) > 0 && (
-            <button className="rb-btn" disabled={saving} title="Commit board changes to GitHub" onClick={async () => {
-              setSaving(true);
-              try {
-                const result = await api.boardPush();
-                toast.push({ kind: "success", message: "Board saved to GitHub", detail: `${result.changes.length} changes committed` });
-                boardState.reload();
-              } catch (error) {
-                toast.push({ kind: "error", message: "Could not save the board", detail: (error as Error).message });
-              } finally {
-                setSaving(false);
-              }
-            }}>{saving && <Spinner />}Save board ({boardState.data!.changes.length})</button>
-          )}
-          {(pending.data?.moves.length ?? 0) > 0 && (
-            <button className="rb-btn border-warn-border bg-warn-bg text-warn-fg" onClick={() => setCommitting(true)} title="Review queued markdown moves">
-              {pending.data!.moves.length} to commit
-            </button>
-          )}
-          <button className="rb-btn-primary" onClick={() => window.dispatchEvent(new CustomEvent("rb:new-card"))}>
-            <span aria-hidden>+</span> New card
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <div className="inline-flex rounded-md bg-pill p-0.5" aria-label="Board view">
-            <button className={`rb-view-tab ${view === "board" ? "rb-view-tab-active" : ""}`} aria-pressed={view === "board"} onClick={() => setView("board")}>Board</button>
-            <button className={`rb-view-tab ${view === "calendar" ? "rb-view-tab-active" : ""}`} aria-pressed={view === "calendar"} onClick={() => setView("calendar")}>Calendar</button>
-          </div>
-          <div className="relative" ref={filterRef}>
-            <button className={`rb-btn ${activeFilterCount ? "border-ink/30" : ""}`} onClick={() => setFiltersOpen(!filtersOpen)} aria-expanded={filtersOpen} aria-controls="board-filters">
-              <span aria-hidden>☷</span> Filter {activeFilterCount > 0 && <span className="rounded bg-pill px-1.5 tabular-nums">{activeFilterCount}</span>}
-            </button>
-            {filtersOpen && (
-              <div id="board-filters" className="absolute left-0 top-[calc(100%+8px)] z-20 w-[264px] rounded-lg border border-border bg-surface p-3 shadow-pop">
-                <p className="mb-3 text-[12px] font-semibold text-ink">Filter cards</p>
-                <label className="rb-filter-field">Assignee
-                  <select className="rb-input mt-1" value={assigneeFilter ?? ""} onChange={(event) => setAssigneeFilter(event.target.value || null)}>
-                    <option value="">Anyone</option>
-                    {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
-                  </select>
-                </label>
-                <label className="rb-filter-field">Label
-                  <select className="rb-input mt-1" value={labelFilter ?? ""} onChange={(event) => setLabelFilter(event.target.value || null)}>
-                    <option value="">Any label</option>
-                    {labels.map(({ label, count }) => <option key={label} value={label}>{displayLabel(label)} ({count})</option>)}
-                  </select>
-                </label>
-                <label className="rb-filter-field">Due date
-                  <select className="rb-input mt-1" value={dueFilter} onChange={(event) => setDueFilter(event.target.value as typeof dueFilter)}>
-                    <option value="all">Any date</option>
-                    <option value="overdue">Overdue</option>
-                    <option value="upcoming">Upcoming</option>
-                    <option value="none">No due date</option>
-                  </select>
-                </label>
-                <div className="mt-3 flex justify-between border-t border-border pt-2">
-                  <button className="rb-btn-ghost" onClick={() => { setLabelFilter(null); setAssigneeFilter(null); setDueFilter("all"); }}>Clear filters</button>
-                  <button className="rb-btn-ghost text-ink" onClick={() => setFiltersOpen(false)}>Done</button>
-                </div>
-              </div>
+      <PageHeader
+        title={
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Link href="/boards" className="text-muted hover:text-ink">
+              Boards
+            </Link>
+            <span className="text-faint">/</span>
+            <span className="truncate">{data.board?.name ?? "Board"}</span>
+          </span>
+        }
+        icon={data.board ? <BoardMark board={data.board} size={20} /> : <SquareKanban className="size-4" />}
+        meta={`${counts.open} open, ${counts.done} done`}
+        actions={
+          <>
+            {pendingMoves > 0 && (
+              <Tooltip content="Moves of cards from the markdown file, waiting for your review">
+                <button className="rb-btn rb-btn-sm border-warn-border bg-warn-bg text-warn-fg hover:bg-warn-bg" onClick={() => setDialog("commit")}>
+                  <GitCommitHorizontal className="size-3.5" />
+                  Review {pendingMoves} move{pendingMoves === 1 ? "" : "s"}
+                </button>
+              </Tooltip>
             )}
-          </div>
-          <div className="ml-auto flex min-w-[180px] flex-1 items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-[7px] sm:max-w-[260px]">
-            <span className="text-muted" aria-hidden>⌕</span>
-            <input className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-muted/70" placeholder="Search cards" aria-label="Search cards" value={search} onChange={(event) => setSearch(event.target.value)} />
-          </div>
-          {filtersActive && <button className="rb-btn-ghost" onClick={() => { setSearch(""); setLabelFilter(null); setAssigneeFilter(null); setDueFilter("all"); }}>Clear all</button>}
-        </div>
+            {boardChanges > 0 && (
+              <Tooltip content="Boards, card order, checklists and links are kept in .repoboard/board.json so teammates see them">
+                <button className="rb-btn rb-btn-sm" onClick={() => setDialog("save")}>
+                  <CloudUpload className="size-3.5" /> Save to repo
+                  <span className="tabular-nums text-faint">{boardChanges}</span>
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip content={data.markdownSource ? `Sync with ${data.markdownSource.path}` : "Pull the boards from the repository"} shortcut="S">
+              <button className="rb-icon-btn" onClick={sync} disabled={syncing} aria-label="Sync">
+                {syncing ? <Spinner /> : <RefreshCw className="size-4" />}
+              </button>
+            </Tooltip>
+            <Menu
+              align="end"
+              trigger={
+                <button className="rb-icon-btn" aria-label="More board actions">
+                  <MoreHorizontal className="size-4" />
+                </button>
+              }
+            >
+              <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEditing(true)}>
+                Edit board
+              </MenuItem>
+              <MenuItem icon={<Flag className="size-3.5" />} shortcut="M" onSelect={() => setDialog("milestones")}>
+                Milestones
+              </MenuItem>
+              <MenuItem icon={<Download className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("import")}>
+                Import GitHub issues
+              </MenuItem>
+              {primary && <MenuSeparator />}
+              {primary && <MenuItem icon={<RefreshCw className="size-3.5" />} onSelect={() => router.push("/docs")}>
+                {data.markdownSource ? `Board source: ${data.markdownSource.path}` : "Drive the board from a markdown file"}
+              </MenuItem>}
+            </Menu>
+            <Tooltip content="New card" shortcut="C">
+              <button className="rb-btn-primary rb-btn-sm ml-1" onClick={() => setDialog("new")}>
+                <Plus className="size-3.5" /> New card
+              </button>
+            </Tooltip>
+          </>
+        }
+      >
+        <Segmented
+          size="sm"
+          value={view}
+          onChange={changeView}
+          options={[
+            { value: "board", label: <><Columns3 className="size-3.5" /> Board</> },
+            { value: "list", label: <><List className="size-3.5" /> List</> },
+            { value: "calendar", label: <><CalendarDays className="size-3.5" /> Calendar</> },
+          ]}
+        />
+        <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
+        <FilterBar ref={filterRef} data={data} query={query} onChange={setQuery} matches={matches} />
+      </PageHeader>
 
-        {data.columns.length === 0 ? (
-          <div className="rb-card p-6 text-center">
-            <p className="text-[13px] font-medium text-ink">No board yet</p>
-            <p className="mt-1 text-[12px] text-muted">
-              Connect a repository in Settings to create one.
-            </p>
-          </div>
-        ) : (
-          <KanbanBoard
-            data={data}
-            search={search}
-            labelFilter={labelFilter}
-            assigneeFilter={assigneeFilter}
-            dueFilter={dueFilter}
-            view={view}
-            connected={connected}
-            onImportIssues={connected ? () => setImporting(true) : undefined}
-          />
-        )}
+      <div className="rb-under-header rb-full-bleed flex min-h-0 flex-1 flex-col">
+        <KanbanBoard
+          data={data}
+          filter={filter}
+          view={view}
+          connected={connected}
+          mentions={mentions}
+          onImportIssues={connected ? () => setDialog("import") : undefined}
+          onCreate={() => setDialog("new")}
+        />
       </div>
 
-      {committing && (
+      {dialog === "new" && <NewCardDialog data={data} onClose={() => setDialog(null)} />}
+      {editing && data.board && (
+        <BoardDialog
+          board={{ ...data.board, open: counts.open, done: counts.done, items: { done: 0, total: 0 }, updatedAt: null }}
+          onClose={() => setEditing(false)}
+        />
+      )}
+
+      {ids && (
+        <DocWriteDialog
+          path={ids.path}
+          edits={[{ type: "replace", content: ids.content }]}
+          baseSha={ids.baseSha}
+          onClose={() => setIds(null)}
+          onDone={() => {
+            setIds(null);
+            toast.push({
+              kind: "info",
+              message: `Added ${ids.count} id${ids.count === 1 ? "" : "s"} to ${ids.path}`,
+              detail: "They are hidden comments; GitHub shows the file as before. Syncing now.",
+            });
+            void sync();
+          }}
+        />
+      )}
+      {dialog === "milestones" && <MilestonesDialog data={data} onClose={() => setDialog(null)} />}
+
+      {dialog === "commit" && (
         <MarkdownWriteDialog
           all
-          onDiscard={() => setCommitting(false)}
+          onDiscard={() => setDialog(null)}
           onDone={() => {
-            setCommitting(false);
+            setDialog(null);
             pending.reload();
             router.refresh();
           }}
         />
       )}
 
-      {importing && data.columns[0] && (
+      {dialog === "save" && (
+        <Modal
+          title="Save the boards to the repository"
+          description="Commits .repoboard/board.json, so anyone who connects this repository sees the same boards, cards, order and checklists."
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <button className="rb-btn" onClick={() => setDialog(null)}>
+                Not now
+              </button>
+              <div className="flex-1" />
+              <button className="rb-btn-primary" onClick={saveBoard} disabled={saving}>
+                {saving && <Spinner />} Commit {boardChanges} change{boardChanges === 1 ? "" : "s"}
+              </button>
+            </>
+          }
+        >
+          <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
+            {(boardState.data?.changes ?? []).map((change, index) => (
+              <li key={index} className="px-3 py-2 text-ink">
+                {change}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-muted">
+            Newer edits from the repository are merged in first, card by card, so nobody else’s work is overwritten.
+          </p>
+        </Modal>
+      )}
+
+      {dialog === "import" && data.columns[0] && (
         <ImportIssuesDialog
           columns={data.columns}
+          boardId={data.boardId}
           linkedIssues={data.tasks.flatMap((t) => t.issues)}
-          onClose={() => setImporting(false)}
+          onClose={() => setDialog(null)}
           onDone={(created) => {
-            setImporting(false);
-            toast.push({
-              kind: "success",
-              message: `Imported ${created} issue${created === 1 ? "" : "s"}`,
-            });
+            setDialog(null);
+            toast.push({ kind: "success", message: `Imported ${created} issue${created === 1 ? "" : "s"}` });
             router.refresh();
           }}
         />

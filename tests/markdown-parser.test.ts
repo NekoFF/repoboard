@@ -31,14 +31,18 @@ describe("parseTaskLine", () => {
   it("reads checkbox state, title and id", () => {
     expect(parseTaskLine("- [ ] Hello <!-- rb:task_x1 -->")).toEqual({
       done: false,
+      state: "todo",
       title: "Hello",
       id: "task_x1",
     });
     expect(parseTaskLine("- [x] Done thing")).toEqual({
       done: true,
+      state: "done",
       title: "Done thing",
       id: null,
     });
+    expect(parseTaskLine("- [/] Halfway")?.state).toBe("doing");
+    expect(parseTaskLine("- [-] Dropped")?.state).toBe("cancelled");
   });
 
   it("ignores non-task lines", () => {

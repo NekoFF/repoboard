@@ -10,11 +10,13 @@ import { Modal, RowSkeleton, Spinner } from "@/components/ui";
  */
 export function ImportIssuesDialog({
   columns,
+  boardId,
   linkedIssues,
   onClose,
   onDone,
 }: {
   columns: { id: string; name: string }[];
+  boardId?: string | null;
   linkedIssues: number[];
   onClose: () => void;
   onDone: (created: number) => void;
@@ -38,7 +40,7 @@ export function ImportIssuesDialog({
     setBusy(true);
     setError(null);
     try {
-      const result = await api.importIssues(selected, columnId);
+      const result = await api.importIssues(selected, columnId, boardId);
       onDone(result.created);
     } catch (err) {
       setError((err as Error).message);
@@ -53,10 +55,10 @@ export function ImportIssuesDialog({
       onClose={onClose}
       footer={
         <>
-          <label className="flex items-center gap-2 text-[12px] text-muted">
+          <label className="flex items-center gap-2 text-sm text-muted">
             Into
             <select
-              className="rb-input w-auto py-1 text-[12px]"
+              className="rb-input w-auto py-1 text-sm"
               value={columnId}
               onChange={(event) => setColumnId(event.target.value)}
             >
@@ -83,7 +85,7 @@ export function ImportIssuesDialog({
       }
     >
       <div className="mb-3 flex items-center gap-2">
-        <label className="flex items-center gap-1.5 text-[12px] text-muted">
+        <label className="flex items-center gap-1.5 text-sm text-muted">
           <input
             type="checkbox"
             className="size-3.5 accent-ink"
@@ -110,7 +112,7 @@ export function ImportIssuesDialog({
       </div>
 
       {error && (
-        <div className="mb-3 rounded-lg border border-warn-border bg-warn-bg p-3 text-[12px] text-warn-fg">
+        <div className="mb-3 rounded-lg border border-warn-border bg-warn-bg p-3 text-sm text-warn-fg">
           {error}
         </div>
       )}
@@ -120,7 +122,7 @@ export function ImportIssuesDialog({
 
         {issues.error && (
           <div className="flex items-center gap-2 p-3">
-            <span className="text-[12px] text-warn-fg">{issues.error}</span>
+            <span className="text-sm text-warn-fg">{issues.error}</span>
             <button className="rb-btn-ghost" onClick={issues.reload}>
               Retry
             </button>
@@ -128,7 +130,7 @@ export function ImportIssuesDialog({
         )}
 
         {!issues.loading && rows.length === 0 && (
-          <p className="p-4 text-center text-[12px] text-muted">
+          <p className="p-4 text-center text-sm text-muted">
             No issues in this repository.
           </p>
         )}
@@ -140,7 +142,7 @@ export function ImportIssuesDialog({
             <label
               key={issue.number}
               className={`flex items-center gap-2.5 border-b border-border p-2.5 last:border-b-0 ${
-                already ? "opacity-50" : "cursor-pointer hover:bg-pill"
+                already ? "opacity-50" : "cursor-pointer hover:bg-hover"
               }`}
             >
               <input
@@ -156,10 +158,10 @@ export function ImportIssuesDialog({
                   )
                 }
               />
-              <span className="font-mono text-[11px] text-muted">
+              <span className="font-mono text-xs text-muted">
                 #{issue.number}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">
                 {issue.title}
               </span>
               {issue.labels.slice(0, 3).map((label) => (

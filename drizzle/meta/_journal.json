@@ -15,6 +15,41 @@
       "when": 1790294638468,
       "tag": "0001_demonic_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790342001667,
+      "tag": "0002_docs_priority_milestones",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790370141402,
+      "tag": "0003_activity_actor",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790373685892,
+      "tag": "0004_several_boards",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790377035324,
+      "tag": "0005_board_art",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790378830348,
+      "tag": "0006_board_updated_at",
+      "breakpoints": true
     }
   ]
 }

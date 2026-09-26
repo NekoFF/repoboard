@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { GitHubClient, GitHubNotConfiguredError } from "@/lib/github/client";
+import { getVerifiedRepository } from "@/lib/github/access";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,9 @@ export const dynamic = "force-dynamic";
  * SQLite — GitHub stays the source of truth for git objects.
  */
 export async function GET(request: Request) {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const url = new URL(request.url);
   const resource = url.searchParams.get("resource") ?? "branches";
 
@@ -34,6 +38,17 @@ export async function GET(request: Request) {
         return NextResponse.json({ pulls: await gh.listPullRequests() });
       case "issues":
         return NextResponse.json({ issues: await gh.listIssues() });
+      case "people":
+        return NextResponse.json({ people: await gh.listPeople() });
+      case "graph":
+        return NextResponse.json({ commits: await gh.commitGraph() });
+      case "story": {
+        // The life of the project: far back on the default branch, 40 on each other branch.
+        const [commits, repo] = await Promise.all([gh.commitGraph(40, 20, 300), gh.getRepo()]);
+        return NextResponse.json({ commits, defaultBranch: repo.defaultBranch });
+      }
+      case "refs":
+        return NextResponse.json({ refs: await gh.findReferences() });
       case "markdown-files":
         return NextResponse.json({ files: await gh.listMarkdownFiles() });
       case "file": {

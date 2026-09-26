@@ -3,6 +3,7 @@ node_modules
 # Next.js: dev output and the separate production build directory
 .next
 .next-build
+.next-*
 out
 tsconfig.tsbuildinfo
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { PendingChange } from "@/lib/board-service";
 import { api, ApiError } from "@/lib/client/api";
 import { Modal, Skeleton, Spinner, useToast } from "@/components/ui";
+import { DiffView } from "@/components/DiffView";
 
 type Resolution = "local" | "remote" | "manual";
 
@@ -116,7 +117,7 @@ export function MarkdownWriteDialog({
           <span>Review GitHub write</span>
           <span className="rb-pill">Local → GitHub</span>
           {stats && (
-            <span className="text-[11px] font-normal">
+            <span className="text-xs font-normal">
               <span className="text-success-fg">+{stats.additions}</span>{" "}
               <span className="text-danger-fg">−{stats.deletions}</span>
             </span>
@@ -163,21 +164,21 @@ export function MarkdownWriteDialog({
       )}
 
       {error && (
-        <div className="mb-3 rounded-lg border border-warn-border bg-warn-bg p-3 text-[12px] text-warn-fg">
+        <div className="mb-3 rounded-lg border border-warn-border bg-warn-bg p-3 text-sm text-warn-fg">
           {error}
         </div>
       )}
 
       {preview && (
         <div className="flex flex-col gap-3">
-          <p className="text-[13px] font-medium text-ink">{preview.summary}</p>
+          <p className="text-sm font-medium text-ink">{preview.summary}</p>
 
           {preview.conflict && (
             <div className="flex flex-col gap-2 rounded-lg border border-warn-border bg-warn-bg p-3">
-              <p className="text-[13px] font-semibold text-warn-fg">
+              <p className="text-sm font-semibold text-warn-fg">
                 Remote file changed since your last fetch
               </p>
-              <p className="text-[12px] leading-relaxed text-ink">
+              <p className="text-sm leading-relaxed text-ink">
                 You based this on{" "}
                 <code className="font-mono">
                   {preview.conflict.expectedSha?.slice(0, 7) ?? "—"}
@@ -214,57 +215,27 @@ export function MarkdownWriteDialog({
           {resolution === "manual" && preview.conflict ? (
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted">
+                <span className="text-xs font-medium text-muted">
                   Local (your move applied)
                 </span>
-                <pre className="max-h-[40vh] overflow-auto rounded-md bg-code-bg p-3 font-mono text-[11px] leading-relaxed text-code-fg">
+                <pre className="max-h-[40vh] overflow-auto rounded-lg border border-border bg-code-bg p-3 font-mono text-xs leading-relaxed text-ink">
                   {preview.after}
                 </pre>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted">
+                <span className="text-xs font-medium text-muted">
                   Remote (github.com)
                 </span>
-                <pre className="max-h-[40vh] overflow-auto rounded-md bg-code-bg p-3 font-mono text-[11px] leading-relaxed text-code-fg">
+                <pre className="max-h-[40vh] overflow-auto rounded-lg border border-border bg-code-bg p-3 font-mono text-xs leading-relaxed text-ink">
                   {preview.conflict.remoteContent}
                 </pre>
               </div>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              {preview.diff.length === 0 ? (
-                <p className="p-3 text-[12px] text-muted">
-                  This move does not change the file.
-                </p>
-              ) : (
-                <div className="max-h-[45vh] overflow-auto font-mono text-[11.5px] leading-relaxed">
-                  {preview.diff.map((line, index) => (
-                    <div
-                      key={index}
-                      className={`flex gap-2 px-3 py-[3px] ${
-                        line.type === "add"
-                          ? "bg-success-bg/60 text-success-fg"
-                          : line.type === "del"
-                            ? "bg-warn-bg/40 text-danger-fg"
-                            : "text-muted"
-                      }`}
-                    >
-                      <span className="select-none opacity-60">
-                        {line.type === "add"
-                          ? "+"
-                          : line.type === "del"
-                            ? "−"
-                            : " "}
-                      </span>
-                      <span className="whitespace-pre-wrap">{line.text}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <DiffView diff={preview.diff} />
           )}
 
-          <p className="text-[11px] text-muted">
+          <p className="text-xs text-muted">
             Commit message:{" "}
             <code className="font-mono text-ink">
               RepoBoard: {preview.summary.charAt(0).toLowerCase()}

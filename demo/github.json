@@ -1,0 +1,384 @@
+{
+  "owner": "lumen",
+  "name": "browser",
+  "defaultBranch": "main",
+  "viewer": "alex",
+  "branches": [
+    {
+      "name": "main",
+      "head": "8dc29fc58c0bd99068c2e5c752aa61521d4f11ce"
+    },
+    {
+      "name": "feat/private-tabs",
+      "head": "e4fbe62d887b8cdee986e6be781203d8d938bbd5"
+    },
+    {
+      "name": "fix/session-restore",
+      "head": "4205714cdfe14ed9e3d030ddf7887781b964f510"
+    },
+    {
+      "name": "design/tab-strip",
+      "head": "ce9ed66d82df7ce028a8623498350e2fb4412132"
+    },
+    {
+      "name": "feat/focus-memory",
+      "head": "cf1126f67238bf3e85fcc8c8737b72e80ddcfddb"
+    }
+  ],
+  "commits": [
+    {
+      "sha": "e4fbe62d887b8cdee986e6be781203d8d938bbd5",
+      "message": "Private tab indicator in the address bar",
+      "hoursAgo": 8,
+      "parents": [
+        "c5fd961c9f737a955a308050062e7a2c34ee67c3"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "8dc29fc58c0bd99068c2e5c752aa61521d4f11ce",
+      "message": "Privacy checklist: name the CDN in front of the blocklist mirror",
+      "hoursAgo": 20,
+      "parents": [
+        "e4666a670f042877c67a84473a71675ee0950a08"
+      ],
+      "author": "claude"
+    },
+    {
+      "sha": "4205714cdfe14ed9e3d030ddf7887781b964f510",
+      "message": "Session restore: skip tabs that crashed twice (RB-6)",
+      "hoursAgo": 36,
+      "parents": [
+        "640d87e741e6aa4c669a82a4cd304787960513ab"
+      ],
+      "author": "codex"
+    },
+    {
+      "sha": "c5fd961c9f737a955a308050062e7a2c34ee67c3",
+      "message": "Clear private cookies when the last private tab closes, RB-4",
+      "hoursAgo": 50,
+      "parents": [
+        "b78f576611ec06f96af3ca654c22172a5d746c40"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "e4666a670f042877c67a84473a71675ee0950a08",
+      "message": "Add .repoboard workspace: checklists, notes, decisions",
+      "hoursAgo": 60,
+      "parents": [
+        "32d332da761f44df7959e5887b6b94cb4667d781"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "640d87e741e6aa4c669a82a4cd304787960513ab",
+      "message": "Restore tabs after a crash (RB-6)",
+      "hoursAgo": 72,
+      "parents": [
+        "32d332da761f44df7959e5887b6b94cb4667d781"
+      ],
+      "author": "codex"
+    },
+    {
+      "sha": "b78f576611ec06f96af3ca654c22172a5d746c40",
+      "message": "Separate cookie jar per private tab (RB-4)",
+      "hoursAgo": 96,
+      "parents": [
+        "32d332da761f44df7959e5887b6b94cb4667d781"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "32d332da761f44df7959e5887b6b94cb4667d781",
+      "message": "Merge pull request #5 from lumen/design/tab-strip",
+      "hoursAgo": 110,
+      "parents": [
+        "a625406f6977d45c1391b078f4d3656e0b75bfcb",
+        "ce9ed66d82df7ce028a8623498350e2fb4412132"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "ce9ed66d82df7ce028a8623498350e2fb4412132",
+      "message": "Tab strip: focus ring and motion",
+      "hoursAgo": 120,
+      "parents": [
+        "ee17560c8b77385b5bb8d8687820f9b82f3fdcdf"
+      ],
+      "author": "sam"
+    },
+    {
+      "sha": "ee17560c8b77385b5bb8d8687820f9b82f3fdcdf",
+      "message": "New tab strip: larger targets for the remote",
+      "hoursAgo": 140,
+      "parents": [
+        "ae23b94ccaf714337e4ce5ba99ef3dc257e300df"
+      ],
+      "author": "sam"
+    },
+    {
+      "sha": "a625406f6977d45c1391b078f4d3656e0b75bfcb",
+      "message": "Import bookmarks from a QR code (RB-8)",
+      "hoursAgo": 150,
+      "parents": [
+        "ae23b94ccaf714337e4ce5ba99ef3dc257e300df"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "ae23b94ccaf714337e4ce5ba99ef3dc257e300df",
+      "message": "Merge pull request #3 from lumen/feat/focus-memory",
+      "hoursAgo": 180,
+      "parents": [
+        "6b1f53303a732ccc8c6aae6640399827c15250e3",
+        "cf1126f67238bf3e85fcc8c8737b72e80ddcfddb"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "cf1126f67238bf3e85fcc8c8737b72e80ddcfddb",
+      "message": "Restore focus after closing a tab, RB-7",
+      "hoursAgo": 190,
+      "parents": [
+        "c09bb890b096f7306f688cc6d1dad34e7e52a223"
+      ],
+      "author": "claude"
+    },
+    {
+      "sha": "c09bb890b096f7306f688cc6d1dad34e7e52a223",
+      "message": "Remember focus per screen (RB-7)",
+      "hoursAgo": 200,
+      "parents": [
+        "6b1f53303a732ccc8c6aae6640399827c15250e3"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "6b1f53303a732ccc8c6aae6640399827c15250e3",
+      "message": "Browser shell with D-pad navigation",
+      "hoursAgo": 260,
+      "parents": [
+        "2f22765d04931a078909145ca628d2264c852d7d"
+      ],
+      "author": "alex",
+      "files": [
+        "app/src/main/java/lumen/shell/Shell.kt"
+      ]
+    },
+    {
+      "sha": "2f22765d04931a078909145ca628d2264c852d7d",
+      "message": "Start the browser shell rewrite",
+      "hoursAgo": 320,
+      "parents": [
+        "63cb9320f52736d82a5f561fec7017a3ecccc025"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "63cb9320f52736d82a5f561fec7017a3ecccc025",
+      "message": "Translations: German",
+      "hoursAgo": 800,
+      "parents": [
+        "67fa37ce5bc3b53b3967b81dcee901e55c0b98ec"
+      ],
+      "author": "sam"
+    },
+    {
+      "sha": "67fa37ce5bc3b53b3967b81dcee901e55c0b98ec",
+      "message": "Crash reports to Sentry (EU region)",
+      "hoursAgo": 1300,
+      "parents": [
+        "7f5cf1b16bc30e2102d1791a426e0bc1d176d092"
+      ],
+      "author": "claude"
+    },
+    {
+      "sha": "7f5cf1b16bc30e2102d1791a426e0bc1d176d092",
+      "message": "Release 0.1 for testers",
+      "hoursAgo": 1900,
+      "parents": [
+        "1d3c84f3d8237dfe6075f26b42b40f0cb6677b35"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "1d3c84f3d8237dfe6075f26b42b40f0cb6677b35",
+      "message": "Merge pull request #2 from lumen/feat/adblock",
+      "hoursAgo": 2400,
+      "parents": [
+        "c40f6e600004e8247d202c94cab8fd51e321e618",
+        "dcf4cf86ab6006a580674f9252a2a1402d9b6419"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "dcf4cf86ab6006a580674f9252a2a1402d9b6419",
+      "message": "Update the blocklist weekly (RB-5)",
+      "hoursAgo": 2470,
+      "parents": [
+        "76de641404f534419a039a1f2133574b55df7d70"
+      ],
+      "author": "codex"
+    },
+    {
+      "sha": "c40f6e600004e8247d202c94cab8fd51e321e618",
+      "message": "Settings screen",
+      "hoursAgo": 2500,
+      "parents": [
+        "7d1d40bf27d9db71851ea35fe7f9d55a3e42ab46"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "76de641404f534419a039a1f2133574b55df7d70",
+      "message": "Block ads with EasyList",
+      "hoursAgo": 2560,
+      "parents": [
+        "7d1d40bf27d9db71851ea35fe7f9d55a3e42ab46"
+      ],
+      "author": "codex"
+    },
+    {
+      "sha": "7d1d40bf27d9db71851ea35fe7f9d55a3e42ab46",
+      "message": "Merge pull request #1 from lumen/feat/webview",
+      "hoursAgo": 2920,
+      "parents": [
+        "21832093a016a4ffb80601db272fcdd00d94fe4e",
+        "40490825c4f432daf694a282159dcbc1a9f09eb7"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "40490825c4f432daf694a282159dcbc1a9f09eb7",
+      "message": "Load pages in a sandboxed WebView",
+      "hoursAgo": 2990,
+      "parents": [
+        "c33df99abaa975055afe140eba1212c968219c63"
+      ],
+      "author": "sam"
+    },
+    {
+      "sha": "21832093a016a4ffb80601db272fcdd00d94fe4e",
+      "message": "Home screen with shortcuts",
+      "hoursAgo": 3000,
+      "parents": [
+        "8a982eb4afd407feeb1224fa1470e1c2e26e70a3"
+      ],
+      "author": "sam"
+    },
+    {
+      "sha": "c33df99abaa975055afe140eba1212c968219c63",
+      "message": "WebView wrapper with a remote-friendly cursor",
+      "hoursAgo": 3080,
+      "parents": [
+        "8a982eb4afd407feeb1224fa1470e1c2e26e70a3"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "8a982eb4afd407feeb1224fa1470e1c2e26e70a3",
+      "message": "Project skeleton: Gradle, Compose for TV",
+      "hoursAgo": 3300,
+      "parents": [
+        "1ef8cbf759877e34ea327e6d9b50464e79df1186"
+      ],
+      "author": "alex"
+    },
+    {
+      "sha": "1ef8cbf759877e34ea327e6d9b50464e79df1186",
+      "message": "Initial commit",
+      "hoursAgo": 3400,
+      "parents": [],
+      "author": "alex"
+    }
+  ],
+  "pulls": [
+    {
+      "number": 8,
+      "title": "Restore tabs after a crash (RB-6)",
+      "state": "open",
+      "author": "codex",
+      "head": "fix/session-restore",
+      "reviewers": [
+        "alex"
+      ],
+      "checks": 4,
+      "checksPassed": 4,
+      "hoursAgo": 30,
+      "headSha": "4205714cdfe14ed9e3d030ddf7887781b964f510",
+      "body": "Closes RB-6."
+    },
+    {
+      "number": 7,
+      "title": "Private tabs with their own cookie jar",
+      "state": "open",
+      "draft": true,
+      "author": "alex",
+      "head": "feat/private-tabs",
+      "checks": 4,
+      "checksPassed": 3,
+      "hoursAgo": 8,
+      "headSha": "e4fbe62d887b8cdee986e6be781203d8d938bbd5",
+      "body": "Part of RB-4. Still missing the indicator tests."
+    },
+    {
+      "number": 5,
+      "title": "New tab strip",
+      "state": "closed",
+      "merged": true,
+      "author": "sam",
+      "head": "design/tab-strip",
+      "hoursAgo": 110,
+      "headSha": "ce9ed66d82df7ce028a8623498350e2fb4412132"
+    },
+    {
+      "number": 3,
+      "title": "Focus memory between screens (RB-7)",
+      "state": "closed",
+      "merged": true,
+      "author": "alex",
+      "head": "feat/focus-memory",
+      "hoursAgo": 180,
+      "headSha": "cf1126f67238bf3e85fcc8c8737b72e80ddcfddb"
+    }
+  ],
+  "issues": [
+    {
+      "number": 12,
+      "title": "Remote's back button closes the app from the settings screen",
+      "state": "open",
+      "labels": [
+        "bug",
+        "tv"
+      ],
+      "assignees": [
+        "alex"
+      ]
+    },
+    {
+      "number": 11,
+      "title": "Support Android TV 9",
+      "state": "open",
+      "labels": [
+        "platform"
+      ]
+    },
+    {
+      "number": 10,
+      "title": "German translation",
+      "state": "open",
+      "labels": [
+        "i18n"
+      ]
+    },
+    {
+      "number": 9,
+      "title": "Crash when importing an empty bookmark file",
+      "state": "closed",
+      "labels": [
+        "bug"
+      ]
+    }
+  ]
+}

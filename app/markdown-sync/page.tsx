@@ -1,18 +1,6 @@
-import { MarkdownSyncScreen } from "@/components/MarkdownSyncScreen";
-import { getBoardData, getRepoHeader } from "@/lib/board-service";
-import { getAuthProvider } from "@/lib/github/auth-provider";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function MarkdownSyncPage() {
-  const data = getBoardData();
-  const header = getRepoHeader();
-  const token = await getAuthProvider().getToken();
-  return (
-    <MarkdownSyncScreen
-      data={data}
-      header={header}
-      connected={Boolean(token && header.name)}
-    />
-  );
+// The markdown screen became Documents; old links and bookmarks still work.
+export default function MarkdownSyncPage() {
+  redirect("/docs");
 }

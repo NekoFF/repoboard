@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { runAs } from "@/lib/actor";
+import { getViewer } from "@/lib/github/access";
+
 import { z } from "zod";
 import {
   commitAllPending,
@@ -11,11 +14,15 @@ import {
   syncFromMarkdown,
 } from "@/lib/board-service";
 import { GitHubClient } from "@/lib/github/client";
+import { getVerifiedRepository } from "@/lib/github/access";
 import { parseMarkdown } from "@/lib/markdown/parser";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const data = getBoardData();
   if (!data.repository) {
     return NextResponse.json({ error: "Not connected" }, { status: 409 });
@@ -88,7 +95,16 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
 ]);
 
+/** Every change made through this route is attributed to the token's owner. */
 export async function POST(request: Request) {
+  const login = await getViewer().catch(() => null);
+  return runAs(login ? { name: login, kind: "person" } : null, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
+  if (!await getVerifiedRepository()) {
+    return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
   const raw = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
@@ -114,7 +130,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ id, path: body.path });
       }
       case "sync":
-        return NextResponse.json(await syncFromMarkdown());
+        // The app never writes ids silently; NEEDS_IDS below sends the change
+        // back for review.
+        return NextResponse.json(await syncFromMarkdown(undefined, { writeIds: false }));
       case "pending":
         return NextResponse.json(
           (await pendingMarkdownMoves()) ?? { moves: [], baseSha: "", conflict: false },
@@ -136,7 +154,10 @@ export async function POST(request: Request) {
         return NextResponse.json(await commitMarkdownMove(body));
     }
   } catch (error) {
-    const err = error as Error & { code?: string };
+    const err = error as Error & { code?: string; payload?: Record<string, unknown> };
+    if (err.code === "NEEDS_IDS") {
+      return NextResponse.json({ error: err.message, needsIds: true, ...err.payload }, { status: 409 });
+    }
     if (err.code === "CONFLICT") {
       return NextResponse.json({ error: err.message, conflict: true }, {
         status: 409,

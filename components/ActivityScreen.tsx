@@ -1,154 +1,164 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  Activity,
+  ArrowRightLeft,
+  CircleAlert,
+  FilePen,
+  FileSearch,
+  Flag,
+  GitBranch,
+  GitCommitHorizontal,
+  Link2,
+  MessageSquareText,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import type { BoardData, RepoHeader } from "@/lib/board-service";
-import { TopBar } from "@/components/TopBar";
-import { EmptyState, RelativeTime, RowSkeleton, Segmented } from "@/components/ui";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState, RelativeTime, RowSkeleton, Segmented, formatDate } from "@/components/ui";
 import { api, useResource } from "@/lib/client/api";
+import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 
-type Filter = "all" | "cards" | "markdown" | "github";
+type Filter = "all" | "cards" | "docs" | "comments" | "github";
 
 const GROUPS: Record<Exclude<Filter, "all">, string[]> = {
-  cards: ["card_created", "card_moved", "card_deleted", "board_created"],
-  markdown: ["markdown_changed", "conflict_detected"],
-  github: [
-    "github_synced",
-    "repo_connected",
-    "branch_linked",
-    "pr_linked",
-    "issue_linked",
-  ],
+  cards: ["card_created", "card_moved", "card_deleted", "card_restored", "card_updated", "board_created", "milestone_created"],
+  docs: ["markdown_changed", "doc_changed", "doc_tracked", "doc_untracked", "conflict_detected"],
+  comments: ["comment"],
+  github: ["github_synced", "repo_connected", "branch_linked", "pr_linked", "issue_linked", "board_pulled", "board_pushed"],
 };
 
-export function ActivityScreen({
-  data,
-  header,
-  connected,
-}: {
-  data: BoardData;
-  header: RepoHeader;
-  connected: boolean;
-}) {
+const ICON: Record<string, ReactNode> = {
+  card_created: <Plus className="size-3.5" />,
+  card_moved: <ArrowRightLeft className="size-3.5" />,
+  card_deleted: <Trash2 className="size-3.5" />,
+  card_restored: <Undo2 className="size-3.5" />,
+  comment: <MessageSquareText className="size-3.5" />,
+  markdown_changed: <GitCommitHorizontal className="size-3.5" />,
+  doc_changed: <FilePen className="size-3.5" />,
+  doc_tracked: <FileSearch className="size-3.5" />,
+  conflict_detected: <CircleAlert className="size-3.5 text-state-doing" />,
+  github_synced: <RefreshCw className="size-3.5" />,
+  board_pulled: <RefreshCw className="size-3.5" />,
+  board_pushed: <GitCommitHorizontal className="size-3.5" />,
+  branch_linked: <GitBranch className="size-3.5" />,
+  pr_linked: <Link2 className="size-3.5" />,
+  issue_linked: <Link2 className="size-3.5" />,
+  milestone_created: <Flag className="size-3.5" />,
+};
+
+/** "codex: PR #8 is ready" → author "codex", so agent notes read as notes from someone. */
+function splitAuthor(message: string): { author: string | null; text: string } {
+  const match = message.match(/^([\w.-]{2,24}):\s+(.+)$/s);
+  return match ? { author: match[1], text: match[2] } : { author: null, text: message };
+}
+
+export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; connected: boolean }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const events = useResource(() => api.activity(200), [], { pollMs: 30_000 });
-
-  const all = events.data?.events ?? [];
-
-  const counts = useMemo(
-    () => ({
-      all: all.length,
-      cards: all.filter((e) => GROUPS.cards.includes(e.type)).length,
-      markdown: all.filter((e) => GROUPS.markdown.includes(e.type)).length,
-      github: all.filter((e) => GROUPS.github.includes(e.type)).length,
-    }),
-    [all],
-  );
+  const [limit, setLimit] = useState(50);
+  const events = useResource(() => api.activity(limit), [limit], { pollMs: 30_000 });
+  const all = useMemo(() => events.data?.events ?? [], [events.data]);
+  const cards = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 
   const rows = useMemo(
-    () =>
-      filter === "all"
-        ? all
-        : all.filter((event) => GROUPS[filter].includes(event.type)),
+    () => (filter === "all" ? all : all.filter((e) => GROUPS[filter].includes(e.type))),
     [all, filter],
   );
+  const count = (f: Exclude<Filter, "all">) => all.filter((e) => GROUPS[f].includes(e.type)).length;
 
-  // Group by calendar day: a log without day breaks is unreadable past ten rows.
+  // A log without day breaks is unreadable past ten rows.
   const days = useMemo(() => {
     const map = new Map<string, typeof rows>();
     for (const event of rows) {
-      const key = new Date(event.createdAt).toDateString();
+      const key = new Date(event.createdAt).toISOString().slice(0, 10);
       map.set(key, [...(map.get(key) ?? []), event]);
     }
-    return Array.from(map.entries());
+    return [...map.entries()];
   }, [rows]);
-
-  const titleFor = (taskId: string | null) =>
-    taskId ? data.tasks.find((t) => t.id === taskId)?.title : undefined;
 
   return (
     <>
-      <TopBar
-        owner={header.owner}
-        repo={header.name}
-        defaultBranch={header.defaultBranch}
-        lastSyncAt={header.lastSyncAt}
-        connected={connected}
-      />
-
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto p-[22px]">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.01em] text-ink">
-              Activity
-            </h1>
-            <p className="text-[12px] text-muted">
-              Everything RepoBoard did locally: cards, moves, markdown writes,
-              syncs and refused conflicts.
-            </p>
-          </div>
-          <Segmented
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: "all", label: "All", count: counts.all },
-              { value: "cards", label: "Cards", count: counts.cards },
-              { value: "markdown", label: "Markdown", count: counts.markdown },
-              { value: "github", label: "GitHub", count: counts.github },
-            ]}
-          />
+      <PageHeader title="Activity" icon={<Activity className="size-4" />}>
+        <Segmented
+          size="sm"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: "Everything", count: all.length },
+            { value: "cards", label: "Cards", count: count("cards") },
+            { value: "docs", label: "Documents", count: count("docs") },
+            { value: "comments", label: "Comments", count: count("comments") },
+            { value: "github", label: "GitHub", count: count("github") },
+          ]}
+        />
+      </PageHeader>
+      <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[760px] px-6 pb-20 pt-8 sm:px-10">
+          {events.loading && <RowSkeleton rows={8} />}
+          {!events.loading && rows.length === 0 && (
+            <EmptyState icon={<Activity className="size-6" />} title="Nothing here yet" body="Moves, commits, notes and syncs appear here as they happen." />
+          )}
+          {days.map(([day, list]) => (
+            <section key={day} className="mb-8">
+              <h2 className="py-2 text-xs font-medium text-faint">
+                {formatDate(Date.parse(day), { weekday: "long", day: "numeric", month: "long" })}
+              </h2>
+              <ol className="flex flex-col">
+                {list.map((event) => {
+                  const card = event.taskId ? cards.get(event.taskId) : undefined;
+                  const { author, text } = event.type === "comment" ? splitAuthor(event.message) : { author: null, text: event.message };
+                  return (
+                    <li key={event.id} className="flex gap-3 border-b border-border py-3 last:border-b-0">
+                      <span className="relative mt-0.5 shrink-0">
+                        {event.actor ? (
+                          <ActorAvatar name={event.actor} kind={event.actorKind} size={24} />
+                        ) : (
+                          <span className="grid size-6 place-items-center rounded-full bg-pill text-muted">
+                            {ICON[event.type] ?? <Activity className="size-3.5" />}
+                          </span>
+                        )}
+                        {event.actor && (
+                          <span className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full bg-surface text-muted ring-1 ring-border [&_svg]:size-2.5">
+                            {ICON[event.type] ?? <Activity />}
+                          </span>
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm leading-relaxed ${event.type === "comment" ? "whitespace-pre-wrap text-ink" : "text-muted"}`}>
+                          {event.actor ? (
+                            <span className="mr-1.5">
+                              <ActorName name={event.actor} kind={event.actorKind} />
+                            </span>
+                          ) : (
+                            author && <span className="mr-1.5 font-medium text-ink">{author}</span>
+                          )}
+                          {eventText(text, event.actor ?? author)}
+                        </p>
+                        {card && (
+                          <Link href={`/board/card/${card.id}`} className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-faint hover:text-ink">
+                            {card.number != null && <span className="font-mono">RB-{card.number}</span>}
+                            {card.title}
+                          </Link>
+                        )}
+                      </div>
+                      <RelativeTime value={event.createdAt} className="shrink-0 pt-0.5 text-xs text-faint" />
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
+          {!events.loading && all.length >= limit && (
+            <button className="rb-btn mx-auto flex" onClick={() => setLimit((n) => n + 50)} disabled={events.refreshing}>
+              Show earlier activity
+            </button>
+          )}
         </div>
-
-        {events.loading && (
-          <div className="overflow-hidden rounded-xl border border-border">
-            <RowSkeleton rows={6} />
-          </div>
-        )}
-
-        {!events.loading && rows.length === 0 && (
-          <EmptyState
-            icon="↺"
-            title="No events yet"
-            body="Move a card, run a sync or link a branch — every action lands here with a timestamp."
-          />
-        )}
-
-        {days.map(([day, items]) => (
-          <section key={day} className="flex flex-col gap-1.5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-              {day === new Date().toDateString() ? "Today" : day}
-            </h2>
-            <div className="overflow-hidden rounded-xl border border-border">
-              {items.map((event) => {
-                const title = titleFor(event.taskId);
-                const isConflict = event.type === "conflict_detected";
-                return (
-                  <div
-                    key={event.id}
-                    className={`flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0 ${
-                      isConflict ? "bg-warn-bg/40" : ""
-                    }`}
-                  >
-                    <span
-                      className={`shrink-0 ${isConflict ? "rb-pill-warn" : "rb-pill"}`}
-                    >
-                      {event.type.replace(/_/g, " ")}
-                    </span>
-                    <span className="min-w-0 flex-1 text-[12.5px] text-ink">
-                      {event.message}
-                      {title && (
-                        <span className="ml-1.5 text-muted">· {title}</span>
-                      )}
-                    </span>
-                    <RelativeTime
-                      value={event.createdAt}
-                      className="shrink-0 text-[11px] text-muted"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
       </div>
     </>
   );
