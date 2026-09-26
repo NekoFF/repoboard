@@ -288,7 +288,7 @@ function RepoList({
   connectedRepos: string[];
 }) {
   return (
-    <fieldset className="rb-enter flex flex-col gap-2">
+    <fieldset className="rb-enter flex min-w-0 flex-col gap-2">
       <legend className="mb-2 text-sm font-medium text-ink">
         {repos.length === 1 ? "You can open one repository" : `You can open ${repos.length} repositories`}
       </legend>

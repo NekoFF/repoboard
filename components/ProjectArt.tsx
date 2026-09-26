@@ -312,12 +312,13 @@ const SCENES: Record<string, (s: Scene) => void> = {
     grid.forEach((row, y) => row.forEach((alive, x) => alive && s.px(x, y, hsl(s.h + ((x + y) % 5) * 6, 65, s.dark ? 60 : 50))));
   },
   blocks(s) {
-    s.rect(0, 0, s.cols, s.rows, hsl(s.h, 35, s.dark ? 12 : 92));
-    const w = 3;
+    s.rect(0, 0, s.cols, s.rows, hsl(s.h, 35, s.dark ? 12 : 88));
+    // Wide enough to read as blocks at every size, never an empty column.
+    const w = Math.max(2, Math.round(s.cols / 10));
     const colsOf = Math.floor(s.cols / w);
     for (let c = 0; c < colsOf; c += 1) {
-      const height = Math.floor(s.r(c) * (s.rows / 2));
-      for (let y = 0; y < height; y += 1) s.rect(c * w, s.rows - 1 - y, w - 1, 1, hsl(s.h + (Math.floor(y / 2) % 4) * 30, 60, s.dark ? 45 : 62));
+      const height = 1 + Math.floor(s.r(c) * (s.rows * 0.55));
+      for (let y = 0; y < height; y += 1) s.rect(c * w, s.rows - 1 - y, w - 1, 1, hsl(s.h + (Math.floor(y / 2) % 4) * 30, 62, s.dark ? 48 : 54));
       const fall = (s.t * (2 + s.r(c + 40) * 2) + s.r(c + 20) * s.rows * 3) % (s.rows * 3);
       if (fall < s.rows - height - 2) s.rect(c * w, Math.floor(fall), w - 1, 2, hsl(s.h + (c % 4) * 30, 70, s.dark ? 60 : 55));
     }
