@@ -5,6 +5,7 @@ import type { BoardData, BoardSummary, PendingChange } from "@/lib/board-service
 import type { DocChange, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type {
+  AppRepo,
   BranchSummary,
   CardReference,
   GraphCommit,
@@ -117,6 +118,25 @@ export const api = {
 
   setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
     post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
+
+  /* signing in with GitHub (app/api/auth/github) */
+  githubSignIn: {
+    status: () => request<{ available: boolean; login: string | null; installUrl: string | null }>("/api/auth/github"),
+    start: () =>
+      post<{ flowId: string; userCode: string; verificationUri: string; expiresIn: number; interval: number }>(
+        "/api/auth/github",
+        { action: "start" },
+      ),
+    poll: (flowId: string) =>
+      post<{ state: "pending" | "expired" | "denied" } | { state: "done"; login: string; repos: AppRepo[] }>(
+        "/api/auth/github",
+        { action: "poll", flowId },
+      ),
+    repos: () => post<{ login: string; repos: AppRepo[] }>("/api/auth/github", { action: "repos" }),
+    connect: (repos: string[]) =>
+      post<{ connected: string[]; opened: string }>("/api/auth/github", { action: "connect", repos }),
+    signOut: () => post<{ ok: true }>("/api/auth/github", { action: "sign-out" }),
+  },
 
   switchProject: (repo: string) =>
     post<{ switched: string; projects: ProjectInfo[] }>("/api/repo", { action: "switch", repo }),

@@ -118,9 +118,48 @@ function addCommit(message, files) {
   return commit;
 }
 
+let polls = 0;
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p = decodeURIComponent(url.pathname);
+
+  // Signing in with GitHub (the device flow on github.com): the code is
+  // "approved" on the second poll, as if the person clicked on GitHub.
+  if (p === "/login/device/code" && req.method === "POST") {
+    return send(res, 200, {
+      device_code: "demo-device-code",
+      user_code: "WDJB-MJHT",
+      verification_uri: `http://127.0.0.1:${PORT}/login/device`,
+      expires_in: 900,
+      interval: 1,
+    });
+  }
+  if (p === "/login/oauth/access_token" && req.method === "POST") {
+    polls += 1;
+    return send(res, 200, polls % 2 ? { error: "authorization_pending" } : { access_token: "ghu_demo_sign_in_token_not_a_secret", token_type: "bearer" });
+  }
+  if (p === "/login/device") {
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end("<p>Demo: pretend you entered the code and pressed Authorize.</p>");
+  }
+  if (p === "/user/installations") return send(res, 200, { total_count: 1, installations: [{ id: 1, account: { login: OWNER } }] });
+  if (p === "/user/installations/1/repositories") {
+    return send(res, 200, {
+      total_count: 1,
+      repositories: [
+        {
+          name: REPO,
+          full_name: `${OWNER}/${REPO}`,
+          owner: { login: OWNER },
+          private: false,
+          description: "A calm, private web browser",
+          pushed_at: commits[0].date,
+          permissions: { admin: false, maintain: false, push: true, triage: true, pull: true },
+        },
+      ],
+    });
+  }
 
   // Keys that act out what goes wrong, for testing the screens that explain it:
   // "revoked…" is refused everywhere, "noaccess…" opens no repository.

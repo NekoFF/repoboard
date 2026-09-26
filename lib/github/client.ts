@@ -40,6 +40,15 @@ export interface AccessibleRepo {
   pushedAt: string | null;
 }
 
+/** A repository someone signed in with GitHub can open, and what GitHub lets them do in it. */
+export interface AppRepo {
+  fullName: string;
+  private: boolean;
+  description: string | null;
+  pushedAt: string | null;
+  role: "admin" | "maintain" | "write" | "triage" | "read";
+}
+
 export interface BranchSummary {
   name: string;
   protected: boolean;
@@ -240,6 +249,45 @@ export class GitHubClient {
       description: r.description ?? null,
       pushedAt: r.pushed_at ?? null,
     }));
+  }
+
+  /**
+   * For a token from signing in with GitHub: every repository the RepoBoard
+   * app is installed on that this person may open, with their role in it.
+   */
+  static async appRepositories(token: string): Promise<AppRepo[]> {
+    const octokit = makeOctokit(token);
+    const fail = (error: { status?: number }) => {
+      if (error.status === 401) throw new GitHubAccessError("expired", "GitHub no longer accepts this sign-in. Sign in again.");
+      if (!error.status) throw new GitHubAccessError("offline", "GitHub could not be reached. Check the internet connection.");
+      throw error;
+    };
+    const installations = await octokit
+      .paginate(octokit.rest.apps.listInstallationsForAuthenticatedUser, { per_page: 100 })
+      .catch(fail);
+    const lists = await Promise.all(
+      installations.map((installation) =>
+        octokit
+          .paginate(octokit.rest.apps.listInstallationReposForAuthenticatedUser, {
+            installation_id: installation.id,
+            per_page: 100,
+          })
+          .catch(() => []),
+      ),
+    );
+    const seen = new Map<string, AppRepo>();
+    for (const r of lists.flat()) {
+      const p: { admin?: boolean; maintain?: boolean; push?: boolean; triage?: boolean } = r.permissions ?? {};
+      const role: AppRepo["role"] = p.admin ? "admin" : p.maintain ? "maintain" : p.push ? "write" : p.triage ? "triage" : "read";
+      seen.set(r.full_name.toLowerCase(), {
+        fullName: r.full_name,
+        private: r.private,
+        description: r.description ?? null,
+        pushedAt: r.pushed_at ?? null,
+        role,
+      });
+    }
+    return [...seen.values()].sort((a, b) => Date.parse(b.pushedAt ?? "0") - Date.parse(a.pushedAt ?? "0"));
   }
 
   /** The GitHub login the token belongs to — the default author of notes. */

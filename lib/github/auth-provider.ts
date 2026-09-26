@@ -20,12 +20,22 @@ export interface StoredProject {
   repo: string; // owner/name
   token: string;
   savedAt: string;
+  /** How the token was made: pasted by hand, or from signing in with GitHub. */
+  via?: "key" | "github";
+}
+
+/** The person signed in with GitHub (the RepoBoard GitHub App), when they did. */
+interface StoredAccount {
+  login: string;
+  token: string;
+  savedAt: string;
 }
 
 interface CredentialStore {
   version: 2;
   active: string | null;
   projects: StoredProject[];
+  account?: StoredAccount | null;
 }
 
 /** The public shape of a project: never includes the token. */
@@ -33,6 +43,7 @@ export interface ProjectRef {
   repo: string;
   savedAt: string;
   active: boolean;
+  via?: "key" | "github";
 }
 
 const CREDENTIALS_DIR = dataDir();
@@ -54,12 +65,15 @@ function readStore(): CredentialStore {
     if (!fs.existsSync(CREDENTIALS_FILE)) return empty;
     const raw = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, "utf8"));
     if (raw?.version === 2 && Array.isArray(raw.projects)) {
+      const account = raw.account;
       return {
         version: 2,
         active: typeof raw.active === "string" ? raw.active : null,
         projects: raw.projects.filter(
           (p: StoredProject) => typeof p?.repo === "string" && typeof p?.token === "string",
         ),
+        account:
+          account && typeof account.login === "string" && typeof account.token === "string" ? account : null,
       };
     }
     if (typeof raw?.token === "string" && typeof raw?.repo === "string") {
@@ -96,14 +110,37 @@ export function isEnvironmentConfigured(): boolean {
 }
 
 /** Adds (or re-keys) a project and makes it the active one. */
-export function saveProject(repo: string, token: string): void {
+export function saveProject(repo: string, token: string, via: "key" | "github" = "key"): void {
   const store = readStore();
   const others = store.projects.filter((p) => !same(p.repo, repo));
   writeStore({
+    ...store,
     version: 2,
     active: repo,
-    projects: [...others, { repo, token, savedAt: new Date().toISOString() }],
+    projects: [...others, { repo, token, savedAt: new Date().toISOString(), via }],
   });
+}
+
+/** Signing in with GitHub: the person and their token, kept like the keys (never sent to a page). */
+export function saveAccount(login: string, token: string): void {
+  const store = readStore();
+  // Projects opened through the account use its token; a new sign-in renews them.
+  const projects = store.projects.map((p) => (p.via === "github" ? { ...p, token } : p));
+  writeStore({ ...store, projects, account: { login, token, savedAt: new Date().toISOString() } });
+}
+
+export function accountToken(): string | null {
+  return readStore().account?.token ?? null;
+}
+
+export function accountLogin(): string | null {
+  return readStore().account?.login ?? null;
+}
+
+/** Forgets the sign-in. Projects added with it keep working until removed. */
+export function signOut(): void {
+  const store = readStore();
+  writeStore({ ...store, account: null });
 }
 
 export function setActiveProject(repo: string): boolean {
@@ -129,11 +166,11 @@ export function removeProject(repo: string, next?: string | null): void {
   const projects = store.projects.filter((p) => !same(p.repo, repo));
   const fallback = projects.find((p) => next && same(p.repo, next))?.repo ?? projects[0]?.repo ?? null;
   const active = store.active && same(store.active, repo) ? fallback : store.active;
-  if (projects.length === 0) {
+  if (projects.length === 0 && !store.account) {
     if (fs.existsSync(CREDENTIALS_FILE)) fs.rmSync(CREDENTIALS_FILE);
     return;
   }
-  writeStore({ version: 2, active, projects });
+  writeStore({ ...store, version: 2, active, projects });
 }
 
 export function listProjects(): ProjectRef[] {
@@ -145,6 +182,7 @@ export function listProjects(): ProjectRef[] {
     repo: p.repo,
     savedAt: p.savedAt,
     active: Boolean(store.active && same(store.active, p.repo)),
+    via: p.via ?? "key",
   }));
 }
 

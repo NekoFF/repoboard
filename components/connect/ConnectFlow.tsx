@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, ExternalLink, Globe, Lock } from "lucide-react";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
-import { Spinner } from "@/components/ui";
+import { GitHubMark, Spinner } from "@/components/ui";
 import { ApiError, api, type AccessReason } from "@/lib/client/api";
 import { repoSlug } from "@/lib/github/slug";
 import { TOKENS_PAGE, tokenTemplateUrl } from "@/lib/github/token-link";
@@ -42,7 +42,7 @@ function NextStep({ reason }: { reason?: AccessReason }) {
   return null;
 }
 
-function Problem({ problem }: { problem: Problem }) {
+function ProblemBox({ problem }: { problem: Problem }) {
   return (
     <div className="rb-enter rounded-xl bg-danger-bg p-3 text-sm text-danger">
       <p>{problem.message}</p>
@@ -56,14 +56,14 @@ function Problem({ problem }: { problem: Problem }) {
 }
 
 /**
- * Connecting repositories the way a person does it: get a key from GitHub
+ * With a key instead of signing in: get a key from GitHub
  * (the page opens already filled in), paste it, and pick from the
  * repositories that key opens — one or several at once. No names to spell,
  * no permissions to look up.
  *
  * `replacing` gives a project that is already connected a new key.
  */
-export function ConnectFlow({
+function KeyFlow({
   replacing,
   connectedRepos = [],
   onConnected,
@@ -206,7 +206,7 @@ export function ConnectFlow({
           <Spinner /> Looking for the repositories this key opens…
         </p>
       )}
-      {lookError && <Problem problem={lookError} />}
+      {lookError && <ProblemBox problem={lookError} />}
       {repos && repos.length === 0 && (
         <div className="rb-enter rounded-xl bg-pill p-3 text-sm text-muted">
           <p className="text-ink">GitHub accepted the key, but it opens no repositories yet.</p>
@@ -217,50 +217,7 @@ export function ConnectFlow({
       )}
 
       {listed && !typing && (
-        <fieldset className="rb-enter flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-medium text-ink">
-            {repos!.length === 1 ? "This key opens one repository" : `This key opens ${repos!.length} repositories`}
-          </legend>
-          <div className="rb-scroll-thin -mx-1 flex max-h-[264px] flex-col gap-1.5 overflow-y-auto px-1 py-0.5">
-            {repos!.map((r) => {
-              const on = picked.includes(r.fullName);
-              const already = connectedRepos.includes(r.fullName.toLowerCase());
-              const [who, name] = r.fullName.split("/");
-              return (
-                <label key={r.fullName} className="rb-pick" data-picked={on}>
-                  <input type="checkbox" className="sr-only" checked={on} onChange={() => toggle(r.fullName)} />
-                  <ProjectMark repo={r.fullName} size={28} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 text-sm text-ink">
-                      <span className="truncate">
-                        <span className="text-muted">{who}/</span>
-                        <span className="font-medium">{name}</span>
-                      </span>
-                      {r.private ? (
-                        <Lock className="size-3 shrink-0 text-faint" aria-label="Private" />
-                      ) : (
-                        <Globe className="size-3 shrink-0 text-faint" aria-label="Public" />
-                      )}
-                    </span>
-                    {(r.description || already) && (
-                      <span className="block truncate text-xs text-faint">
-                        {already ? "Already added — it gets this key" : r.description}
-                      </span>
-                    )}
-                  </span>
-                  <span
-                    className={`grid size-5 shrink-0 place-items-center rounded-md border transition-colors ${
-                      on ? "border-accent bg-accent text-white" : "border-border-strong"
-                    }`}
-                    aria-hidden
-                  >
-                    {on && <Check className="size-3" strokeWidth={3} />}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+        <RepoList repos={repos!} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />
       )}
 
       {(repos !== null || lookError) &&
@@ -287,7 +244,7 @@ export function ConnectFlow({
           </button>
         ))}
 
-      {error && <Problem problem={error} />}
+      {error && <ProblemBox problem={error} />}
 
       <button className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md" disabled={Boolean(busy) || !haveToken || !targets.length}>
         {busy && <Spinner />}
@@ -299,5 +256,381 @@ export function ConnectFlow({
         nothing else — there is no RepoBoard server.
       </p>
     </form>
+  );
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  maintain: "Maintainer",
+  write: "Can edit",
+  triage: "Can comment",
+  read: "Can view",
+};
+
+/** The repositories to pick from: glass rows, one or several at once. */
+function RepoList({
+  repos,
+  picked,
+  toggle,
+  connectedRepos,
+}: {
+  repos: (Repo & { role?: string })[];
+  picked: string[];
+  toggle: (name: string) => void;
+  connectedRepos: string[];
+}) {
+  return (
+    <fieldset className="rb-enter flex flex-col gap-2">
+      <legend className="mb-2 text-sm font-medium text-ink">
+        {repos.length === 1 ? "You can open one repository" : `You can open ${repos.length} repositories`}
+      </legend>
+      <div className="rb-scroll-thin -mx-1 flex max-h-[264px] flex-col gap-1.5 overflow-y-auto px-1 py-0.5">
+        {repos.map((r) => {
+          const on = picked.includes(r.fullName);
+          const already = connectedRepos.includes(r.fullName.toLowerCase());
+          const [who, name] = r.fullName.split("/");
+          return (
+            <label key={r.fullName} className="rb-pick" data-picked={on}>
+              <input type="checkbox" className="sr-only" checked={on} onChange={() => toggle(r.fullName)} />
+              <ProjectMark repo={r.fullName} size={28} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-sm text-ink">
+                  <span className="truncate">
+                    <span className="text-muted">{who}/</span>
+                    <span className="font-medium">{name}</span>
+                  </span>
+                  {r.private ? (
+                    <Lock className="size-3 shrink-0 text-faint" aria-label="Private" />
+                  ) : (
+                    <Globe className="size-3 shrink-0 text-faint" aria-label="Public" />
+                  )}
+                </span>
+                {(r.description || already) && (
+                  <span className="block truncate text-xs text-faint">
+                    {already ? "Already added — it opens with this sign-in" : r.description}
+                  </span>
+                )}
+              </span>
+              {r.role && <span className="rb-pill shrink-0">{ROLE_LABEL[r.role] ?? r.role}</span>}
+              <span
+                className={`grid size-5 shrink-0 place-items-center rounded-md border transition-colors ${
+                  on ? "border-accent bg-accent text-white" : "border-border-strong"
+                }`}
+                aria-hidden
+              >
+                {on && <Check className="size-3" strokeWidth={3} />}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+type SignIn = Awaited<ReturnType<typeof api.githubSignIn.start>>;
+type AppRepo = Repo & { role: string };
+
+/**
+ * Signing in with GitHub: one button, a short code to enter on github.com,
+ * and every repository the person can open appears — theirs, their
+ * organisation's, and the ones they were invited to.
+ */
+function SignInFlow({
+  status,
+  replacing,
+  connectedRepos,
+  onConnected,
+}: {
+  status: { login: string | null; installUrl: string | null };
+  replacing?: string | null;
+  connectedRepos: string[];
+  onConnected: (opened: string) => void;
+}) {
+  const [login, setLogin] = useState(status.login);
+  const [flow, setFlow] = useState<SignIn | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [repos, setRepos] = useState<AppRepo[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+
+  const receive = (list: AppRepo[]) => {
+    setRepos(list);
+    const want = replacing?.toLowerCase();
+    const match = want ? list.find((r) => r.fullName.toLowerCase() === want) : undefined;
+    const fresh = list.filter((r) => !connectedRepos.includes(r.fullName.toLowerCase()));
+    setPicked(match ? [match.fullName] : list.length === 1 ? [list[0].fullName] : fresh.length === 1 ? [fresh[0].fullName] : []);
+  };
+
+  const loadRepos = () => {
+    setBusy("repos");
+    setProblem(null);
+    api.githubSignIn
+      .repos()
+      .then((r) => receive(r.repos))
+      .catch((err) => {
+        const p = problemOf(err);
+        // The sign-in was withdrawn on GitHub: start over.
+        if (p.reason === "expired") setLogin(null);
+        setProblem(p);
+      })
+      .finally(() => setBusy(null));
+  };
+
+  // Already signed in: go straight to the repositories.
+  useEffect(() => {
+    if (status.login) loadRepos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // While GitHub waits for the person to approve, ask now and then whether they did.
+  useEffect(() => {
+    if (!flow) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const ask = () => {
+      api.githubSignIn
+        .poll(flow.flowId)
+        .then((result) => {
+          if (stopped) return;
+          if (result.state === "done") {
+            setFlow(null);
+            setLogin(result.login);
+            receive(result.repos);
+            return;
+          }
+          if (result.state === "pending") {
+            timer = window.setTimeout(ask, Math.max(1, flow.interval) * 1000);
+            return;
+          }
+          setFlow(null);
+          setProblem({
+            message: result.state === "denied" ? "The sign-in was cancelled on GitHub." : "The code ran out. Start again for a new one.",
+          });
+        })
+        .catch((err) => {
+          if (stopped) return;
+          setFlow(null);
+          setProblem(problemOf(err));
+        });
+    };
+    timer = window.setTimeout(ask, Math.max(1, flow.interval) * 1000);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+    // receive only reads fixed props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow]);
+
+  const start = () => {
+    setBusy("start");
+    setProblem(null);
+    api.githubSignIn
+      .start()
+      .then((f) => {
+        setFlow(f);
+        window.open(f.verificationUri, "_blank", "noopener,noreferrer");
+      })
+      .catch((err) => setProblem(problemOf(err)))
+      .finally(() => setBusy(null));
+  };
+
+  const connect = async () => {
+    if (!picked.length) return;
+    setBusy("connect");
+    setProblem(null);
+    try {
+      const result = await api.githubSignIn.connect(picked);
+      onConnected(result.opened);
+    } catch (err) {
+      setProblem(problemOf(err));
+      setBusy(null);
+    }
+  };
+
+  const toggle = (name: string) => setPicked((list) => (list.includes(name) ? list.filter((n) => n !== name) : [...list, name]));
+
+  if (flow) {
+    return (
+      <div className="rb-enter flex flex-col items-center gap-4 text-center">
+        <p className="text-sm text-muted">Enter this code on GitHub and press Authorize.</p>
+        <button
+          type="button"
+          className="rounded-2xl bg-ink/[0.05] px-6 py-4 font-mono text-[34px] font-semibold tracking-[0.18em] text-ink shadow-[inset_0_0_0_1px_rgb(var(--ink)/0.08)] hover:bg-ink/[0.08]"
+          onClick={() => {
+            void navigator.clipboard?.writeText(flow.userCode).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1400);
+            });
+          }}
+          title="Copy the code"
+        >
+          {flow.userCode}
+        </button>
+        <p className="h-4 text-xs text-faint">{copied ? "Copied" : "Click the code to copy it"}</p>
+        <a className="rb-btn h-10 rounded-xl px-4" href={flow.verificationUri} target="_blank" rel="noreferrer noopener">
+          Open GitHub again <ExternalLink className="size-3.5" />
+        </a>
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> Waiting for GitHub…
+        </p>
+        <button type="button" className="text-xs text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink" onClick={() => setFlow(null)}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  if (!login) {
+    return (
+      <div className="flex flex-col gap-3">
+        <button type="button" className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md" onClick={start} disabled={busy === "start"}>
+          {busy === "start" ? <Spinner /> : <GitHubMark size={18} />} Sign in with GitHub
+        </button>
+        <p className="text-xs leading-relaxed text-faint">
+          GitHub shows a short code to confirm it is you. RepoBoard then sees the repositories you allow it — your own, your
+          organisation&rsquo;s, and the ones you were invited to.
+        </p>
+        {problem && <ProblemBox problem={problem} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-sm text-muted">
+        <GitHubMark size={16} className="text-ink" />
+        Signed in as <span className="font-medium text-ink">{login}</span>
+        <button
+          type="button"
+          className="ml-auto text-xs text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink"
+          onClick={() => {
+            void api.githubSignIn.signOut().then(() => {
+              setLogin(null);
+              setRepos(null);
+            });
+          }}
+        >
+          Sign out
+        </button>
+      </div>
+
+      {busy === "repos" && !repos && (
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> Looking for your repositories…
+        </p>
+      )}
+      {repos && repos.length > 0 && <RepoList repos={repos} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />}
+      {repos && repos.length === 0 && (
+        <div className="rb-enter rounded-xl bg-pill p-3 text-sm text-muted">
+          <p className="text-ink">RepoBoard is not on any repository you can open yet.</p>
+          <p className="mt-1">
+            {status.installUrl ? (
+              <>
+                <a className={linkClass} href={status.installUrl} target="_blank" rel="noreferrer noopener">
+                  Add RepoBoard to your repositories on GitHub <ExternalLink className="size-3" />
+                </a>
+                , then{" "}
+              </>
+            ) : null}
+            <button type="button" className={linkClass} onClick={loadRepos}>
+              look again
+            </button>
+            .
+          </p>
+        </div>
+      )}
+      {repos && repos.length > 0 && status.installUrl && (
+        <p className="-mt-2 text-xs text-faint">
+          Missing one?{" "}
+          <a className="underline decoration-ink/20 underline-offset-2 hover:text-ink" href={status.installUrl} target="_blank" rel="noreferrer noopener">
+            Add RepoBoard to more repositories
+          </a>{" "}
+          ·{" "}
+          <button type="button" className="underline decoration-ink/20 underline-offset-2 hover:text-ink" onClick={loadRepos}>
+            look again
+          </button>
+        </p>
+      )}
+      {problem && <ProblemBox problem={problem} />}
+      <button
+        type="button"
+        className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md"
+        disabled={busy !== null || !picked.length}
+        onClick={connect}
+      >
+        {busy === "connect" && <Spinner />}
+        {busy === "connect"
+          ? "Opening…"
+          : picked.length > 1
+            ? `Add ${picked.length} projects`
+            : picked.length === 1
+              ? `${connectedRepos.includes(picked[0].toLowerCase()) ? "Open" : "Add"} ${picked[0].split("/")[1]}`
+              : "Pick a repository"}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Connecting repositories: sign in with GitHub when this copy of RepoBoard
+ * has the GitHub App, with a key as the other way; a key only, otherwise.
+ */
+export function ConnectFlow({
+  replacing,
+  connectedRepos = [],
+  onConnected,
+}: {
+  replacing?: string | null;
+  connectedRepos?: string[];
+  onConnected: (opened: string) => void;
+}) {
+  const [status, setStatus] = useState<{ available: boolean; login: string | null; installUrl: string | null } | null>(null);
+  const [withKey, setWithKey] = useState(false);
+
+  useEffect(() => {
+    api.githubSignIn
+      .status()
+      .then(setStatus)
+      .catch(() => setStatus({ available: false, login: null, installUrl: null }));
+  }, []);
+
+  if (!status) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted">
+        <Spinner /> One moment…
+      </p>
+    );
+  }
+  if (!status.available || withKey) {
+    return (
+      <div className="flex flex-col gap-4">
+        <KeyFlow replacing={replacing} connectedRepos={connectedRepos} onConnected={onConnected} />
+        {status.available && (
+          <button type="button" className="w-fit text-xs text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink" onClick={() => setWithKey(false)}>
+            Sign in with GitHub instead
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-5">
+      <SignInFlow status={status} replacing={replacing} connectedRepos={connectedRepos} onConnected={onConnected} />
+      <div className="flex items-center gap-3 text-xs text-faint">
+        <span className="h-px flex-1 bg-border" />
+        or
+        <span className="h-px flex-1 bg-border" />
+      </div>
+      <button type="button" className="rb-btn h-10 w-full justify-center rounded-xl" onClick={() => setWithKey(true)}>
+        Use a key instead
+      </button>
+      <p className="text-xs leading-relaxed text-muted">
+        Whatever you choose, it stays on this computer, readable only by your user account. RepoBoard talks to GitHub and
+        nothing else — there is no RepoBoard server.
+      </p>
+    </div>
   );
 }
