@@ -57,6 +57,15 @@ export function BoardScreen({
   const [saving, setSaving] = useState(false);
   const [ids, setIds] = useState<{ path: string; content: string; baseSha: string; count: number } | null>(null);
 
+  // The tool rail's "not in the repository yet" opens the save dialog here.
+  useEffect(() => {
+    if (params.get("save") !== "1") return;
+    setDialog("save");
+    const next = new URLSearchParams(params.toString());
+    next.delete("save");
+    router.replace(next.size ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [params, pathname, router]);
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem(VIEW_KEY);

@@ -310,6 +310,7 @@ export function OverviewScreen({
 
         {/* ------------------------------------------- needs your check -- */}
         {toCheck.length > 0 && (
+          <div id="to-check" className="scroll-mt-6">
           <Section title="Needs your check" icon={<CheckCheck className="size-4" />}>
             <div className="-mx-1 flex flex-col divide-y divide-border overflow-hidden rounded-xl bg-surface/70 ring-1 ring-state-review/25">
               {toCheck.map((entry) =>
@@ -343,6 +344,7 @@ export function OverviewScreen({
               )}
             </div>
           </Section>
+          </div>
         )}
 
         <div className="grid gap-5 lg:grid-cols-2">
