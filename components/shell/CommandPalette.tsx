@@ -24,6 +24,7 @@ import {
   GitCommitHorizontal,
 } from "lucide-react";
 import { api, useResource } from "@/lib/client/api";
+import { openProject } from "@/lib/client/project";
 import { newCardHref } from "@/lib/client/current-board";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
@@ -193,8 +194,7 @@ export function CommandPalette({
                         icon={<ProjectMark repo={p.repo} size={16} />}
                         onSelect={run(async () => {
                           await api.switchProject(p.repo).catch(() => null);
-                          router.refresh();
-                          router.push("/");
+                          openProject();
                         })}
                       >
                         {p.repo}

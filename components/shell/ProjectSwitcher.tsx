@@ -6,6 +6,7 @@ import { Check, ChevronsUpDown, Plus, Settings2 } from "lucide-react";
 import { Menu, MenuItem, MenuLabel, MenuSeparator, Spinner, useToast } from "@/components/ui";
 import { useShell } from "@/components/shell/ShellContext";
 import { api } from "@/lib/client/api";
+import { openProject } from "@/lib/client/project";
 
 /** A square with the repository's first letter, tinted from its name. */
 export function ProjectMark({ repo, size = 22 }: { repo: string | null; size?: number }) {
@@ -39,11 +40,9 @@ export function ProjectSwitcher() {
     setSwitching(target);
     try {
       await api.switchProject(target);
-      router.refresh();
-      router.push("/");
+      openProject();
     } catch (error) {
       toast.push({ kind: "error", message: "Could not switch project", detail: (error as Error).message });
-    } finally {
       setSwitching(null);
     }
   };

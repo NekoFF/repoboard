@@ -14,6 +14,7 @@ import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
 import { Logo, ToastHost, TooltipProvider } from "@/components/ui";
 import { api, useResource, type ProjectInfo } from "@/lib/client/api";
+import { openProject } from "@/lib/client/project";
 import { useHotkeys } from "@/lib/client/hotkeys";
 
 function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: () => void }) {
@@ -166,7 +167,10 @@ export function AppShell({
         .connection()
         .then((now) => {
           const key = now.projects.map((p) => `${p.repo.toLowerCase()}${p.active ? "*" : ""}`).join(",");
-          if (key !== projectKey) router.refresh();
+          if (key === projectKey) return;
+          const active = (list: { repo: string; active: boolean }[]) => list.find((p) => p.active)?.repo.toLowerCase() ?? null;
+          if (active(now.projects) !== active(projects)) openProject();
+          else router.refresh();
         })
         .catch(() => undefined);
     };
@@ -176,7 +180,7 @@ export function AppShell({
       window.removeEventListener("focus", look);
       document.removeEventListener("visibilitychange", look);
     };
-  }, [projectKey, managedByEnvironment, router]);
+  }, [projectKey, projects, managedByEnvironment, router]);
 
   const openPalette = useCallback((query = "") => setPalette({ open: true, query }), []);
   const openShortcuts = useCallback(() => setShortcuts(true), []);

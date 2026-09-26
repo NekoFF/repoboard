@@ -9,6 +9,7 @@ import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Logo, RelativeTime, Segmented, Spinner, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
+import { openProject } from "@/lib/client/project";
 
 function Card({ title, icon, description, children }: { title: string; icon: ReactNode; description?: ReactNode; children: ReactNode }) {
   return (
@@ -429,7 +430,16 @@ export function SettingsScreen({
                       <button
                         className="rb-btn rb-btn-sm"
                         disabled={busy !== null}
-                        onClick={() => act(`switch-${p.repo}`, () => api.switchProject(p.repo), `Switched to ${p.repo}`)}
+                        onClick={() => {
+                          setBusy(`switch-${p.repo}`);
+                          api
+                            .switchProject(p.repo)
+                            .then(() => openProject())
+                            .catch((err) => {
+                              toast.push({ kind: "error", message: "Could not switch project", detail: (err as Error).message });
+                              setBusy(null);
+                            });
+                        }}
                       >
                         {busy === `switch-${p.repo}` && <Spinner />} Open
                       </button>
@@ -442,6 +452,18 @@ export function SettingsScreen({
                         disabled={busy !== null}
                         onClick={() => {
                           if (!window.confirm(`Disconnect ${p.repo}? Its token is removed from this computer; the boards stay here and on GitHub.`)) return;
+                          if (p.active) {
+                            // The open project goes away: start again from what is left.
+                            setBusy(`remove-${p.repo}`);
+                            api
+                              .removeProject(p.repo)
+                              .then(() => openProject("/settings"))
+                              .catch((err) => {
+                                toast.push({ kind: "error", message: "That did not work", detail: (err as Error).message });
+                                setBusy(null);
+                              });
+                            return;
+                          }
                           void act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`);
                         }}
                       >
@@ -457,11 +479,7 @@ export function SettingsScreen({
               (adding ? (
                 <ConnectForm
                   connectedRepos={projects.map((p) => p.repo.toLowerCase())}
-                  onDone={() => {
-                    setAdding(false);
-                    router.refresh();
-                    router.push("/");
-                  }}
+                  onDone={() => openProject()}
                   onCancel={projects.length > 0 ? () => setAdding(false) : undefined}
                 />
               ) : (
