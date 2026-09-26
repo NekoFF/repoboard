@@ -82,10 +82,15 @@ Open <http://localhost:3000>, go to **Settings → Connect a repository**, and
 paste a fine-grained token:
 
 1. <https://github.com/settings/personal-access-tokens/new>
-2. **Repository access:** *Only select repositories* → the repository.
-3. **Permissions:** Contents *read and write*; Metadata, Pull requests and
-   Issues *read-only*.
-4. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
+2. **Resource owner:** you, or the organisation that owns the repository
+   (an organisation may have to approve the token first).
+3. **Expiration:** as long as you are comfortable with — when it runs out,
+   RepoBoard asks for a new one.
+4. **Repository access:** *Only select repositories* → the repository.
+5. **Permissions:** Contents *read and write*; Metadata, Pull requests,
+   Issues and Checks *read-only* (Checks shows whether a pull request's
+   tests pass).
+6. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
 
 Then open **Documents** and create the `.repoboard/` folder from the
 templates you want. Connect more repositories from the project switcher in the

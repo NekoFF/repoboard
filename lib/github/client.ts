@@ -151,7 +151,26 @@ export class GitHubClient {
     const [owner, name] = slug.split("/");
     if (!owner || !name) throw new Error("Repository must be owner/name");
     const octokit = makeOctokit(token);
-    const { data } = await octokit.rest.repos.get({ owner, repo: name });
+    // GitHub's own messages ("Bad credentials - https://docs.github.com/rest")
+    // say little to someone connecting for the first time; say what to do.
+    const data = await octokit.rest.repos
+      .get({ owner, repo: name })
+      .then((r) => r.data)
+      .catch((error: { status?: number; message?: string }) => {
+        if (error.status === 401) {
+          throw new Error("GitHub did not accept this token. Check that it was copied whole and has not expired, or make a new one.");
+        }
+        if (error.status === 404) {
+          throw new Error(
+            `This token cannot see ${slug}. Check the name, and that the token was given access to it (Repository access → Only select repositories → ${slug}; for an organisation, choose it as the resource owner).`,
+          );
+        }
+        if (error.status === 403) {
+          throw new Error(`GitHub refused access to ${slug} with this token (${error.message ?? "forbidden"}). The organisation may need to approve fine-grained tokens.`);
+        }
+        if (!error.status) throw new Error("GitHub could not be reached. Check the internet connection and try again.");
+        throw error;
+      });
     return {
       owner: data.owner.login,
       name: data.name,

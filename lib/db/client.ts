@@ -38,6 +38,9 @@ function openDatabase(file: string): Database.Database {
 }
 
 const sqlite = openDatabase(dbPath);
+// The app, the MCP server and a build's workers may open the file at once:
+// wait for a lock instead of failing on it.
+sqlite.pragma("busy_timeout = 5000");
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
@@ -49,7 +52,10 @@ export const db = drizzle(sqlite, { schema });
  * start after the first.
  */
 const migrationsFolder = path.join(process.cwd(), "drizzle");
-if (fs.existsSync(migrationsFolder)) {
+// `next build` loads this in several workers to collect page data; the
+// database is migrated when the app starts, not while it is being built.
+const building = process.env.NEXT_PHASE === "phase-production-build";
+if (!building && fs.existsSync(migrationsFolder)) {
   try {
     migrate(db, { migrationsFolder });
   } catch (error) {
