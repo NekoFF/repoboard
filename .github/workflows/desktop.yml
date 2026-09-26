@@ -1,0 +1,76 @@
+# The desktop app, built on GitHub for macOS (Apple silicon and Intel) and
+# Windows, and attached to a release. Runs when a version tag is pushed
+# (v0.2.0 …) or by hand from the Actions tab.
+name: Desktop
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build for (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the release if it does not exist yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "RepoBoard ${TAG#v}" --notes-file desktop/RELEASE_NOTES.md
+
+  build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+            builder: --mac --arm64
+          - os: macos-latest
+            arch: x64
+            builder: --mac --x64
+          - os: windows-latest
+            arch: x64
+            builder: --win --x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: desktop
+      # The server, with better-sqlite3 built for Electron and this architecture.
+      - run: node desktop/prepare.mjs --arch ${{ matrix.arch }}
+      - run: npx electron-builder ${{ matrix.builder }} --publish never
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          files=(desktop/dist/*.dmg desktop/dist/*.zip desktop/dist/*.exe)
+          gh release upload "$TAG" "${files[@]}" --clobber

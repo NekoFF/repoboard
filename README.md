@@ -45,6 +45,20 @@ first, and it refuses to overwrite a file that changed on GitHub meanwhile.
 
 ---
 
+## The desktop app
+
+Download RepoBoard for **macOS** (Apple silicon or Intel) or **Windows** from
+[Releases](https://github.com/NekoFF/repoboard/releases). It is the same app,
+in its own translucent window, with no Node.js to install. It keeps its data
+in `~/.repoboard`, like the web version, and brings its own MCP server for
+agents (Settings shows the command). The first start asks once, because the
+app is not signed yet: on macOS right-click → **Open**, on Windows **More info
+→ Run anyway**.
+
+To build it yourself: `npm ci`, `cd desktop && npm ci`, then
+`node desktop/prepare.mjs` and `npx electron-builder --mac` (or `--win`) in
+`desktop/`.
+
 ## Try it in one minute
 
 You need [Node.js](https://nodejs.org) 20 or newer.
@@ -148,7 +162,15 @@ never touches it.
   never reach the browser.
 - The app listens on `127.0.0.1` only; other devices on your network cannot
   reach it. It has no login of its own, so that is what keeps the token yours.
-  Do not run `npm run dev:lan` unless you understand that it removes this.
+  Its API answers only its own pages: other websites open in the same browser
+  cannot call it, and requests for another host name are refused. Do not run
+  `npm run dev:lan` unless you understand that it removes the first part (it
+  also needs `REPOBOARD_ALLOW_HOSTS=<your host>`).
+- A program running on your computer as you — an AI agent with a shell, for
+  instance — can still read `~/.repoboard`, as it can read any of your files.
+  The rules agents follow (never tick, never write `Checked:`) are enforced in
+  the MCP server; give agents a token of their own if you want GitHub itself
+  to tell them apart.
 - Nothing is written to your repository without a diff you approved, and a
   file that changed on GitHub since you opened it is never overwritten.
 - The legal checklists are reminders, not legal advice.
@@ -234,12 +256,6 @@ Next.js 14 (app router) · React 18 · Tailwind with CSS-variable tokens ·
 SQLite through Drizzle · Octokit · dnd-kit · Radix primitives · cmdk ·
 remark. See [CLAUDE.md](CLAUDE.md) for the architecture, the rules the code
 keeps, and where everything lives.
-
-## License
-
-Source-available, not open source. You may read it, download it and run it for
-yourself; commercial use, redistribution and offering it as a service need
-written permission. See [LICENSE](LICENSE).
 
 ## Licence
 
