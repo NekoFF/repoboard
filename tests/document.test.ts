@@ -270,3 +270,12 @@ describe("done with proof", () => {
     expect(result.content).toBe(file.replace("- [ ] Retention periods", "- [x] Retention periods"));
   });
 });
+
+describe("Windows line endings", () => {
+  it("reads a CRLF file and writes it back with CRLF", () => {
+    const crlf = "# List\r\n\r\n- [ ] One\r\n- [ ] Two\r\n";
+    expect(parseDocument(crlf).items.map((i) => i.title)).toEqual(["One", "Two"]);
+    const out = applyDocEdits(crlf, [{ type: "state", line: 2, title: "One", state: "done" }]).content;
+    expect(out).toBe("# List\r\n\r\n- [x] One\r\n- [ ] Two\r\n");
+  });
+});

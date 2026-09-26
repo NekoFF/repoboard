@@ -340,7 +340,9 @@ export async function commitDocEdit(
   const gh = await clientFactory();
   const file = await gh.getFile(args.path);
 
-  if (!args.force && file.sha !== args.expectedSha) {
+  // Always the version the person reviewed. After a conflict the dialog shows
+  // the newer file and sends its SHA; `force` only says they saw the conflict.
+  if (file.sha !== args.expectedSha) {
     logActivity({
       repositoryId: repository.id,
       type: "conflict_detected",

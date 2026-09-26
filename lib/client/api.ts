@@ -30,13 +30,21 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     cache: "no-store",
     ...init,
+    // The custom header makes every write a preflighted request, which no
+    // other web page can send to this server (see middleware.ts).
     headers: init?.body
-      ? { "content-type": "application/json", ...init?.headers }
-      : init?.headers,
+      ? { "content-type": "application/json", "x-repoboard": "1", ...init?.headers }
+      : { "x-repoboard": "1", ...init?.headers },
   });
 
   const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
+  let body: Record<string, unknown> & { error?: string; conflict?: boolean } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    // An HTML error page (a crash, a proxy): say what happened, not "Unexpected token <".
+    body = { error: `The server answered with an error (${response.status})` };
+  }
 
   if (!response.ok) {
     throw new ApiError(
@@ -89,7 +97,7 @@ export const api = {
     post<{ removed: string; projects: ProjectInfo[] }>("/api/repo", { action: "remove", repo }),
 
   disconnectRepository: () =>
-    request<{ connected: boolean; projects: ProjectInfo[] }>("/api/repo", { method: "DELETE" }),
+    request<{ connected: boolean; projects: ProjectInfo[] }>("/api/repo", { method: "DELETE", body: "{}" }),
 
   /* documents */
   docs: () => request<{ docs: TrackedDoc[] }>("/api/docs"),

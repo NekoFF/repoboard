@@ -58,6 +58,15 @@ export function parseNote(text: string): ItemNote {
   return { author: null, date: null, text: text.trim() };
 }
 
+/**
+ * Files edited on Windows end lines with CRLF. Everything here works on LF;
+ * writes put the file's own line endings back, so a one-line change stays a
+ * one-line diff.
+ */
+export const toLF = (text: string) => text.replace(/\r\n?/g, "\n");
+export const lineEnding = (text: string) => (text.includes("\r\n") ? "\r\n" : "\n");
+export const withLineEnding = (text: string, eol: string) => (eol === "\n" ? text : text.replace(/\n/g, eol));
+
 export type ItemState = "todo" | "doing" | "review" | "done" | "cancelled";
 
 export const STATE_CHAR: Record<ItemState, string> = {

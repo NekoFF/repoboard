@@ -490,9 +490,16 @@ export class GitHubClient {
     if (Array.isArray(data) || data.type !== "file") {
       throw new Error(`${path} is not a file`);
     }
+    // Files over 1 MB come without content; reading them as empty would let
+    // an edit replace a long document with a few lines.
+    let base64 = data.content;
+    if (!base64 && data.size > 0) {
+      const blob = await this.octokit.rest.git.getBlob({ owner: this.owner, repo: this.repo, file_sha: data.sha });
+      base64 = blob.data.content;
+    }
     return {
       path,
-      content: Buffer.from(data.content, "base64").toString("utf8"),
+      content: Buffer.from(base64 ?? "", "base64").toString("utf8"),
       sha: data.sha,
     };
   }

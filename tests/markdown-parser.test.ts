@@ -159,3 +159,25 @@ describe("moveTask", () => {
     expect(result.content).toBe(ROADMAP);
   });
 });
+
+describe("moving a task with what belongs to it", () => {
+  it("carries sub-items and details along", async () => {
+    const { moveTask } = await import("@/lib/markdown/parser");
+    const file = [
+      "## Todo",
+      "",
+      "- [ ] Parent <!-- rb:task_p -->",
+      "  - [ ] Child",
+      "  - Why: because",
+      "- [ ] Other <!-- rb:task_o -->",
+      "",
+      "## Done",
+      "",
+    ].join("\n");
+    const moved = moveTask(file, "task_p", "Done").content.split("\n");
+    const done = moved.indexOf("## Done");
+    expect(moved.slice(0, done)).not.toContain("  - [ ] Child");
+    expect(moved.slice(done)).toEqual(expect.arrayContaining(["- [x] Parent <!-- rb:task_p -->", "  - [ ] Child", "  - Why: because"]));
+    expect(moved.slice(0, done)).toContain("- [ ] Other <!-- rb:task_o -->");
+  });
+});

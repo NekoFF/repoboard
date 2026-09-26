@@ -77,8 +77,12 @@ function readStore(): CredentialStore {
 
 function writeStore(store: CredentialStore): void {
   fs.mkdirSync(CREDENTIALS_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(store, null, 2), { mode: 0o600 });
-  fs.chmodSync(CREDENTIALS_FILE, 0o600);
+  // Written aside and renamed into place: a crash mid-write must not leave a
+  // broken file that reads as "no projects" and loses every other token.
+  const temporary = `${CREDENTIALS_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(store, null, 2), { mode: 0o600 });
+  fs.chmodSync(temporary, 0o600);
+  fs.renameSync(temporary, CREDENTIALS_FILE);
 }
 
 function activeProject(store = readStore()): StoredProject | null {

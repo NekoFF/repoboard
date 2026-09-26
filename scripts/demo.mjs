@@ -52,7 +52,7 @@ children[1].stdout.on("data", (chunk) => process.stdout.write(chunk));
 
 const base = `http://127.0.0.1:${APP_PORT}`;
 const post = (url, body) =>
-  fetch(base + url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(
+  fetch(base + url, { method: "POST", headers: { "content-type": "application/json", "x-repoboard": "1" }, body: JSON.stringify(body) }).then(
     (r) => r.json(),
   );
 

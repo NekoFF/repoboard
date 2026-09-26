@@ -53,9 +53,9 @@ if (fs.existsSync(migrationsFolder)) {
   try {
     migrate(db, { migrationsFolder });
   } catch (error) {
-    console.error(
-      `[repoboard] Could not apply database migrations to ${dbPath}:`,
-      (error as Error).message,
+    // A half-migrated database breaks in confusing ways later; say so now.
+    throw new Error(
+      `RepoBoard could not update its database (${dbPath}): ${(error as Error).message}. Run npm run doctor.`,
     );
   }
 }

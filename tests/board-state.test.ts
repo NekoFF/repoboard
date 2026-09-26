@@ -77,7 +77,10 @@ describe("merge", () => {
 describe("serialisation", () => {
   it("round-trips", () => {
     const state = { version: 1 as const, columns: ["Todo"], cards: [card()] };
-    expect(parseBoardState(serialiseBoardState(state))).toEqual(state);
+    const read = parseBoardState(serialiseBoardState(state))!;
+    // Reading fills in the defaults; after that the file is stable.
+    expect(read).toMatchObject(state);
+    expect(parseBoardState(serialiseBoardState(read))).toEqual(read);
   });
 
   it("is byte-identical regardless of card order, so an unchanged board is not a change", () => {
@@ -190,5 +193,19 @@ describe("several boards in one file", () => {
     const fresh = { name: "Main board", description: null, color: null, art: null, owner: null, updatedAt: 0 };
     const shared = { ...fresh, name: "Project board" };
     expect(mergeBoardFile(file({ board: fresh }), file({ board: shared })).state.board?.name).toBe("Project board");
+  });
+
+  it("drops malformed cards instead of failing, and pulls future timestamps back", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      columns: ["Todo"],
+      cards: [card({ id: "ok" }), { title: "no id" }, { id: "late", title: "Clock ahead", updatedAt: Date.now() + 10 * 86_400_000 }],
+      boards: [{ id: "b", name: "Max" }, { name: "no id" }],
+    });
+    const read = parseBoardState(raw)!;
+    expect(read.cards.map((c) => c.id)).toEqual(["ok", "late"]);
+    expect(read.cards[1].updatedAt).toBeLessThan(Date.now() + 6 * 60_000);
+    expect(read.boards?.map((b) => b.id)).toEqual(["b"]);
+    expect(read.boards?.[0].cards).toEqual([]);
   });
 });

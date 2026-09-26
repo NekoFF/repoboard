@@ -67,6 +67,8 @@ async function startServer() {
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
       REPOBOARD_DESKTOP: "1",
+      // For Settings: agents run the bundled MCP server with this binary in Node mode.
+      REPOBOARD_NODE: process.execPath,
     },
   });
   server.stdout?.on("data", (d) => process.stdout.write(`[server] ${d}`));
