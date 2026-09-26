@@ -464,7 +464,6 @@ export function DocsGraph({ docs }: { docs: TrackedDoc[] }) {
       {/* Light moving slowly behind the glass. */}
       <span className="rb-graph-glow" style={{ left: "8%", top: "4%", ["--glow" as string]: "var(--accent)", animationDuration: "26s" }} />
       <span className="rb-graph-glow" style={{ right: "6%", top: "30%", ["--glow" as string]: "var(--state-review)", animationDuration: "31s", animationName: "rb-drift-2" }} />
-      <span className="rb-graph-glow" style={{ left: "30%", bottom: "-12%", ["--glow" as string]: "var(--state-done)", animationDuration: "36s", animationName: "rb-drift-3" }} />
 
       <div ref={world} className="absolute left-0 top-0 origin-top-left will-change-transform">
         <svg className="absolute left-0 top-0 overflow-visible" width="1" height="1" aria-hidden>

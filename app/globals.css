@@ -832,11 +832,12 @@
   aspect-ratio: 1;
   border-radius: 9999px;
   pointer-events: none;
-  background: radial-gradient(closest-side, rgb(var(--glow) / 0.22), rgb(var(--glow) / 0));
+  /* Barely there: enough for the glass to have something to blur. */
+  background: radial-gradient(closest-side, rgb(var(--glow) / 0.08), rgb(var(--glow) / 0));
   animation: rb-drift-1 28s ease-in-out infinite alternate;
 }
 .dark .rb-graph-glow {
-  background: radial-gradient(closest-side, rgb(var(--glow) / 0.16), rgb(var(--glow) / 0));
+  background: radial-gradient(closest-side, rgb(var(--glow) / 0.07), rgb(var(--glow) / 0));
 }
 
 .rb-graph-edge {
