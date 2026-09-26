@@ -1,5 +1,15 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.3.0
+
+- **A start screen and a clear way to connect.** Press *Get a key from GitHub*: GitHub opens with the key already filled in, and you tick your repository. Paste the key, and pick one or more repositories from the ones it opens. You don't type names or look up permissions.
+- **No more dead ends.** When a project's key runs out, is deleted or loses access, RepoBoard says which and why. You can give it a new key, open another project, or try again. Settings shows which projects' keys still work. Errors and missing pages always have a way back.
+- **Getting around the window:** ← → at the top, ⌘[ / ⌘] and a two-finger swipe on macOS, and Alt+← / Alt+→ and the mouse's side buttons on Windows. On macOS the window buttons now sit centred.
+- **Updates from inside the app.** The app checks for new versions. On Windows it updates itself; on macOS it downloads and opens the new version.
+- **Project covers:** sixteen small pixel scenes in twelve colours, a banner on Overview and a small version next to the project's name. There is also a new app icon.
+- **Project life** now shows long branches from where they left, and branches that came back without a merge commit.
+- Switching projects loads the window fresh, so one project's data never shows under another's name.
+
 ## Download
 
 | System | File |
