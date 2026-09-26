@@ -199,6 +199,8 @@ export function AppShell({
         <ToastHost>
           <ShellContext.Provider value={shell}>
             <ConnectionContext.Provider value={{ status, retry }}>
+              {/* In the desktop app: a strip to drag the window by, where its buttons sit. */}
+              <div className="rb-desktop-titlebar" aria-hidden />
               {unlocked ? (
                 // Panels on a desk: navigation recessed on the left, the work
                 // floating over it, tools in a pill on the right edge.
