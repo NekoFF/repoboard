@@ -1888,29 +1888,64 @@ export function unlinkTask(args: {
   }
 }
 
-/** Card counts per connected repository, for the project switcher. */
+const repositoryIdOf = (slug: string) => {
+  const [owner, name] = slug.split("/");
+  return `repo_${owner}_${name}`.toLowerCase();
+};
+
+/** Each project's cover, as chosen (null: picked from the name). Not board data — shown even when a key fails. */
+export function projectLooks(repos: string[]): Map<string, { art: string | null; hue: number | null }> {
+  const result = new Map<string, { art: string | null; hue: number | null }>();
+  for (const slug of repos) {
+    const row = db
+      .select({ art: repositories.art, hue: repositories.hue })
+      .from(repositories)
+      .where(eq(repositories.id, repositoryIdOf(slug)))
+      .get();
+    if (row) result.set(slug.toLowerCase(), { art: row.art ?? null, hue: row.hue ?? null });
+  }
+  return result;
+}
+
+export function setProjectLook(slug: string, look: { art: string | null; hue: number | null }): void {
+  const updated = db
+    .update(repositories)
+    .set({ art: look.art, hue: look.hue })
+    .where(eq(repositories.id, repositoryIdOf(slug)))
+    .run();
+  if (updated.changes === 0) throw new Error(`${slug} has no board on this computer yet`);
+}
+
+/** Card counts per connected repository (every board of it), for the project switcher. */
 export function projectSummaries(
   repos: string[],
 ): Map<string, { open: number; done: number; lastSyncAt: number | null }> {
   const result = new Map<string, { open: number; done: number; lastSyncAt: number | null }>();
   for (const slug of repos) {
-    const [owner, name] = slug.split("/");
-    const repositoryId = `repo_${owner}_${name}`.toLowerCase();
+    const repositoryId = repositoryIdOf(slug);
     const repository = db.select().from(repositories).where(eq(repositories.id, repositoryId)).get();
     if (!repository) continue;
-    const board = db.select().from(boards).where(eq(boards.repositoryId, repositoryId)).get();
-    if (!board) continue;
-    const done = db
-      .select({ id: columns.id })
-      .from(columns)
-      .where(and(eq(columns.boardId, board.id), eq(columns.name, DONE_HEADING)))
-      .get();
+    const boardIds = db
+      .select({ id: boards.id })
+      .from(boards)
+      .where(eq(boards.repositoryId, repositoryId))
+      .all()
+      .map((b) => b.id);
+    if (!boardIds.length) continue;
+    const doneColumns = new Set(
+      db
+        .select({ id: columns.id })
+        .from(columns)
+        .where(and(inArray(columns.boardId, boardIds), eq(columns.name, DONE_HEADING)))
+        .all()
+        .map((c) => c.id),
+    );
     const rows = db
       .select({ columnId: tasks.columnId })
       .from(tasks)
-      .where(and(eq(tasks.boardId, board.id), isNull(tasks.deletedAt)))
+      .where(and(inArray(tasks.boardId, boardIds), isNull(tasks.deletedAt)))
       .all();
-    const doneCount = rows.filter((r) => r.columnId === done?.id).length;
+    const doneCount = rows.filter((r) => doneColumns.has(r.columnId)).length;
     result.set(slug.toLowerCase(), {
       open: rows.length - doneCount,
       done: doneCount,

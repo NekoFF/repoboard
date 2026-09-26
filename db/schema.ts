@@ -20,6 +20,9 @@ export const repositories = sqliteTable("repositories", {
   defaultBranch: text("default_branch").notNull(),
   visibility: text("visibility", { enum: ["public", "private"] }).notNull(),
   lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
+  // The project's cover (components/ProjectArt.tsx); null picks one from the name.
+  art: text("art"),
+  hue: integer("hue"),
 });
 
 // A project (repository) has several boards: one per person ("Dima",

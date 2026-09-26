@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { ConnectFlow } from "@/components/connect/ConnectFlow";
 import { StartFrame } from "@/components/connect/Frame";
 import { openProject } from "@/lib/client/project";
+import { Logo } from "@/components/ui";
 
 /**
  * First start, adding a project, or giving one a new key — one screen, one
@@ -28,7 +29,13 @@ export function ConnectScreen({
       : "Connect another GitHub repository. Each project keeps its own boards and key.";
 
   return (
-    <StartFrame>
+    <StartFrame
+      banner={
+        <span className="rb-glass inline-flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-sm font-semibold text-ink">
+          <Logo size={22} /> RepoBoard
+        </span>
+      }
+    >
       <div className="relative">
         {canClose && (
           <button

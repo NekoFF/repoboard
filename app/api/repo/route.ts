@@ -8,6 +8,7 @@ import {
   getBoardData,
   getRepoIdentity,
   projectSummaries,
+  setProjectLook,
 } from "@/lib/board-service";
 import {
   getAuthProvider,
@@ -86,6 +87,12 @@ const bodySchema = z.union([
     repo: slug,
   }),
   z.object({ action: z.literal("repos"), token: z.string().min(10, "Token looks too short") }),
+  z.object({
+    action: z.literal("look"),
+    repo: slug,
+    art: z.string().max(40).nullable(),
+    hue: z.number().int().min(0).max(360).nullable(),
+  }),
   z.object({ action: z.literal("switch"), repo: slug }),
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
@@ -123,6 +130,10 @@ async function handlePost(request: Request) {
       saveProject(`${summary.owner}/${summary.name}`, body.token.trim());
       invalidateAccessCache();
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
+    }
+    if (body.action === "look") {
+      setProjectLook(body.repo, { art: body.art, hue: body.hue });
+      return NextResponse.json({ ok: true });
     }
     if (body.action === "switch") {
       if (!setActiveProject(body.repo)) {

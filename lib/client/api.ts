@@ -66,6 +66,9 @@ export interface ProjectInfo {
   open?: number;
   done?: number;
   lastSyncAt?: number | null;
+  /** Its cover (components/ProjectArt); null picks one from the name. */
+  art?: string | null;
+  hue?: number | null;
   /** Whether its token opens the repository now (only from `projectsHealth`). */
   health?: ProjectHealth;
 }
@@ -111,6 +114,9 @@ export const api = {
       "/api/repo",
       { action: "repos", token },
     ),
+
+  setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
+    post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
 
   switchProject: (repo: string) =>
     post<{ switched: string; projects: ProjectInfo[] }>("/api/repo", { action: "switch", repo }),

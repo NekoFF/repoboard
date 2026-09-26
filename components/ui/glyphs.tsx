@@ -206,12 +206,29 @@ export function ProgressRing({
   );
 }
 
-/** The brand mark: a ticked box, because that is the whole job. */
+/**
+ * The brand mark: a glass board on a blue-violet tile — a pane of cards in
+ * the three states that matter (to do, doing, done). Same drawing as the app
+ * icon (desktop/build/icon.svg), simplified for small sizes.
+ */
 export function Logo({ size = 22, className = "" }: { size?: number; className?: string }) {
+  // Every copy draws the same gradient, so they can share one id.
+  const id = "rb-logo-tile";
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={`shrink-0 ${className}`} aria-hidden>
-      <rect x="1.5" y="1.5" width="21" height="21" rx="6" style={{ fill: "rgb(var(--ink))" }} />
-      <path d="M7 12.4l3.2 3.1L17 8.6" fill="none" style={{ stroke: "rgb(var(--state-done))" }} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style={{ stopColor: "rgb(var(--state-review))" }} />
+          <stop offset="1" style={{ stopColor: "rgb(var(--accent))" }} />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="22" height="22" rx="6.5" fill={`url(#${id})`} />
+      <rect x="5" y="6.5" width="14" height="11" rx="2.6" fill="white" fillOpacity="0.32" stroke="white" strokeOpacity="0.7" strokeWidth="0.8" />
+      <rect x="6.6" y="9" width="3" height="2.6" rx="0.8" fill="white" />
+      <rect x="10.5" y="9" width="3" height="2.6" rx="0.8" style={{ fill: "rgb(var(--state-doing))" }} />
+      <rect x="14.4" y="9" width="3" height="2.6" rx="0.8" style={{ fill: "rgb(var(--state-done))" }} />
+      <rect x="6.6" y="12.6" width="3" height="2.6" rx="0.8" fill="white" fillOpacity="0.7" />
+      <rect x="14.4" y="12.6" width="3" height="2.6" rx="0.8" style={{ fill: "rgb(var(--state-done))" }} fillOpacity="0.8" />
     </svg>
   );
 }

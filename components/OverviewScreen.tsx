@@ -8,7 +8,6 @@ import {
   CalendarClock,
   CheckCheck,
   CircleDot,
-  ExternalLink,
   Flag,
   GitCommitHorizontal,
   GitPullRequest,
@@ -20,7 +19,7 @@ import type { TrackedDoc } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import { api, useResource } from "@/lib/client/api";
 import { useShell } from "@/components/shell/ShellContext";
-import { ProjectMark } from "@/components/shell/ProjectSwitcher";
+import { ProjectBanner } from "@/components/ProjectBanner";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
 import { ProjectStory } from "@/components/ProjectStory";
 import { ProofDialog, type ProofAttachment } from "@/components/docs/ProofDialog";
@@ -227,26 +226,7 @@ export function OverviewScreen({
     <div className="rb-overview rb-scroll-thin rb-clear-rail min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 pb-20 pt-8 sm:px-8">
         {/* ----------------------------------------------------- header -- */}
-        <header className="flex flex-wrap items-center gap-4 px-1 pb-2">
-          <ProjectMark repo={repo} size={44} />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-2xl font-semibold tracking-[-0.02em] text-ink">{name || "Your project"}</h1>
-            <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-sm text-muted">
-              <span>{owner}</span>
-              {header.defaultBranch && <span className="font-mono text-xs">{header.defaultBranch}</span>}
-              {header.lastSyncAt && (
-                <span>
-                  Synced <RelativeTime value={header.lastSyncAt} />
-                </span>
-              )}
-            </p>
-          </div>
-          {repo && (
-            <a className="rb-btn rb-glass" href={`https://github.com/${repo}`} target="_blank" rel="noreferrer noopener">
-              GitHub <ExternalLink className="size-3.5" />
-            </a>
-          )}
-        </header>
+        <ProjectBanner repo={repo} owner={owner} name={name} branch={header.defaultBranch} syncedAt={header.lastSyncAt} />
 
         <ProjectStory repo={repo} connected={connected} card />
 
