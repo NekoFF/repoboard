@@ -26,6 +26,7 @@ import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
 import { NewCardDialog } from "@/components/NewCardDialog";
 import { MilestonesDialog } from "@/components/MilestonesDialog";
+import { AutoSyncDialog, SyncChip } from "@/components/SyncControls";
 import { FilterBar, type FilterBarHandle } from "@/components/FilterBar";
 import { Menu, MenuItem, MenuSeparator, Modal, Segmented, Spinner, Tooltip, useToast } from "@/components/ui";
 import { api, ApiError, useResource } from "@/lib/client/api";
@@ -33,6 +34,8 @@ import { applyFilter, parseFilter } from "@/lib/client/filters";
 import { useHotkeys } from "@/lib/client/hotkeys";
 import { setCurrentBoard } from "@/lib/client/current-board";
 import { statusOfColumn } from "@/lib/status";
+import { canManageBoard, canWrite } from "@/lib/roles";
+import { useShell } from "@/components/shell/ShellContext";
 
 const VIEW_KEY = "rb-board-view";
 
@@ -53,9 +56,18 @@ export function BoardScreen({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<BoardView>("board");
   const [syncing, setSyncing] = useState(false);
-  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save">(null);
+  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save" | "autosync">(null);
   const [saving, setSaving] = useState(false);
   const [ids, setIds] = useState<{ path: string; content: string; baseSha: string; count: number } | null>(null);
+
+  // The tool rail's "not in the repository yet" opens the save dialog here.
+  useEffect(() => {
+    if (params.get("save") !== "1") return;
+    setDialog("save");
+    const next = new URLSearchParams(params.toString());
+    next.delete("save");
+    router.replace(next.size ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [params, pathname, router]);
 
   useEffect(() => {
     try {
@@ -103,6 +115,9 @@ export function BoardScreen({
   // What the board says that the markdown file does not say yet.
   // The markdown file belongs to the main board only; board.json holds every board.
   const primary = data.board?.primary ?? true;
+  const { role, viewer } = useShell();
+  const writable = canWrite({ role, login: viewer });
+  const manage = data.board ? canManageBoard({ role, login: viewer }, data.board) : role === "manager";
   const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
   // How far the boards have drifted from the copy stored in the repository.
   const boardState = useResource(api.boardStatus, [], { enabled: connected });
@@ -196,6 +211,7 @@ export function BoardScreen({
 
   const pendingMoves = pending.data?.moves.length ?? 0;
   const boardChanges = boardState.data?.changes.length ?? 0;
+  const autoSync = boardState.data?.autoSync ?? false;
 
   return (
     <>
@@ -221,7 +237,8 @@ export function BoardScreen({
                 </button>
               </Tooltip>
             )}
-            {boardChanges > 0 && (
+            {autoSync && <SyncChip />}
+            {!autoSync && boardChanges > 0 && (
               <Tooltip content="Boards, card order, checklists and links are kept in .repoboard/board.json so teammates see them">
                 <button className="rb-btn rb-btn-sm" onClick={() => setDialog("save")}>
                   <CloudUpload className="size-3.5" /> Save to repo
@@ -242,25 +259,35 @@ export function BoardScreen({
                 </button>
               }
             >
-              <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEditing(true)}>
+              <MenuItem icon={<Pencil className="size-3.5" />} disabled={!manage} onSelect={() => setEditing(true)}>
                 Edit board
               </MenuItem>
-              <MenuItem icon={<Flag className="size-3.5" />} shortcut="M" onSelect={() => setDialog("milestones")}>
+              <MenuItem icon={<Flag className="size-3.5" />} shortcut="M" disabled={!writable} onSelect={() => setDialog("milestones")}>
                 Milestones
               </MenuItem>
-              <MenuItem icon={<Download className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("import")}>
+              <MenuItem icon={<Download className="size-3.5" />} disabled={!connected || !writable} onSelect={() => setDialog("import")}>
                 Import GitHub issues
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={<CloudUpload className="size-3.5" />} disabled={!connected || role !== "manager"} onSelect={() => setDialog("autosync")}>
+                {autoSync ? "Automatic sync is on" : "Sync the boards automatically…"}
               </MenuItem>
               {primary && <MenuSeparator />}
               {primary && <MenuItem icon={<RefreshCw className="size-3.5" />} onSelect={() => router.push("/docs")}>
                 {data.markdownSource ? `Board source: ${data.markdownSource.path}` : "Drive the board from a markdown file"}
               </MenuItem>}
             </Menu>
-            <Tooltip content="New card" shortcut="C">
-              <button className="rb-btn-primary rb-btn-sm ml-1" onClick={() => setDialog("new")}>
-                <Plus className="size-3.5" /> New card
-              </button>
-            </Tooltip>
+            {writable ? (
+              <Tooltip content="New card" shortcut="C">
+                <button className="rb-btn-primary rb-btn-sm ml-1" onClick={() => setDialog("new")}>
+                  <Plus className="size-3.5" /> New card
+                </button>
+              </Tooltip>
+            ) : (
+              <Tooltip content="Your role on GitHub is Read: you can look, not change. An admin can give you Write.">
+                <span className="rb-pill ml-1">View only</span>
+              </Tooltip>
+            )}
           </>
         }
       >
@@ -357,6 +384,18 @@ export function BoardScreen({
             Newer edits from the repository are merged in first, card by card, so nobody else’s work is overwritten.
           </p>
         </Modal>
+      )}
+
+      {dialog === "autosync" && (
+        <AutoSyncDialog
+          on={autoSync}
+          onClose={() => setDialog(null)}
+          onChanged={() => {
+            setDialog(null);
+            boardState.reload();
+            router.refresh();
+          }}
+        />
       )}
 
       {dialog === "import" && data.columns[0] && (

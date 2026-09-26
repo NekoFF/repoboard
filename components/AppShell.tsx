@@ -9,6 +9,7 @@ import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
 import { DesktopBar } from "@/components/shell/DesktopBar";
+import { SyncAgent } from "@/components/shell/SyncAgent";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -17,6 +18,7 @@ import { api, useResource, type AccessProblem, type ProjectInfo } from "@/lib/cl
 import { ConnectScreen } from "@/components/connect/ConnectScreen";
 import { ProjectUnavailable } from "@/components/connect/ProjectUnavailable";
 import { openProject } from "@/lib/client/project";
+import type { Role } from "@/lib/roles";
 import { useHotkeys } from "@/lib/client/hotkeys";
 
 /** Phones and narrow windows: the sidebar becomes a drawer behind a menu button. */
@@ -60,6 +62,8 @@ export function AppShell({
   boards,
   managedByEnvironment,
   problem: serverProblem,
+  sync,
+  role,
   children,
 }: {
   repo: string | null;
@@ -71,6 +75,9 @@ export function AppShell({
   managedByEnvironment: boolean;
   /** Why the open project did not open, when the server could not open it. */
   problem: AccessProblem | null;
+  /** Automatic sync of the boards for the open project. */
+  sync: { autoSync: boolean; syncedAt: number | null };
+  role: Role;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -198,10 +205,11 @@ export function AppShell({
       docs,
       boards,
       managedByEnvironment,
+      role,
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, openPalette, openShortcuts],
+    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, role, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";
@@ -216,6 +224,7 @@ export function AppShell({
               {/* In the desktop app: a strip to drag the window by, where its buttons sit. */}
               <div className="rb-desktop-titlebar" aria-hidden />
               <DesktopBar />
+              <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.
                 children

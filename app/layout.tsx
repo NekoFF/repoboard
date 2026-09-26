@@ -7,9 +7,9 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { THEME_SCRIPT } from "@/components/shell/ThemeProvider";
-import { getAccessState, getViewer } from "@/lib/github/access";
+import { currentWho, getAccessState, getViewer } from "@/lib/github/access";
 import { isEnvironmentConfigured, listProjects } from "@/lib/github/auth-provider";
-import { listBoards, projectLooks, projectSummaries } from "@/lib/board-service";
+import { listBoards, projectLooks, projectSummaries, syncSettings } from "@/lib/board-service";
 import { listDocs } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
@@ -60,8 +60,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         }))
     : [];
   const viewer = verified ? await getViewer() : null;
+  const who = verified ? await currentWho() : null;
   const boards = verified
-    ? listBoards().map((b) => ({ id: b.id, name: b.name, color: b.color, owner: b.owner, primary: b.primary, open: b.open }))
+    ? listBoards(who).map((b) => ({ id: b.id, name: b.name, color: b.color, owner: b.owner, primary: b.primary, open: b.open }))
     : [];
 
   return (
@@ -79,6 +80,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           boards={boards}
           managedByEnvironment={isEnvironmentConfigured()}
           problem={access.state === "failed" ? { slug: access.slug, reason: access.reason, message: access.message } : null}
+          sync={verified ? syncSettings() : { autoSync: false, syncedAt: null }}
+          role={who?.role ?? "manager"}
         >
           {children}
         </AppShell>

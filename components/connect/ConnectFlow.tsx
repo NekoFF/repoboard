@@ -217,7 +217,15 @@ function KeyFlow({
       )}
 
       {listed && !typing && (
-        <RepoList repos={repos!} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />
+        <>
+          <RepoList repos={repos!} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />
+          {repos!.some((r) => !r.private) && (
+            <p className="-mt-3 text-xs leading-relaxed text-faint">
+              Public repositories show up with any key, because anyone may read them. To save checklists and boards to
+              one, the key must include it.
+            </p>
+          )}
+        </>
       )}
 
       {(repos !== null || lookError) &&

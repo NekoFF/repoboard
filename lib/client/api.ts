@@ -47,6 +47,20 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     body = { error: `The server answered with an error (${response.status})` };
   }
 
+  if (response.ok && typeof window !== "undefined" && url.startsWith("/api/board") && init?.method === "POST") {
+    // A change to the boards on this computer: automatic sync picks it up (components/shell/SyncAgent).
+    const action = (() => {
+      try {
+        return JSON.parse(String(init.body ?? "{}")).action as string | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    if (action && !["board-status", "board-pull", "board-push", "sync-now", "sync-settings"].includes(action)) {
+      window.dispatchEvent(new Event("rb-boards-changed"));
+    }
+  }
+
   if (!response.ok) {
     throw new ApiError(
       body.error ?? `Request failed (${response.status})`,
@@ -198,9 +212,26 @@ export const api = {
   board: (boardId?: string | null) =>
     request<BoardData>(`/api/board${boardId ? `?board=${encodeURIComponent(boardId)}` : ""}`),
   boards: () => request<{ boards: BoardSummary[] }>("/api/board?list=1"),
-  createBoard: (fields: { name: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
+  createBoard: (fields: {
+    name: string;
+    description?: string | null;
+    color?: string | null;
+    art?: string | null;
+    owner?: string | null;
+    visibility?: "everyone" | "owner";
+  }) =>
     post<{ id: string }>("/api/board", { action: "board-create", ...fields }),
-  updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
+  updateBoard: (
+    boardId: string,
+    fields: {
+      name?: string;
+      description?: string | null;
+      color?: string | null;
+      art?: string | null;
+      owner?: string | null;
+      visibility?: "everyone" | "owner";
+    },
+  ) =>
     post<{ ok: true }>("/api/board", { action: "board-update", boardId, ...fields }),
   archiveBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-archive", boardId }),
   restoreBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-restore", boardId }),
@@ -268,10 +299,15 @@ export const api = {
     }),
 
   boardStatus: () =>
-    request<{ tracked: boolean; changes: string[]; sha: string | null }>(
+    request<{ tracked: boolean; changes: string[]; sha: string | null; autoSync: boolean; syncedAt: number | null }>(
       "/api/board",
       { method: "POST", body: JSON.stringify({ action: "board-status" }) },
     ),
+
+  /** Boards both ways through the repoboard branch (lib/board-service.ts syncBoards). */
+  syncNow: () => post<{ pulled: number; pushed: number; syncedAt: number }>("/api/board", { action: "sync-now" }),
+  setAutoSync: (autoSync: boolean) =>
+    post<{ pulled: number; pushed: number; syncedAt: number | null }>("/api/board", { action: "sync-settings", autoSync }),
 
   boardPush: () =>
     request<{ commitSha: string; changes: string[] }>("/api/board", {

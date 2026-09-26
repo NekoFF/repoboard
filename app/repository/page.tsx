@@ -11,7 +11,7 @@ export default async function RepositoryPage({ searchParams }: { searchParams: {
   const context = await getPageContext();
   const { header, connected } = context;
   // Cards are looked up on every board, not only the main one.
-  const data = connected ? getProjectData() : context.data;
+  const data = connected ? getProjectData(context.who) : context.data;
   const requested = searchParams.tab as Tab | undefined;
   const initialTab: Tab = requested && TABS.includes(requested) ? requested : "graph";
   return <RepositoryScreen data={data} header={header} connected={connected} initialTab={initialTab} />;

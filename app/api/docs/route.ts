@@ -3,7 +3,8 @@ import { runAs } from "@/lib/actor";
 import { getViewer } from "@/lib/github/access";
 
 import { z } from "zod";
-import { getVerifiedRepository } from "@/lib/github/access";
+import { canWrite } from "@/lib/roles";
+import { currentWho, getVerifiedRepository } from "@/lib/github/access";
 import { GitHubClient } from "@/lib/github/client";
 import {
   commitDocCreate,
@@ -218,6 +219,14 @@ export async function POST(request: Request) {
 
 async function handlePost(request: Request, login: string | null) {
   if (!(await getVerifiedRepository())) return denied();
+  // Read-only people on GitHub (lib/roles.ts) change nothing; GitHub would refuse their commits anyway.
+  const who = await currentWho();
+  if (who && !canWrite(who)) {
+    return NextResponse.json(
+      { error: "You can view this project but not change it. An admin can give you Write access on GitHub.", forbidden: true },
+      { status: 403 },
+    );
+  }
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });

@@ -50,6 +50,8 @@ export interface BoardStateMeta {
   color: string | null;
   art: string | null;
   owner: string | null;
+  /** "owner": shown only to its owner and the project's admins. Absent means everyone. */
+  visibility?: "everyone" | "owner";
   updatedAt: number;
 }
 
@@ -135,7 +137,15 @@ function cleanMilestones(v: unknown): BoardStateMilestone[] {
 function cleanMeta(raw: unknown): BoardStateMeta | null {
   const b = raw as Record<string, unknown>;
   if (!b || typeof b.name !== "string") return null;
-  return { name: b.name, description: text(b.description), color: text(b.color), art: text(b.art), owner: text(b.owner), updatedAt: latest(b.updatedAt) };
+  return {
+    name: b.name,
+    description: text(b.description),
+    color: text(b.color),
+    art: text(b.art),
+    owner: text(b.owner),
+    ...(b.visibility === "owner" ? { visibility: "owner" as const } : {}),
+    updatedAt: latest(b.updatedAt),
+  };
 }
 
 /**
@@ -221,6 +231,25 @@ export function mergeBoardState(
 }
 
 /** A short, readable description of what pushing would change. */
+/**
+ * Two cards are the same card when every field is — whatever order the
+ * fields came in (a card read from the file lists them differently from one
+ * read from the database).
+ */
+export function sameCard(a: BoardStateCard, b: BoardStateCard): boolean {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value as Record<string, unknown>)
+              .sort()
+              .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+          )
+        : value;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
 export function describeChanges(
   local: BoardStateCard[],
   remote: BoardStateCard[],
@@ -241,7 +270,7 @@ export function describeChanges(
       lines.push(`${card.title}: ${there.column} → ${card.column}`);
     } else if (card.title !== there.title) {
       lines.push(`renamed: ${there.title} → ${card.title}`);
-    } else if (JSON.stringify(card) !== JSON.stringify(there)) {
+    } else if (!sameCard(card, there)) {
       lines.push(`edited: ${card.title}`);
     }
   }

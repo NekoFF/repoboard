@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getAuthProvider, getConfiguredRepo, listProjects, tokenFor } from "@/lib/github/auth-provider";
 import { GitHubAccessError, GitHubClient, type AccessReason, type RepoSummary } from "@/lib/github/client";
+import type { Who } from "@/lib/roles";
 
 const VALID_FOR_MS = 60_000;
 const FAILED_FOR_MS = 5_000;
@@ -100,6 +101,13 @@ export async function projectHealth(): Promise<Map<string, ProjectHealth>> {
     }),
   );
   return out;
+}
+
+/** The person using the open project and their role in it (lib/roles.ts), or null when it does not open. */
+export async function currentWho(): Promise<Who | null> {
+  const access = await getAccessState();
+  if (access.state !== "ok") return null;
+  return { login: await getViewer(), role: access.repo.role };
 }
 
 const viewers = new Map<string, string | null>();

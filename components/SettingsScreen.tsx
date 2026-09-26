@@ -11,6 +11,7 @@ import { useTheme } from "@/components/shell/ThemeProvider";
 import { Logo, RelativeTime, Segmented, Spinner, useToast } from "@/components/ui";
 import { api, type ProjectHealth, type ProjectInfo } from "@/lib/client/api";
 import { openProject } from "@/lib/client/project";
+import { ROLE_LABEL } from "@/lib/roles";
 
 function Card({ title, icon, description, children }: { title: string; icon: ReactNode; description?: ReactNode; children: ReactNode }) {
   return (
@@ -131,7 +132,7 @@ export function SettingsScreen({
   const router = useRouter();
   const params = useSearchParams();
   const toast = useToast();
-  const { projects, connected, repo: activeRepo } = useShell();
+  const { projects, connected, repo: activeRepo, role } = useShell();
   const { choice, setChoice } = useTheme();
   const [busy, setBusy] = useState<string | null>(null);
   // Whether each project's key still opens its repository.
@@ -212,6 +213,11 @@ export function SettingsScreen({
                       <p className="flex items-center gap-2 truncate text-base font-medium text-ink">
                         {p.repo}
                         {p.active && !broken && state === "ok" && <span className="rb-pill-ok">Open</span>}
+                        {p.active && connected && (
+                          <span className="rb-pill" title="Your role in this repository on GitHub decides what you can change here">
+                            {ROLE_LABEL[role]}
+                          </span>
+                        )}
                         {p.active && state === undefined && <span className="rb-pill">Open</span>}
                         {broken && <span className="rb-pill-danger">{HEALTH_TEXT[state]}</span>}
                       </p>

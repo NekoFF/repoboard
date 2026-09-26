@@ -42,6 +42,8 @@ const bySha = new Map(commits.map((c) => [c.sha, c]));
 function walk(files = [], dir = ROOT) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
+    // Other branches' files are not in the default branch's tree.
+    if (dir === ROOT && entry.name === ".branches") continue;
     if (entry.isDirectory()) walk(files, full);
     else files.push(path.relative(ROOT, full).split(path.sep).join("/"));
   }
@@ -102,21 +104,29 @@ function readBody(req) {
   });
 }
 
-function addCommit(message, files) {
-  const main = META.branches.find((b) => b.name === META.defaultBranch);
+function addCommit(message, files, branchName = META.defaultBranch) {
+  const branch = META.branches.find((b) => b.name === branchName) ?? META.branches.find((b) => b.name === META.defaultBranch);
   const commit = {
     sha: fakeSha(),
     message,
     author: META.viewer,
-    parents: [main.head],
+    parents: [branch.head],
     date: new Date().toISOString(),
     files,
   };
   commits.unshift(commit);
   bySha.set(commit.sha, commit);
-  main.head = commit.sha;
+  branch.head = commit.sha;
   return commit;
 }
+
+/**
+ * Files on a branch other than the default one live in an overlay: what the
+ * branch changed, over what the default branch has. Enough for RepoBoard's
+ * own sync branch (repoboard), which only ever touches .repoboard/board.json.
+ */
+const overlay = (branchName, file) =>
+  branchName && branchName !== META.defaultBranch ? path.join(ROOT, ".branches", branchName, file) : null;
 
 let polls = 0;
 
@@ -171,7 +181,9 @@ const server = http.createServer(async (req, res) => {
     return notFound(res);
   }
 
-  if (p === "/user") return send(res, 200, { login: META.viewer });
+  // People, for testing roles: "member-sam_…" is sam with Write, "viewer-kim_…" is kim with Read.
+  const person = key.match(/^(admin|member|viewer)-([a-z]+)_/);
+  if (p === "/user") return send(res, 200, { login: person?.[2] ?? META.viewer });
   if (p === "/user/repos") {
     return send(res, 200, [
       {
@@ -197,6 +209,12 @@ const server = http.createServer(async (req, res) => {
       private: false,
       html_url: `https://github.com/${OWNER}/${REPO}`,
       pushed_at: commits[0].date,
+      permissions:
+        person?.[1] === "viewer"
+          ? { admin: false, maintain: false, push: false, triage: false, pull: true }
+          : person?.[1] === "member"
+            ? { admin: false, maintain: false, push: true, triage: true, pull: true }
+            : { admin: true, maintain: true, push: true, triage: true, pull: true },
     });
   }
 
@@ -206,9 +224,12 @@ const server = http.createServer(async (req, res) => {
 
   if (rest.startsWith("/contents/")) {
     const file = rest.slice("/contents/".length);
-    const full = path.join(ROOT, file);
+    let full = path.join(ROOT, file);
     if (!full.startsWith(ROOT)) return notFound(res);
     if (req.method === "GET") {
+      const ref = url.searchParams.get("ref");
+      const layered = overlay(ref, file);
+      if (layered && fs.existsSync(layered)) full = layered;
       if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) return notFound(res);
       // Bytes, not text: screenshots and PDFs live here too.
       const content = fs.readFileSync(full);
@@ -222,6 +243,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "PUT") {
       const body = await readBody(req);
+      const layered = overlay(body.branch, file);
+      if (layered) {
+        if (!META.branches.some((b) => b.name === body.branch)) return notFound(res);
+        full = fs.existsSync(layered) ? layered : full;
+      }
       const exists = fs.existsSync(full);
       const current = exists ? blobSha(fs.readFileSync(full)) : null;
       if (exists && body.sha !== current) {
@@ -230,12 +256,21 @@ const server = http.createServer(async (req, res) => {
       if (!exists && body.sha) return send(res, 422, { message: "sha provided for a new file" });
       if (exists && !body.sha) return send(res, 422, { message: '"sha" wasn\'t supplied.' });
       const content = Buffer.from(body.content, "base64");
-      fs.mkdirSync(path.dirname(full), { recursive: true });
-      fs.writeFileSync(full, content);
-      const commit = addCommit(body.message, [file]);
+      const target = layered ?? full;
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content);
+      const commit = addCommit(body.message, [file], body.branch);
       console.log(`[demo-github] commit ${commit.sha.slice(0, 7)} ${body.message}`);
       return send(res, exists ? 200 : 201, { commit: { sha: commit.sha }, content: { sha: blobSha(content), path: file } });
     }
+  }
+
+  if (rest === "/git/refs" && req.method === "POST") {
+    const body = await readBody(req);
+    const name = String(body.ref ?? "").replace(/^refs\/heads\//, "");
+    if (META.branches.some((b) => b.name === name)) return send(res, 422, { message: "Reference already exists" });
+    META.branches.push({ name, head: body.sha });
+    return send(res, 201, { ref: `refs/heads/${name}`, object: { sha: body.sha } });
   }
 
   // Multi-file commits: ref → commit → tree → new commit → move ref.

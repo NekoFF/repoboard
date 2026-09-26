@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { runAs } from "@/lib/actor";
-import { getViewer } from "@/lib/github/access";
+import { currentWho, getViewer } from "@/lib/github/access";
 
 import { z } from "zod";
 import type { ChecklistItem } from "@/lib/checklist";
 import { GitHubClient } from "@/lib/github/client";
 import { getVerifiedRepository } from "@/lib/github/access";
+import { canCreateBoard, canManageBoard, canSeeBoard, canWrite } from "@/lib/roles";
 import {
   getProjectData,
   restoreBoard,
@@ -32,6 +33,9 @@ import {
   moveTaskLocally,
   unlinkTask,
   updateTask,
+  setAutoSync,
+  syncBoards,
+  listArchivedBoards,
 } from "@/lib/board-service";
 
 export const dynamic = "force-dynamic";
@@ -42,11 +46,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
   }
   const url = new URL(request.url);
-  if (url.searchParams.get("list")) return NextResponse.json({ boards: listBoards() });
-  if (url.searchParams.get("all")) return NextResponse.json(getProjectData());
+  const who = await currentWho();
+  if (url.searchParams.get("list")) return NextResponse.json({ boards: listBoards(who) });
+  if (url.searchParams.get("all")) return NextResponse.json(getProjectData(who));
   const boardId = url.searchParams.get("board");
   const data = getBoardData(boardId);
   if (boardId && !data.boardId) return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
+  if (data.board && !canSeeBoard(who, data.board)) return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
   return NextResponse.json(data);
 }
 
@@ -56,6 +62,7 @@ const boardFields = {
   color: z.string().max(20).nullish(),
   art: z.string().max(30).nullish(),
   owner: z.string().max(100).nullish(),
+  visibility: z.enum(["everyone", "owner"]).optional(),
 };
 const boardSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("board-create"), ...boardFields }),
@@ -171,6 +178,8 @@ const commentSchema = z.object({
 const boardStatusSchema = z.object({ action: z.literal("board-status") });
 const boardPullSchema = z.object({ action: z.literal("board-pull") });
 const boardPushSchema = z.object({ action: z.literal("board-push") });
+const syncNowSchema = z.object({ action: z.literal("sync-now") });
+const syncSettingsSchema = z.object({ action: z.literal("sync-settings"), autoSync: z.boolean() });
 
 const importSchema = z.object({
   action: z.literal("import-issues"),
@@ -214,6 +223,8 @@ const bodySchema = z.discriminatedUnion("action", [
   boardStatusSchema,
   boardPullSchema,
   boardPushSchema,
+  syncNowSchema,
+  syncSettingsSchema,
 ]);
 
 /** Every change made through this route is attributed to the token's owner. */
@@ -227,6 +238,16 @@ async function handlePost(request: Request) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
   }
   const raw = await request.json().catch(() => null);
+  const who = (await currentWho()) ?? { login: null, role: "viewer" as const };
+
+  // Roles come from GitHub (lib/roles.ts): read-only people change nothing here.
+  const readOnly = ["board-status", "board-pull", "sync-now"];
+  if (!canWrite(who) && !(typeof raw?.action === "string" && readOnly.includes(raw.action))) {
+    return NextResponse.json(
+      { error: "You can view this project but not change it. An admin can give you Write access on GitHub.", forbidden: true },
+      { status: 403 },
+    );
+  }
 
   // Managing the boards themselves.
   if (typeof raw?.action === "string" && raw.action.startsWith("board-") && !["board-status", "board-pull", "board-push"].includes(raw.action)) {
@@ -234,7 +255,20 @@ async function handlePost(request: Request) {
     if (!managed.success) return NextResponse.json({ error: managed.error.issues[0].message }, { status: 400 });
     try {
       const b = managed.data;
-      if (b.action === "board-create") return NextResponse.json({ id: createBoard(b) });
+      const refuse = (error: string) => NextResponse.json({ error, forbidden: true }, { status: 403 });
+      if (b.action === "board-create") {
+        // A member makes boards for themselves; admins make them for anyone.
+        const owner = who.role === "member" ? (b.owner ?? who.login) : (b.owner ?? null);
+        if (!canCreateBoard(who, owner ?? null)) return refuse("Only a project admin can make boards for other people or areas.");
+        return NextResponse.json({ id: createBoard({ ...b, owner }) });
+      }
+      const target = listBoards().find((x) => x.id === b.boardId) ?? listArchivedBoards().find((x) => x.id === b.boardId);
+      if (target && !canManageBoard(who, { owner: target.owner, primary: "primary" in target ? target.primary : false })) {
+        return refuse("Only the board's owner or a project admin can change it.");
+      }
+      if (b.action === "board-update" && b.owner !== undefined && who.role !== "manager" && (b.owner ?? "").toLowerCase() !== (who.login ?? "").toLowerCase()) {
+        return refuse("Only a project admin can give a board to someone else.");
+      }
       if (b.action === "board-update") {
         updateBoard(b.boardId, b);
         return NextResponse.json({ ok: true });
@@ -261,7 +295,7 @@ async function handlePost(request: Request) {
   // Every card action names the board it is about; without one, the primary board.
   const requestedBoard = typeof raw?.boardId === "string" ? raw.boardId : null;
   const data = getBoardData(requestedBoard);
-  if (requestedBoard && !data.boardId) {
+  if ((requestedBoard && !data.boardId) || (data.board && !canSeeBoard(who, data.board))) {
     return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
   }
   if (!data.repository || !data.boardId) {
@@ -384,6 +418,14 @@ async function handlePost(request: Request) {
       return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
     case "board-push":
       return NextResponse.json(await pushBoardState());
+    case "sync-now":
+      return NextResponse.json(await syncBoards());
+    case "sync-settings":
+      if (who.role !== "manager") {
+        return NextResponse.json({ error: "Only a project admin can turn automatic sync on or off.", forbidden: true }, { status: 403 });
+      }
+      setAutoSync(body.autoSync);
+      return NextResponse.json(body.autoSync ? await syncBoards() : { pulled: 0, pushed: 0, syncedAt: null });
     case "item-done":
       return NextResponse.json({ checklist: setItemDone(body.taskId, body.itemId, body.done) });
     case "restore": {
