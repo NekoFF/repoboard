@@ -42,7 +42,9 @@ console.log(`RepoBoard desktop: server for Electron ${electronVersion}, ${platfo
 // 1. The build.
 run("npx", ["next", "build"], {
   cwd: root,
-  env: { ...process.env, NEXT_OUTPUT: "standalone", NEXT_DIST_DIR: distDir, NEXT_TELEMETRY_DISABLED: "1" },
+  // The build's workers each open the database module; on a machine with no
+  // database yet they would race to create it. An in-memory one each is enough.
+  env: { ...process.env, NEXT_OUTPUT: "standalone", NEXT_DIST_DIR: distDir, NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: ":memory:" },
 });
 
 // 2. The server folder.

@@ -41,7 +41,7 @@ const sqlite = openDatabase(dbPath);
 // The app, the MCP server and a build's workers may open the file at once:
 // wait for a lock instead of failing on it.
 sqlite.pragma("busy_timeout = 5000");
-sqlite.pragma("journal_mode = WAL");
+if (dbPath !== ":memory:") sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
