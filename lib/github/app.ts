@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
  */
 
 /** The published RepoBoard app. Empty until it is registered; the environment can set another. */
-const BUILT_IN = { clientId: "", slug: "" };
+const BUILT_IN = { clientId: "Iv23liMr3f0jyrphDzbx", slug: "repoboard-by-nekoff" };
 
 export function githubApp(): { clientId: string; slug: string } | null {
   const clientId = process.env.REPOBOARD_GITHUB_APP_CLIENT_ID || BUILT_IN.clientId;

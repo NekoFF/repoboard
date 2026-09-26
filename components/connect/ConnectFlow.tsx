@@ -349,14 +349,18 @@ function SignInFlow({
   replacing,
   connectedRepos,
   onConnected,
+  onEngaged,
 }: {
   status: { login: string | null; installUrl: string | null };
   replacing?: string | null;
   connectedRepos: string[];
   onConnected: (opened: string) => void;
+  /** Whether a sign-in is under way or done, so the other way can step aside. */
+  onEngaged: (engaged: boolean) => void;
 }) {
   const [login, setLogin] = useState(status.login);
   const [flow, setFlow] = useState<SignIn | null>(null);
+  useEffect(() => onEngaged(Boolean(login || flow)), [login, flow, onEngaged]);
   const [copied, setCopied] = useState(false);
   const [repos, setRepos] = useState<AppRepo[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -437,10 +441,8 @@ function SignInFlow({
     setProblem(null);
     api.githubSignIn
       .start()
-      .then((f) => {
-        setFlow(f);
-        window.open(f.verificationUri, "_blank", "noopener,noreferrer");
-      })
+      // GitHub asks for the code first thing, so show it before sending the person there.
+      .then((f) => setFlow(f))
       .catch((err) => setProblem(problemOf(err)))
       .finally(() => setBusy(null));
   };
@@ -463,7 +465,7 @@ function SignInFlow({
   if (flow) {
     return (
       <div className="rb-enter flex flex-col items-center gap-4 text-center">
-        <p className="text-sm text-muted">Enter this code on GitHub and press Authorize.</p>
+        <p className="text-sm text-muted">Your code for GitHub:</p>
         <button
           type="button"
           className="rounded-2xl bg-ink/[0.05] px-6 py-4 font-mono text-[34px] font-semibold tracking-[0.18em] text-ink shadow-[inset_0_0_0_1px_rgb(var(--ink)/0.08)] hover:bg-ink/[0.08]"
@@ -478,9 +480,20 @@ function SignInFlow({
           {flow.userCode}
         </button>
         <p className="h-4 text-xs text-faint">{copied ? "Copied" : "Click the code to copy it"}</p>
-        <a className="rb-btn h-10 rounded-xl px-4" href={flow.verificationUri} target="_blank" rel="noreferrer noopener">
-          Open GitHub again <ExternalLink className="size-3.5" />
+        <a
+          className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md"
+          href={flow.verificationUri}
+          target="_blank"
+          rel="noreferrer noopener"
+          onClick={() => {
+            void navigator.clipboard?.writeText(flow.userCode).then(() => setCopied(true));
+          }}
+        >
+          Copy the code and open GitHub <ExternalLink className="size-3.5" />
         </a>
+        <p className="text-xs leading-relaxed text-faint">
+          Paste the code there, press <em>Continue</em> and then <em>Authorize</em>. Come back here — it goes on by itself.
+        </p>
         <p className="flex items-center gap-2 text-sm text-muted">
           <Spinner /> Waiting for GitHub…
         </p>
@@ -597,6 +610,7 @@ export function ConnectFlow({
 }) {
   const [status, setStatus] = useState<{ available: boolean; login: string | null; installUrl: string | null } | null>(null);
   const [withKey, setWithKey] = useState(false);
+  const [engaged, setEngaged] = useState(false);
 
   useEffect(() => {
     api.githubSignIn
@@ -626,15 +640,25 @@ export function ConnectFlow({
   }
   return (
     <div className="flex flex-col gap-5">
-      <SignInFlow status={status} replacing={replacing} connectedRepos={connectedRepos} onConnected={onConnected} />
-      <div className="flex items-center gap-3 text-xs text-faint">
-        <span className="h-px flex-1 bg-border" />
-        or
-        <span className="h-px flex-1 bg-border" />
-      </div>
-      <button type="button" className="rb-btn h-10 w-full justify-center rounded-xl" onClick={() => setWithKey(true)}>
-        Use a key instead
-      </button>
+      <SignInFlow
+        status={status}
+        replacing={replacing}
+        connectedRepos={connectedRepos}
+        onConnected={onConnected}
+        onEngaged={setEngaged}
+      />
+      {!engaged && (
+        <>
+          <div className="flex items-center gap-3 text-xs text-faint">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <button type="button" className="rb-btn h-10 w-full justify-center rounded-xl" onClick={() => setWithKey(true)}>
+            Use a key instead
+          </button>
+        </>
+      )}
       <p className="text-xs leading-relaxed text-muted">
         Whatever you choose, it stays on this computer, readable only by your user account. RepoBoard talks to GitHub and
         nothing else — there is no RepoBoard server.

@@ -239,7 +239,7 @@ export function SettingsScreen({
                     </div>
                     {broken && !managedByEnvironment && (
                       <Link href={`/connect?repo=${encodeURIComponent(p.repo)}`} className="rb-btn-primary rb-btn-sm">
-                        <KeyRound className="size-3.5" /> New key
+                        <KeyRound className="size-3.5" /> {p.via === "github" ? "Sign in again" : "New key"}
                       </Link>
                     )}
                     {!p.active && !broken && !managedByEnvironment && (

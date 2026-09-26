@@ -81,6 +81,8 @@ export interface ProjectInfo {
   open?: number;
   done?: number;
   lastSyncAt?: number | null;
+  /** Pasted key, or signing in with GitHub. */
+  via?: "key" | "github";
   /** Its cover (components/ProjectArt); null picks one from the name. */
   art?: string | null;
   hue?: number | null;

@@ -107,7 +107,8 @@ export function ProjectUnavailable({ problem, projects }: { problem: AccessProbl
       <div className="mt-6 flex flex-wrap gap-2">
         {problem && !offline && slug && (
           <Link href={`/connect?repo=${encodeURIComponent(slug)}`} className="rb-btn-primary h-10 rounded-xl px-4">
-            <KeyRound className="size-4" /> Give it a new key
+            <KeyRound className="size-4" />{" "}
+            {projects.find((p) => p.repo.toLowerCase() === slug.toLowerCase())?.via === "github" ? "Sign in with GitHub again" : "Give it a new key"}
           </Link>
         )}
         <button

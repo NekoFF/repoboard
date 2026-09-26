@@ -155,7 +155,14 @@ paste it, pick repositories from the ones it opens) and **Project
 unavailable** (the open project's key ran out, lost access, or GitHub is out
 of reach — `getAccessState` in `lib/github/access.ts` says which; it always
 offers a new key, another project and trying again). Settings shows each
-project's health (`/api/repo?health=1`). `app/error.tsx`,
+project's health (`/api/repo?health=1`). **Sign in with GitHub** comes
+first when the app is registered (`lib/github/app.ts`: the RepoBoard GitHub
+App, `repoboard-by-nekoff`, device flow, no client secret, tokens that do
+not expire): the person enters a short code on github.com and picks from
+the repositories the app is installed on that they may open — including
+ones where they are only a collaborator, which fine-grained keys cannot
+reach. The token is kept like a key (`account` in credentials.json);
+projects added this way have `via: "github"`. `app/api/auth/github`. `app/error.tsx`,
 `app/global-error.tsx` and `app/not-found.tsx` always offer a way on. The Inbox (`components/InboxScreen.tsx`) shows what
 others did since the person last looked (a timestamp in localStorage) and
 suggestions from GitHub, applied through `useCommitMove`.
