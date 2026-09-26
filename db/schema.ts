@@ -42,6 +42,12 @@ export const boards = sqliteTable("boards", {
   art: text("art"),
   /** A person the board belongs to, for per-person boards. */
   owner: text("owner"),
+  /**
+   * Who sees it in RepoBoard: everyone in the project, or only its owner and
+   * the project's admins (lib/roles.ts canSeeBoard). The file on GitHub is
+   * readable by anyone with access to the repository either way.
+   */
+  visibility: text("visibility", { enum: ["everyone", "owner"] }).notNull().default("everyone"),
   position: integer("position").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }),
   /** Last change to the board itself (name, colour, picture, owner, archive), for board.json merges. */

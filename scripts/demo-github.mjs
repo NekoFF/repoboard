@@ -142,7 +142,9 @@ const server = http.createServer(async (req, res) => {
     return notFound(res);
   }
 
-  if (p === "/user") return send(res, 200, { login: META.viewer });
+  // People, for testing roles: "member-sam_…" is sam with Write, "viewer-kim_…" is kim with Read.
+  const person = key.match(/^(admin|member|viewer)-([a-z]+)_/);
+  if (p === "/user") return send(res, 200, { login: person?.[2] ?? META.viewer });
   if (p === "/user/repos") {
     return send(res, 200, [
       {
@@ -168,6 +170,12 @@ const server = http.createServer(async (req, res) => {
       private: false,
       html_url: `https://github.com/${OWNER}/${REPO}`,
       pushed_at: commits[0].date,
+      permissions:
+        person?.[1] === "viewer"
+          ? { admin: false, maintain: false, push: false, triage: false, pull: true }
+          : person?.[1] === "member"
+            ? { admin: false, maintain: false, push: true, triage: true, pull: true }
+            : { admin: true, maintain: true, push: true, triage: true, pull: true },
     });
   }
 

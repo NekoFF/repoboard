@@ -18,6 +18,7 @@ import {
   tasks,
   workspaces,
 } from "@/db/schema";
+import { canSeeBoard, type Who } from "@/lib/roles";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
 import { locate, normalise, progress, setDone, type ChecklistItem } from "@/lib/checklist";
@@ -120,6 +121,8 @@ export interface BoardInfo {
   /** The tile's picture (components/BoardArt.tsx); null picks one from the id. */
   art: string | null;
   owner: string | null;
+  /** "owner": only its owner and the project's admins see it (lib/roles.ts). */
+  visibility: "everyone" | "owner";
   /** The primary board follows the markdown file and board.json. */
   primary: boolean;
 }
@@ -314,6 +317,7 @@ function boardInfo(board: typeof boards.$inferSelect): BoardInfo {
     color: board.color ?? null,
     art: board.art ?? null,
     owner: board.owner ?? null,
+    visibility: board.visibility ?? "everyone",
     primary: board.id === primaryBoardId(board.repositoryId),
   };
 }
@@ -454,11 +458,13 @@ export function getBoardData(boardId?: string | null): BoardData {
  * Activity, the Code screen) and must find them on any board. Writes still
  * go to a board by its own id.
  */
-export function getProjectData(): BoardData {
+/** Every board's cards at once — the ones `who` may see, when given. */
+export function getProjectData(who?: Who | null): BoardData {
   const main = getBoardData();
   if (!main.repository) return main;
   const others = repositoryBoards(main.repository.id)
     .filter((b) => b.id !== main.boardId)
+    .filter((b) => who === undefined || canSeeBoard(who, { owner: b.owner, visibility: b.visibility }))
     .map((b) => getBoardData(b.id));
   return {
     ...main,
@@ -496,10 +502,14 @@ function nextCardNumber(boardId: string): number {
 
 /* ---------------------------------------------------------------- boards -- */
 
-export function listBoards(): BoardSummary[] {
+/** The project's boards — the ones `who` may see, when given. */
+export function listBoards(who?: Who | null): BoardSummary[] {
   const repository = activeRepository();
   if (!repository) return [];
-  return repositoryBoards(repository.id).map((board) => {
+  const visible = repositoryBoards(repository.id).filter(
+    (b) => who === undefined || canSeeBoard(who, { owner: b.owner, visibility: b.visibility }),
+  );
+  return visible.map((board) => {
     const done = db
       .select({ id: columns.id, name: columns.name })
       .from(columns)
@@ -537,6 +547,7 @@ export function createBoard(args: {
   color?: string | null;
   art?: string | null;
   owner?: string | null;
+  visibility?: "everyone" | "owner";
 }): string {
   const repository = activeRepository();
   if (!repository) throw new Error("Connect a repository first");
@@ -551,6 +562,8 @@ export function createBoard(args: {
       color: args.color ?? null,
       art: args.art ?? null,
       owner: args.owner ?? null,
+      // Only a person's board can be kept to them; an area board is everyone's.
+      visibility: args.owner && args.visibility === "owner" ? "owner" : "everyone",
       position,
       createdAt: now(),
       updatedAt: now(),
@@ -574,13 +587,23 @@ function ownBoard(boardId: string) {
 
 export function updateBoard(
   boardId: string,
-  patch: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null },
+  patch: {
+    name?: string;
+    description?: string | null;
+    color?: string | null;
+    art?: string | null;
+    owner?: string | null;
+    visibility?: "everyone" | "owner";
+  },
 ): void {
   const { repository, board } = ownBoard(boardId);
   const values: Record<string, unknown> = {};
-  for (const key of ["name", "description", "color", "art", "owner"] as const) {
+  for (const key of ["name", "description", "color", "art", "owner", "visibility"] as const) {
     if (patch[key] !== undefined) values[key] = patch[key];
   }
+  // A board without an owner is an area board: everyone's.
+  const owner = patch.owner !== undefined ? patch.owner : board.owner;
+  if (!owner) values.visibility = "everyone";
   if (Object.keys(values).length === 0) return;
   db.update(boards).set({ ...values, updatedAt: now() }).where(eq(boards.id, boardId)).run();
   if (patch.name && patch.name !== board.name) {
@@ -1374,6 +1397,7 @@ function metaOf(board: typeof boards.$inferSelect): BoardStateMeta {
     color: board.color ?? null,
     art: board.art ?? null,
     owner: board.owner ?? null,
+    ...(board.visibility === "owner" ? { visibility: "owner" as const } : {}),
     // A board nobody has edited is 0, so the name in the repository wins.
     updatedAt: board.updatedAt?.getTime() ?? 0,
   };
@@ -1541,7 +1565,12 @@ function applyBoardFileNow(repositoryId: string, state: BoardState): void {
   const mainId = primaryBoardId(repositoryId);
   const main = db.select().from(boards).where(eq(boards.id, mainId)).get();
   const sameMeta = (a: BoardStateMeta, b: BoardStateMeta) =>
-    a.name === b.name && a.description === b.description && a.color === b.color && a.art === b.art && a.owner === b.owner;
+    a.name === b.name &&
+    a.description === b.description &&
+    a.color === b.color &&
+    a.art === b.art &&
+    a.owner === b.owner &&
+    (a.visibility ?? "everyone") === (b.visibility ?? "everyone");
   if (main && state.board && state.board.updatedAt >= metaOf(main).updatedAt && !sameMeta(state.board, metaOf(main))) {
     const { name, description, color, art, owner, updatedAt } = state.board;
     db.update(boards).set({ name, description, color, art, owner, updatedAt: new Date(updatedAt) }).where(eq(boards.id, mainId)).run();
@@ -1560,6 +1589,7 @@ function applyBoardFileNow(repositoryId: string, state: BoardState): void {
       color: incoming.color,
       art: incoming.art,
       owner: incoming.owner,
+      visibility: incoming.visibility ?? ("everyone" as const),
       position: incoming.position,
       updatedAt: new Date(incoming.updatedAt),
       archivedAt: incoming.archivedAt ? new Date(incoming.archivedAt) : null,

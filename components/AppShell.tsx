@@ -18,6 +18,7 @@ import { api, useResource, type AccessProblem, type ProjectInfo } from "@/lib/cl
 import { ConnectScreen } from "@/components/connect/ConnectScreen";
 import { ProjectUnavailable } from "@/components/connect/ProjectUnavailable";
 import { openProject } from "@/lib/client/project";
+import type { Role } from "@/lib/roles";
 import { useHotkeys } from "@/lib/client/hotkeys";
 
 /** Phones and narrow windows: the sidebar becomes a drawer behind a menu button. */
@@ -62,6 +63,7 @@ export function AppShell({
   managedByEnvironment,
   problem: serverProblem,
   sync,
+  role,
   children,
 }: {
   repo: string | null;
@@ -75,6 +77,7 @@ export function AppShell({
   problem: AccessProblem | null;
   /** Automatic sync of the boards for the open project. */
   sync: { autoSync: boolean; syncedAt: number | null };
+  role: Role;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -202,10 +205,11 @@ export function AppShell({
       docs,
       boards,
       managedByEnvironment,
+      role,
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, openPalette, openShortcuts],
+    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, role, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";

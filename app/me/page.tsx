@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "My work" };
 
 export default async function MyWorkPage() {
-  const { connected } = await getPageContext();
-  const boards = connected ? listBoards().map((info) => ({ info, data: getBoardData(info.id) })) : [];
+  const { connected, who } = await getPageContext();
+  const boards = connected ? listBoards(who).map((info) => ({ info, data: getBoardData(info.id) })) : [];
   return <MyWorkScreen boards={boards} docs={connected ? listDocs() : []} />;
 }

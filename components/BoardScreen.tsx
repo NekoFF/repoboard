@@ -34,6 +34,8 @@ import { applyFilter, parseFilter } from "@/lib/client/filters";
 import { useHotkeys } from "@/lib/client/hotkeys";
 import { setCurrentBoard } from "@/lib/client/current-board";
 import { statusOfColumn } from "@/lib/status";
+import { canManageBoard, canWrite } from "@/lib/roles";
+import { useShell } from "@/components/shell/ShellContext";
 
 const VIEW_KEY = "rb-board-view";
 
@@ -113,6 +115,9 @@ export function BoardScreen({
   // What the board says that the markdown file does not say yet.
   // The markdown file belongs to the main board only; board.json holds every board.
   const primary = data.board?.primary ?? true;
+  const { role, viewer } = useShell();
+  const writable = canWrite({ role, login: viewer });
+  const manage = data.board ? canManageBoard({ role, login: viewer }, data.board) : role === "manager";
   const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
   // How far the boards have drifted from the copy stored in the repository.
   const boardState = useResource(api.boardStatus, [], { enabled: connected });
@@ -254,17 +259,17 @@ export function BoardScreen({
                 </button>
               }
             >
-              <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEditing(true)}>
+              <MenuItem icon={<Pencil className="size-3.5" />} disabled={!manage} onSelect={() => setEditing(true)}>
                 Edit board
               </MenuItem>
-              <MenuItem icon={<Flag className="size-3.5" />} shortcut="M" onSelect={() => setDialog("milestones")}>
+              <MenuItem icon={<Flag className="size-3.5" />} shortcut="M" disabled={!writable} onSelect={() => setDialog("milestones")}>
                 Milestones
               </MenuItem>
-              <MenuItem icon={<Download className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("import")}>
+              <MenuItem icon={<Download className="size-3.5" />} disabled={!connected || !writable} onSelect={() => setDialog("import")}>
                 Import GitHub issues
               </MenuItem>
               <MenuSeparator />
-              <MenuItem icon={<CloudUpload className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("autosync")}>
+              <MenuItem icon={<CloudUpload className="size-3.5" />} disabled={!connected || role !== "manager"} onSelect={() => setDialog("autosync")}>
                 {autoSync ? "Automatic sync is on" : "Sync the boards automatically…"}
               </MenuItem>
               {primary && <MenuSeparator />}
@@ -272,11 +277,17 @@ export function BoardScreen({
                 {data.markdownSource ? `Board source: ${data.markdownSource.path}` : "Drive the board from a markdown file"}
               </MenuItem>}
             </Menu>
-            <Tooltip content="New card" shortcut="C">
-              <button className="rb-btn-primary rb-btn-sm ml-1" onClick={() => setDialog("new")}>
-                <Plus className="size-3.5" /> New card
-              </button>
-            </Tooltip>
+            {writable ? (
+              <Tooltip content="New card" shortcut="C">
+                <button className="rb-btn-primary rb-btn-sm ml-1" onClick={() => setDialog("new")}>
+                  <Plus className="size-3.5" /> New card
+                </button>
+              </Tooltip>
+            ) : (
+              <Tooltip content="Your role on GitHub is Read: you can look, not change. An admin can give you Write.">
+                <span className="rb-pill ml-1">View only</span>
+              </Tooltip>
+            )}
           </>
         }
       >

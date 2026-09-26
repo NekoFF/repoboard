@@ -102,6 +102,16 @@ Project (a GitHub repository)
    (DNS rebinding) and writes that are not same-origin JSON with
    `x-repoboard: 1`, which `lib/client/api.ts` sends. Anything that posts to
    the API (scripts/demo.mjs) must send it too.
+11. **Roles come from GitHub** (`lib/roles.ts`): Admin/Maintain → manager,
+   Write → member, Triage/Read → viewer, from the repository's
+   `permissions` for the token (`RepoSummary.role`, `currentWho()`). The
+   routes enforce them — viewers change nothing (board and docs POSTs answer
+   403), members make boards only for themselves and change only their own,
+   only managers turn automatic sync on — and screens hide what the role
+   cannot do (`useShell().role`). A board with `visibility: "owner"` is
+   listed only for its owner and managers (`listBoards(who)`,
+   `getProjectData(who)`, `getPageContext`); say plainly that its file on
+   GitHub is still readable by anyone with access to the repository.
 
 ## Where things live
 

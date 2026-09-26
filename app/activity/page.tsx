@@ -8,7 +8,7 @@ export default async function ActivityPage() {
   const context = await getPageContext();
   const { header, connected } = context;
   // Cards are looked up on every board, not only the main one.
-  const data = connected ? getProjectData() : context.data;
+  const data = connected ? getProjectData(context.who) : context.data;
 
   return (
     <ActivityScreen

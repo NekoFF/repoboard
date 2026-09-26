@@ -1,5 +1,6 @@
 import { Octokit } from "octokit";
 import { getAuthProvider, getConfiguredRepo } from "./auth-provider";
+import { roleOf, type Role } from "@/lib/roles";
 
 export class GitHubNotConfiguredError extends Error {
   constructor() {
@@ -31,6 +32,8 @@ export interface RepoSummary {
   visibility: "public" | "private";
   htmlUrl: string;
   pushedAt: string | null;
+  /** What the person behind the token may do here, from their role on GitHub (lib/roles.ts). */
+  role: Role;
 }
 
 export interface AccessibleRepo {
@@ -227,6 +230,7 @@ export class GitHubClient {
       visibility: data.private ? "private" : "public",
       htmlUrl: data.html_url,
       pushedAt: data.pushed_at ?? null,
+      role: roleOf(data.permissions),
     };
   }
 
@@ -281,6 +285,7 @@ export class GitHubClient {
       visibility: data.private ? "private" : "public",
       htmlUrl: data.html_url,
       pushedAt: data.pushed_at ?? null,
+      role: roleOf(data.permissions),
     };
   }
 

@@ -4,10 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const access = vi.hoisted(() => ({ valid: true }));
+const access = vi.hoisted(() => ({ valid: true, role: "manager" as "manager" | "member" | "viewer" }));
 vi.mock("@/lib/github/access", () => ({
-  getVerifiedRepository: async () => access.valid ? { owner: "acme", name: "beta" } : null,
+  getVerifiedRepository: async () => access.valid ? { owner: "acme", name: "beta", role: access.role } : null,
   getViewer: async () => (access.valid ? "tester" : null),
+  currentWho: async () => (access.valid ? { login: "tester", role: access.role } : null),
 }));
 
 const databaseFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "repoboard-scope-")), "board.db");
@@ -130,5 +131,44 @@ describe("several boards in one project", () => {
     expect(() => service.archiveBoard(primary.boardId!)).toThrow();
     service.archiveBoard(designId);
     expect(service.listBoards().some((b) => b.id === designId)).toBe(false);
+  });
+});
+
+describe("roles from GitHub", () => {
+  const post = (body: Record<string, unknown>) =>
+    boardRoute.POST(new Request("http://localhost/api/board", { method: "POST", body: JSON.stringify(body) }));
+
+  it("lets a member make boards for themselves only, and change only those", async () => {
+    access.role = "member";
+    try {
+      expect((await post({ action: "board-create", name: "For Max", owner: "max" })).status).toBe(403);
+      expect((await post({ action: "board-create", name: "Design" })).status).toBe(200); // becomes their own
+      const own = service.listBoards().find((b) => b.name === "Design" && b.owner === "tester");
+      expect(own).toBeTruthy();
+      const other = service.createBoard({ name: "Max's", owner: "max" });
+      expect((await post({ action: "board-update", boardId: other, name: "Mine now" })).status).toBe(403);
+      expect((await post({ action: "board-update", boardId: own!.id, owner: "max" })).status).toBe(403);
+      expect((await post({ action: "board-update", boardId: own!.id, name: "My design" })).status).toBe(200);
+    } finally {
+      access.role = "manager";
+    }
+  });
+
+  it("keeps a viewer from changing anything, and hides boards kept to their owner", async () => {
+    const hidden = service.createBoard({ name: "Private", owner: "max", visibility: "owner" });
+    expect(service.listBoards({ login: "kim", role: "member" }).some((b) => b.id === hidden)).toBe(false);
+    expect(service.listBoards({ login: "max", role: "member" }).some((b) => b.id === hidden)).toBe(true);
+    expect(service.listBoards({ login: "boss", role: "manager" }).some((b) => b.id === hidden)).toBe(true);
+
+    access.role = "viewer";
+    try {
+      const data = service.getBoardData();
+      expect((await post({ action: "create", columnId: data.columns[0].id, title: "Nope" })).status).toBe(403);
+      expect((await post({ action: "board-create", name: "Nope" })).status).toBe(403);
+      // Looking is fine.
+      expect((await post({ action: "board-status" })).status).not.toBe(403);
+    } finally {
+      access.role = "manager";
+    }
   });
 });

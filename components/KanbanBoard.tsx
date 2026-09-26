@@ -22,6 +22,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
+import { useShell } from "@/components/shell/ShellContext";
 import type { BoardData, BoardMilestone, BoardTask } from "@/lib/board-service";
 import { SortableTaskCard, StaticTaskCard, TaskCardBody } from "@/components/TaskCard";
 import { BoardCalendar } from "@/components/BoardCalendar";
@@ -67,6 +68,8 @@ function Column({
   setComposerOpen: (columnId: string | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  // Read-only people (lib/roles.ts) add nothing; known from the first render, unlike drag.
+  const canAdd = useShell().role !== "viewer";
   const [title, setTitle] = useState("");
   const adding = composerOpen === id;
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -96,14 +99,16 @@ function Column({
         <h2 className="text-sm font-semibold text-ink">{name}</h2>
         <span className="text-xs tabular-nums text-faint">{tasks.length}</span>
         <div className="flex-1" />
-        <button
-          className="rb-icon-btn size-6"
-          onClick={() => setComposerOpen(adding ? null : id)}
-          title={`Add a card to ${name}`}
-          aria-label={`Add a card to ${name}`}
-        >
-          <Plus className="size-3.5" />
-        </button>
+        {canAdd && (
+          <button
+            className="rb-icon-btn size-6"
+            onClick={() => setComposerOpen(adding ? null : id)}
+            title={`Add a card to ${name}`}
+            aria-label={`Add a card to ${name}`}
+          >
+            <Plus className="size-3.5" />
+          </button>
+        )}
       </div>
 
       <div ref={setNodeRef} className="rb-scroll-thin flex min-h-[72px] flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5">
@@ -171,7 +176,10 @@ function Column({
           ))
         )}
 
-        {!adding && tasks.length === 0 && (
+        {!adding && tasks.length === 0 && !canAdd && (
+          <p className="flex h-16 items-center justify-center rounded-lg border border-dashed border-border text-xs text-faint">Nothing here</p>
+        )}
+        {!adding && tasks.length === 0 && canAdd && (
           <button
             className="flex h-16 items-center justify-center rounded-lg border border-dashed border-border-strong/70 text-xs text-faint transition-colors hover:border-border-strong hover:text-muted"
             onClick={() => setComposerOpen(id)}
@@ -238,7 +246,9 @@ export function KanbanBoard({
   // server and the browser do differently. Drag is a pointer feature anyway, so
   // the first paint is the same board without it.
   const [interactive, setInteractive] = useState(false);
-  useEffect(() => setInteractive(true), []);
+  // Read-only people (lib/roles.ts) look at the board; nothing drags.
+  const { role } = useShell();
+  useEffect(() => setInteractive(role !== "viewer"), [role]);
 
   useEffect(() => {
     const card = searchParams.get("card");

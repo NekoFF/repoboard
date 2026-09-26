@@ -61,7 +61,7 @@ export function ToolRail() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const { openShortcuts, boards, docs, repo, connected } = useShell();
+  const { openShortcuts, boards, docs, repo, connected, role } = useShell();
   const { resolved, toggle } = useTheme();
   const { pins, pin, unpin, full } = usePins(repo);
 
@@ -159,12 +159,16 @@ export function ToolRail() {
       aria-label="Tools"
       className="rb-rail absolute bottom-2.5 right-2.5 top-2.5 z-30 hidden w-11 flex-col items-center gap-1 rounded-full py-2 lg:flex"
     >
-      <RailButton label="New card" shortcut="C" onClick={() => router.push(newCardHref(boards.map(boardHref)))}>
-        <Plus className="size-4" />
-      </RailButton>
-      <RailButton label="New document" onClick={() => router.push("/docs?new=1")}>
-        <FilePlus2 className="size-4" />
-      </RailButton>
+      {role !== "viewer" && (
+        <>
+          <RailButton label="New card" shortcut="C" onClick={() => router.push(newCardHref(boards.map(boardHref)))}>
+            <Plus className="size-4" />
+          </RailButton>
+          <RailButton label="New document" onClick={() => router.push("/docs?new=1")}>
+            <FilePlus2 className="size-4" />
+          </RailButton>
+        </>
+      )}
 
       <span className="my-1 h-px w-5 shrink-0 bg-border" />
 
