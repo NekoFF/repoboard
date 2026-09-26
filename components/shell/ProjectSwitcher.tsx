@@ -88,8 +88,8 @@ export function ProjectSwitcher() {
       )}
       <MenuSeparator />
       {!managedByEnvironment && (
-        <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => router.push("/settings?add=1")}>
-          Connect a repository
+        <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => router.push("/connect")}>
+          Add a project
         </MenuItem>
       )}
       <MenuItem icon={<Settings2 className="size-3.5" />} onSelect={() => router.push("/settings")}>

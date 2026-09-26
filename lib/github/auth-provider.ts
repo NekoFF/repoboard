@@ -114,12 +114,21 @@ export function setActiveProject(repo: string): boolean {
   return true;
 }
 
-/** Forgets a project's token. The board itself stays in the database. */
-export function removeProject(repo: string): void {
+/** A project's own token, for checking it; never sent to a page. */
+export function tokenFor(repo: string): string | null {
+  return readStore().projects.find((p) => same(p.repo, repo))?.token ?? null;
+}
+
+/**
+ * Forgets a project's token. The board itself stays in the database. When it
+ * was the open project, `next` (a project known to work) is opened instead,
+ * else the first one left.
+ */
+export function removeProject(repo: string, next?: string | null): void {
   const store = readStore();
   const projects = store.projects.filter((p) => !same(p.repo, repo));
-  const active =
-    store.active && same(store.active, repo) ? (projects[0]?.repo ?? null) : store.active;
+  const fallback = projects.find((p) => next && same(p.repo, next))?.repo ?? projects[0]?.repo ?? null;
+  const active = store.active && same(store.active, repo) ? fallback : store.active;
   if (projects.length === 0) {
     if (fs.existsSync(CREDENTIALS_FILE)) fs.rmSync(CREDENTIALS_FILE);
     return;

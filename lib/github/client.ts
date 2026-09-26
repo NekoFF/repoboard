@@ -8,6 +8,22 @@ export class GitHubNotConfiguredError extends Error {
   }
 }
 
+/**
+ * Why GitHub would not open a repository with a token, in words a person can
+ * act on. `reason` lets screens offer the right next step.
+ */
+export type AccessReason = "expired" | "no_access" | "forbidden" | "offline" | "unknown";
+
+export class GitHubAccessError extends Error {
+  constructor(
+    readonly reason: AccessReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GitHubAccessError";
+  }
+}
+
 export interface RepoSummary {
   owner: string;
   name: string;
@@ -165,18 +181,27 @@ export class GitHubClient {
       .then((r) => r.data)
       .catch((error: { status?: number; message?: string }) => {
         if (error.status === 401) {
-          throw new Error("GitHub did not accept this token. Check that it was copied whole and has not expired, or make a new one.");
+          throw new GitHubAccessError(
+            "expired",
+            "GitHub no longer accepts this key: it has expired or was deleted on GitHub.",
+          );
         }
         if (error.status === 404) {
-          throw new Error(
-            `This token cannot see ${slug}. Check the name, and that the token was given access to it (Repository access → Only select repositories → ${slug}; for an organisation, choose it as the resource owner).`,
+          throw new GitHubAccessError(
+            "no_access",
+            `This key cannot open ${slug}: it was made for other repositories, or the name is wrong.`,
           );
         }
         if (error.status === 403) {
-          throw new Error(`GitHub refused access to ${slug} with this token (${error.message ?? "forbidden"}). The organisation may need to approve fine-grained tokens.`);
+          throw new GitHubAccessError(
+            "forbidden",
+            `GitHub refused ${slug} with this key. If the repository belongs to an organisation, one of its owners may have to approve the key first.`,
+          );
         }
-        if (!error.status) throw new Error("GitHub could not be reached. Check the internet connection and try again.");
-        throw error;
+        if (!error.status) {
+          throw new GitHubAccessError("offline", "GitHub could not be reached. Check the internet connection.");
+        }
+        throw new GitHubAccessError("unknown", `GitHub answered with an error (${error.status}). Try again in a moment.`);
       });
     return {
       owner: data.owner.login,
@@ -199,9 +224,14 @@ export class GitHubClient {
       .paginate(octokit.rest.repos.listForAuthenticatedUser, { per_page: 100, sort: "pushed" })
       .catch((error: { status?: number }) => {
         if (error.status === 401) {
-          throw new Error("GitHub did not accept this token. Check that it was copied whole and has not expired, or make a new one.");
+          throw new GitHubAccessError(
+            "expired",
+            "GitHub did not accept this token. Check that it was copied whole, or make a new one.",
+          );
         }
-        if (!error.status) throw new Error("GitHub could not be reached. Check the internet connection and try again.");
+        if (!error.status) {
+          throw new GitHubAccessError("offline", "GitHub could not be reached. Check the internet connection.");
+        }
         throw error;
       });
     return repos.slice(0, 300).map((r) => ({

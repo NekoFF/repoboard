@@ -1146,3 +1146,58 @@ html.rb-desktop-win .rb-desk {
 html.rb-desktop-win .rb-desktop-titlebar {
   height: 38px;
 }
+
+/* ------------------------------------------ screens before the app opens --
+   First start, adding a project, a project that no longer opens
+   (components/connect). The app sits blurred behind; two cards float over
+   it — a banner with a pixel sky and the card that does the work — each
+   lifted by a soft glow rather than a hard shadow. */
+.rb-start-veil {
+  background-color: rgb(var(--desk) / 0.18);
+  -webkit-backdrop-filter: blur(9px) saturate(1.2);
+  backdrop-filter: blur(9px) saturate(1.2);
+}
+.dark .rb-start-veil {
+  background-color: rgb(var(--desk) / 0.34);
+}
+.rb-start-banner {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 22px 60px -18px hsl(212 88% 56% / 0.55);
+}
+.dark .rb-start-banner {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 0 0 1px rgb(var(--ink) / 0.08),
+    0 22px 60px -18px hsl(222 70% 45% / 0.5);
+}
+.rb-start-card {
+  background-color: rgb(var(--raised) / 0.9);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 30px 80px -30px rgb(var(--shadow) / 0.38);
+}
+.dark .rb-start-card {
+  background-color: rgb(var(--raised) / 0.82);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.08),
+    0 30px 80px -30px rgb(0 0 0 / 0.8);
+}
+/* Repositories to pick: glass rows that light up when chosen. */
+.rb-pick {
+  @apply flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-100;
+  background-color: rgb(var(--ink) / 0.03);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06);
+}
+.rb-pick:hover {
+  background-color: rgb(var(--ink) / 0.055);
+}
+.rb-pick[data-picked="true"] {
+  background-color: rgb(var(--accent) / 0.1);
+  box-shadow: inset 0 0 0 1.5px rgb(var(--accent) / 0.55);
+}

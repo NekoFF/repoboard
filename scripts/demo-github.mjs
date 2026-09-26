@@ -122,6 +122,16 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p = decodeURIComponent(url.pathname);
 
+  // Keys that act out what goes wrong, for testing the screens that explain it:
+  // "revoked…" is refused everywhere, "noaccess…" opens no repository.
+  const key = (req.headers.authorization ?? "").replace(/^(token|bearer)\s+/i, "");
+  if (key.startsWith("revoked")) return send(res, 401, { message: "Bad credentials" });
+  if (key.startsWith("noaccess")) {
+    if (p === "/user") return send(res, 200, { login: META.viewer });
+    if (p === "/user/repos") return send(res, 200, []);
+    return notFound(res);
+  }
+
   if (p === "/user") return send(res, 200, { login: META.viewer });
   if (p === "/user/repos") {
     return send(res, 200, [

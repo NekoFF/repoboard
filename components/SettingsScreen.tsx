@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Check, Copy, ExternalLink, Globe, HardDrive, KeyRound, Lock, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
+import { Bot, Check, Copy, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Logo, RelativeTime, Segmented, Spinner, useToast } from "@/components/ui";
-import { api } from "@/lib/client/api";
+import { api, type ProjectHealth, type ProjectInfo } from "@/lib/client/api";
 import { openProject } from "@/lib/client/project";
 
 function Card({ title, icon, description, children }: { title: string; icon: ReactNode; description?: ReactNode; children: ReactNode }) {
@@ -26,243 +27,6 @@ function Card({ title, icon, description, children }: { title: string; icon: Rea
   );
 }
 
-const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
-const TOKENS_URL = "https://github.com/settings/personal-access-tokens";
-
-type Repo = Awaited<ReturnType<typeof api.repositoriesFor>>["repos"][number];
-
-/**
- * Token first, then the repository picked from the ones GitHub says the
- * token opens — nobody has to know how to spell "owner/name". Typing it (or
- * pasting the page's address) stays possible for a repository not listed.
- */
-function ConnectForm({
-  connectedRepos,
-  onDone,
-  onCancel,
-}: {
-  connectedRepos: string[];
-  onDone: () => void;
-  onCancel?: () => void;
-}) {
-  const toast = useToast();
-  const [token, setToken] = useState("");
-  const [repos, setRepos] = useState<Repo[] | null>(null);
-  const [looking, setLooking] = useState(false);
-  const [lookError, setLookError] = useState<string | null>(null);
-  const [repo, setRepo] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const asked = useRef(0);
-
-  // Ask GitHub once the token looks whole; a later keystroke wins.
-  useEffect(() => {
-    const value = token.trim();
-    setRepos(null);
-    setLookError(null);
-    setError(null);
-    if (value.length < 40) {
-      setLooking(false);
-      return;
-    }
-    const id = ++asked.current;
-    setLooking(true);
-    const timer = window.setTimeout(() => {
-      api
-        .repositoriesFor(value)
-        .then(({ repos: found }) => {
-          if (id !== asked.current) return;
-          setRepos(found);
-          setRepo((current) => current || (found.length === 1 ? found[0].fullName : ""));
-          if (found.length === 0) setTyping(false);
-        })
-        .catch((err) => id === asked.current && setLookError((err as Error).message))
-        .finally(() => id === asked.current && setLooking(false));
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [token]);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!repo.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const body = await api.connectRepository(token, repo);
-      toast.push({
-        kind: "success",
-        message: `Connected ${body.repo.owner}/${body.repo.name}`,
-        detail: `Default branch ${body.repo.defaultBranch}, ${body.repo.visibility}`,
-      });
-      onDone();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const tokenReady = repos !== null || lookError !== null;
-
-  return (
-    <form className="flex flex-col gap-4 rounded-xl border border-border bg-canvas p-5" onSubmit={submit}>
-      <p className="text-sm font-semibold text-ink">Connect a repository</p>
-
-      <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-        Access token from GitHub
-        <input
-          type="password"
-          className="rb-input h-9 font-mono"
-          placeholder="github_pat_…"
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-          required
-          autoFocus
-          autoComplete="off"
-        />
-      </label>
-
-      {!tokenReady && !looking && (
-        <div className="rounded-lg border border-border bg-surface p-3 text-sm text-muted">
-          <p>
-            No token yet?{" "}
-            <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
-              Create one on GitHub <ExternalLink className="size-3" />
-            </a>
-          </p>
-          <ol className="mt-2 flex list-decimal flex-col gap-1 pl-4 text-xs">
-            <li><em>Resource owner</em>: you, or the organisation the repository belongs to.</li>
-            <li><em>Repository access</em> → <em>Only select repositories</em> → pick the repository.</li>
-            <li>
-              <em>Add permissions</em>: <span className="text-ink">Contents</span> read and write,{" "}
-              <span className="text-ink">Pull requests</span> and <span className="text-ink">Issues</span> read-only.
-            </li>
-            <li><em>Generate token</em>, copy it and paste it above.</li>
-          </ol>
-        </div>
-      )}
-
-      {looking && (
-        <p className="flex items-center gap-2 text-sm text-muted">
-          <Spinner /> Asking GitHub which repositories this token opens…
-        </p>
-      )}
-
-      {lookError && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{lookError}</p>}
-
-      {repos && repos.length === 0 && (
-        <div className="rounded-lg bg-pill p-3 text-sm text-muted">
-          <p className="text-ink">GitHub accepted the token, but it opens no repositories.</p>
-          <p className="mt-1">
-            Open{" "}
-            <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKENS_URL} target="_blank" rel="noreferrer noopener">
-              your tokens <ExternalLink className="size-3" />
-            </a>
-            , click the token → <em>Edit</em> → <em>Repository access</em>, choose the repository and save. Then paste
-            the token here again.
-          </p>
-        </div>
-      )}
-
-      {repos && repos.length > 0 && (
-        <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1.5 text-xs font-medium text-muted">
-            {repos.length === 1 ? "This token opens one repository" : "Pick the repository"}
-          </legend>
-          <div className="rb-scroll-thin flex max-h-64 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border bg-surface">
-            {repos.map((r) => {
-              const picked = !typing && repo.toLowerCase() === r.fullName.toLowerCase();
-              const already = connectedRepos.includes(r.fullName.toLowerCase());
-              return (
-                <label
-                  key={r.fullName}
-                  className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 ${picked ? "bg-accent/10" : "hover:bg-pill"}`}
-                >
-                  <input
-                    type="radio"
-                    name="repo"
-                    className="sr-only"
-                    checked={picked}
-                    onChange={() => {
-                      setTyping(false);
-                      setRepo(r.fullName);
-                    }}
-                  />
-                  <ProjectMark repo={r.fullName} size={26} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 truncate text-sm text-ink">
-                      <span className="truncate">
-                        <span className="text-muted">{r.fullName.split("/")[0]}/</span>
-                        <span className="font-medium">{r.fullName.split("/")[1]}</span>
-                      </span>
-                      {r.private ? (
-                        <Lock className="size-3 shrink-0 text-faint" aria-label="Private" />
-                      ) : (
-                        <Globe className="size-3 shrink-0 text-faint" aria-label="Public" />
-                      )}
-                    </span>
-                    {(r.description || already) && (
-                      <span className="block truncate text-xs text-faint">
-                        {already ? "Already connected — this replaces its token" : r.description}
-                      </span>
-                    )}
-                  </span>
-                  <span
-                    className={`grid size-4 shrink-0 place-items-center rounded-full border ${picked ? "border-accent bg-accent text-white" : "border-border"}`}
-                    aria-hidden
-                  >
-                    {picked && <Check className="size-2.5" strokeWidth={3} />}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
-      )}
-
-      {tokenReady &&
-        (typing || lookError || (repos && repos.length === 0) ? (
-          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-            Repository — its name as owner/name, or its address copied from the browser
-            <input
-              className="rb-input h-9 font-mono"
-              placeholder="https://github.com/owner/name"
-              value={repo}
-              onChange={(event) => setRepo(event.target.value)}
-              autoFocus={typing}
-            />
-          </label>
-        ) : (
-          <button
-            type="button"
-            className="w-fit text-xs text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink"
-            onClick={() => {
-              setTyping(true);
-              setRepo("");
-            }}
-          >
-            The repository is not in the list
-          </button>
-        ))}
-
-      {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}
-
-      <div className="flex items-center gap-2">
-        <button className="rb-btn-primary h-9 px-4" disabled={busy || !repo.trim()}>
-          {busy && <Spinner />} {busy ? "Checking with GitHub" : "Connect"}
-        </button>
-        {onCancel && (
-          <button type="button" className="rb-btn-ghost" onClick={onCancel}>
-            Cancel
-          </button>
-        )}
-      </div>
-    </form>
-  );
-}
-
-/** Ready-to-paste MCP configuration for the common AI clients. */
 function AgentSetup({ server, node, env }: { server: string; node: string; env: Record<string, string> }) {
   const [client, setClient] = useState<"claude" | "codex" | "cursor" | "desktop" | "other">("claude");
   const withAgent = (name: string) => ({ ...env, REPOBOARD_AGENT: name });
@@ -342,6 +106,15 @@ function CopyBlock({ text }: { text: string }) {
   );
 }
 
+const HEALTH_TEXT: Record<ProjectHealth, string> = {
+  ok: "Open",
+  expired: "Key ran out",
+  no_access: "Key has no access",
+  forbidden: "Refused by GitHub",
+  offline: "GitHub unreachable",
+  unknown: "Could not check",
+};
+
 export function SettingsScreen({
   authLabel,
   tokenSource,
@@ -361,11 +134,31 @@ export function SettingsScreen({
   const { projects, connected, repo: activeRepo } = useShell();
   const { choice, setChoice } = useTheme();
   const [busy, setBusy] = useState<string | null>(null);
-  const [adding, setAdding] = useState(projects.length === 0 || Boolean(params.get("add")));
+  // Whether each project's key still opens its repository.
+  const [health, setHealth] = useState<Map<string, ProjectHealth> | null>(null);
+  const [healthInfo, setHealthInfo] = useState<Map<string, ProjectInfo>>(new Map());
+  const projectKey = projects.map((p) => p.repo).join(",");
+
+  // Old links to the connect form go to the connect screen.
+  useEffect(() => {
+    if (params.get("add")) router.replace("/connect");
+  }, [params, router]);
 
   useEffect(() => {
-    if (params.get("add")) setAdding(true);
-  }, [params]);
+    if (managedByEnvironment) return;
+    let cancelled = false;
+    api
+      .projectsHealth()
+      .then((info) => {
+        if (cancelled) return;
+        setHealth(new Map(info.projects.map((p) => [p.repo.toLowerCase(), p.health ?? "unknown"])));
+        setHealthInfo(new Map(info.projects.map((p) => [p.repo.toLowerCase(), p])));
+      })
+      .catch(() => !cancelled && setHealth(new Map()));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectKey, managedByEnvironment]);
 
   const act = async (key: string, fn: () => Promise<unknown>, message: string) => {
     setBusy(key);
@@ -397,7 +190,7 @@ export function SettingsScreen({
           <Card
             title="Projects"
             icon={<KeyRound className="size-4" />}
-            description="Each project is one GitHub repository with its own board, checklists and token. Tokens stay on this computer."
+            description="Each project is one GitHub repository with its own boards, checklists and key. Keys stay on this computer."
           >
             {managedByEnvironment && (
               <p className="rounded-lg bg-pill p-3 text-sm text-muted">
@@ -408,17 +201,29 @@ export function SettingsScreen({
 
             {projects.length > 0 && (
               <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
-                {projects.map((p) => (
+                {projects.map((listed) => {
+                  const p = { ...listed, ...healthInfo.get(listed.repo.toLowerCase()), active: listed.active };
+                  const state = managedByEnvironment ? (connected ? "ok" : undefined) : health?.get(p.repo.toLowerCase());
+                  const broken = state !== undefined && state !== "ok";
+                  return (
                   <div key={p.repo} className="flex items-center gap-3 px-4 py-3">
                     <ProjectMark repo={p.repo} size={28} />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 truncate text-base font-medium text-ink">
                         {p.repo}
-                        {p.active && <span className="rb-pill-ok">Active</span>}
+                        {p.active && !broken && state === "ok" && <span className="rb-pill-ok">Open</span>}
+                        {p.active && state === undefined && <span className="rb-pill">Open</span>}
+                        {broken && <span className="rb-pill-danger">{HEALTH_TEXT[state]}</span>}
                       </p>
                       <p className="text-xs text-muted">
-                        {p.open !== undefined ? `${p.open} open, ${p.done ?? 0} done` : "No board yet"}
-                        {p.lastSyncAt ? (
+                        {state === undefined && !managedByEnvironment
+                          ? "Checking the key…"
+                          : broken
+                            ? "Its boards are safe on this computer. Give it a new key to open it again."
+                            : p.open !== undefined
+                              ? `${p.open} open, ${p.done ?? 0} done`
+                              : "No board yet"}
+                        {!broken && p.lastSyncAt ? (
                           <>
                             {", synced "}
                             <RelativeTime value={p.lastSyncAt} />
@@ -426,7 +231,12 @@ export function SettingsScreen({
                         ) : null}
                       </p>
                     </div>
-                    {!p.active && !managedByEnvironment && (
+                    {broken && !managedByEnvironment && (
+                      <Link href={`/connect?repo=${encodeURIComponent(p.repo)}`} className="rb-btn-primary rb-btn-sm">
+                        <KeyRound className="size-3.5" /> New key
+                      </Link>
+                    )}
+                    {!p.active && !broken && !managedByEnvironment && (
                       <button
                         className="rb-btn rb-btn-sm"
                         disabled={busy !== null}
@@ -447,17 +257,17 @@ export function SettingsScreen({
                     {!managedByEnvironment && (
                       <button
                         className="rb-icon-btn"
-                        aria-label={`Disconnect ${p.repo}`}
-                        title="Disconnect — forgets the token; the board stays on this computer"
+                        aria-label={`Remove ${p.repo}`}
+                        title="Remove — forgets the key; the boards stay on this computer"
                         disabled={busy !== null}
                         onClick={() => {
-                          if (!window.confirm(`Disconnect ${p.repo}? Its token is removed from this computer; the boards stay here and on GitHub.`)) return;
+                          if (!window.confirm(`Remove ${p.repo} from this computer? Its key is forgotten; the boards stay here and on GitHub.`)) return;
                           if (p.active) {
                             // The open project goes away: start again from what is left.
                             setBusy(`remove-${p.repo}`);
                             api
                               .removeProject(p.repo)
-                              .then(() => openProject("/settings"))
+                              .then(() => openProject("/"))
                               .catch((err) => {
                                 toast.push({ kind: "error", message: "That did not work", detail: (err as Error).message });
                                 setBusy(null);
@@ -471,25 +281,19 @@ export function SettingsScreen({
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            {!managedByEnvironment &&
-              (adding ? (
-                <ConnectForm
-                  connectedRepos={projects.map((p) => p.repo.toLowerCase())}
-                  onDone={() => openProject()}
-                  onCancel={projects.length > 0 ? () => setAdding(false) : undefined}
-                />
-              ) : (
-                <button className="rb-btn w-fit" onClick={() => setAdding(true)}>
-                  <Plus className="size-3.5" /> Connect a repository
-                </button>
-              ))}
+            {!managedByEnvironment && (
+              <Link href="/connect" className="rb-btn w-fit">
+                <Plus className="size-3.5" /> Add a project
+              </Link>
+            )}
             <p className="text-xs text-faint">
-              {authLabel}
-              {tokenSource ? `, read from the ${tokenSource}` : ""}. The token is never sent to the browser.
+              Keys are GitHub {authLabel.toLowerCase()}s
+              {tokenSource ? `, read from the ${tokenSource === "env" ? "environment" : "file on this computer"}` : ""}. A key is never sent to the page.
             </p>
           </Card>
 

@@ -124,7 +124,17 @@ tests/                 parser, documents, filters, graph, conflicts, sync pipeli
 
 Inbox · Overview · My work · Boards → a board (board, list, calendar) → a
 card · Documents · Code (graph, branches, commits, pull requests, issues) ·
-Activity · Settings. The Inbox (`components/InboxScreen.tsx`) shows what
+Activity · Settings.
+
+Before the app opens (`components/connect/`, full screen over the blurred
+app): **Connect** (`/connect`, also first start and `?repo=` for a new key —
+get a key from GitHub through a prefilled link, `lib/github/token-link.ts`,
+paste it, pick repositories from the ones it opens) and **Project
+unavailable** (the open project's key ran out, lost access, or GitHub is out
+of reach — `getAccessState` in `lib/github/access.ts` says which; it always
+offers a new key, another project and trying again). Settings shows each
+project's health (`/api/repo?health=1`). `app/error.tsx`,
+`app/global-error.tsx` and `app/not-found.tsx` always offer a way on. The Inbox (`components/InboxScreen.tsx`) shows what
 others did since the person last looked (a timestamp in localStorage) and
 suggestions from GitHub, applied through `useCommitMove`.
 The sidebar lists the boards under "Boards"; the command menu has a Boards

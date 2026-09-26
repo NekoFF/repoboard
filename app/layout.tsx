@@ -7,7 +7,7 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { THEME_SCRIPT } from "@/components/shell/ThemeProvider";
-import { getVerifiedRepository, getViewer } from "@/lib/github/access";
+import { getAccessState, getViewer } from "@/lib/github/access";
 import { isEnvironmentConfigured, listProjects } from "@/lib/github/auth-provider";
 import { listBoards, projectSummaries } from "@/lib/board-service";
 import { listDocs } from "@/lib/docs-service";
@@ -28,7 +28,8 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const verified = await getVerifiedRepository();
+  const access = await getAccessState();
+  const verified = access.state === "ok" ? access.repo : null;
   const repo = verified ? `${verified.owner}/${verified.name}` : null;
 
   const list = listProjects();
@@ -72,6 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           docs={docs}
           boards={boards}
           managedByEnvironment={isEnvironmentConfigured()}
+          problem={access.state === "failed" ? { slug: access.slug, reason: access.reason, message: access.message } : null}
         >
           {children}
         </AppShell>

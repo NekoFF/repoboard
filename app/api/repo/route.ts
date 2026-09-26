@@ -17,8 +17,8 @@ import {
   saveProject,
   setActiveProject,
 } from "@/lib/github/auth-provider";
-import { getVerifiedRepository, invalidateAccessCache } from "@/lib/github/access";
-import { GitHubClient } from "@/lib/github/client";
+import { getAccessState, invalidateAccessCache, projectHealth, type ProjectHealth } from "@/lib/github/access";
+import { GitHubAccessError, GitHubClient } from "@/lib/github/client";
 import { repoSlug } from "@/lib/github/slug";
 
 export const dynamic = "force-dynamic";
@@ -29,24 +29,38 @@ function projects() {
   return list.map((p) => ({ ...p, ...stats.get(p.repo.toLowerCase()) }));
 }
 
-export async function GET() {
+/**
+ * Names for every project, and counts only for the ones whose token GitHub
+ * accepts now — a project nobody can open shows no board data.
+ */
+async function projectsWithHealth() {
+  const health = await projectHealth();
+  const list = listProjects();
+  const stats = projectSummaries(list.map((p) => p.repo));
+  return list.map((p) => {
+    const state: ProjectHealth = health.get(p.repo.toLowerCase()) ?? "unknown";
+    return state === "ok" ? { ...p, ...stats.get(p.repo.toLowerCase()), health: state } : { ...p, health: state };
+  });
+}
+
+export async function GET(request: Request) {
   const provider = getAuthProvider();
   const token = await provider.getToken();
-  const live = await getVerifiedRepository();
+  const access = await getAccessState();
+  const live = access.state === "ok" ? access.repo : null;
+  const withHealth = new URL(request.url).searchParams.has("health");
   const base = {
     authKind: provider.kind,
     authLabel: provider.label,
     tokenSource: process.env.GITHUB_PAT ? "env" : token ? "file" : null,
     managedByEnvironment: isEnvironmentConfigured(),
+    // Why the active project does not open, when it does not.
+    access: access.state === "failed" ? { slug: access.slug, reason: access.reason, message: access.message } : null,
     // Names and counts only — tokens never leave the server.
-    projects: projects(),
+    projects: withHealth ? await projectsWithHealth() : live ? projects() : listProjects(),
   };
   if (!live) {
-    return NextResponse.json({
-      connected: false,
-      ...base,
-      projects: listProjects(),
-    });
+    return NextResponse.json({ connected: false, ...base });
   }
 
   const identity = getRepoIdentity();
@@ -117,11 +131,16 @@ async function handlePost(request: Request) {
       invalidateAccessCache();
       return NextResponse.json({ switched: body.repo, projects: projects() });
     }
-    removeProject(body.repo);
+    // The open project goes: open the first other one whose token works.
+    const health = await projectHealth();
+    const next = listProjects().find((p) => p.repo.toLowerCase() !== body.repo.toLowerCase() && health.get(p.repo.toLowerCase()) === "ok");
+    removeProject(body.repo, next?.repo ?? null);
     invalidateAccessCache();
-    return NextResponse.json({ removed: body.repo, projects: projects() });
+    return NextResponse.json({ removed: body.repo, projects: listProjects() });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    // `reason` lets the connect screen offer the right next step.
+    const reason = error instanceof GitHubAccessError ? error.reason : undefined;
+    return NextResponse.json({ error: (error as Error).message, reason }, { status: 400 });
   }
 }
 

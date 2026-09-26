@@ -66,6 +66,18 @@ export interface ProjectInfo {
   open?: number;
   done?: number;
   lastSyncAt?: number | null;
+  /** Whether its token opens the repository now (only from `projectsHealth`). */
+  health?: ProjectHealth;
+}
+
+/** Why a project does not open: see GitHubAccessError on the server. */
+export type AccessReason = "expired" | "no_access" | "forbidden" | "offline" | "unknown";
+export type ProjectHealth = "ok" | AccessReason;
+
+export interface AccessProblem {
+  slug: string;
+  reason: AccessReason;
+  message: string;
 }
 
 export interface ConnectionInfo {
@@ -74,6 +86,7 @@ export interface ConnectionInfo {
   tokenSource: "env" | "file" | null;
   authLabel: string;
   projects: ProjectInfo[];
+  access: AccessProblem | null;
   live?: { owner: string; name: string; defaultBranch: string; visibility: string; htmlUrl: string };
 }
 
@@ -82,6 +95,8 @@ const post = <T>(url: string, body: unknown) =>
 
 export const api = {
   connection: () => request<ConnectionInfo>("/api/repo"),
+  /** The connection plus whether each project's token still works (asks GitHub, cached a few minutes). */
+  projectsHealth: () => request<ConnectionInfo>("/api/repo?health=1"),
 
   connectRepository: (token: string, repo: string) =>
     post<{
