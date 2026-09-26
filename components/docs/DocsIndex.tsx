@@ -490,17 +490,12 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
         />
       </PageHeader>
       <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[960px] flex-col gap-10 px-6 pb-20 pt-9 sm:px-10">
+        {/* The graph is a work surface and takes the width; the list is for reading. */}
+        <div className={`mx-auto flex flex-col gap-10 ${view === "graph" ? "max-w-none px-4 pb-4 pt-4" : "max-w-[960px] px-6 pb-20 pt-9 sm:px-10"}`}>
           {!workspaceExists && !syncing && <WorkspaceSetup onCreated={sync} />}
 
           {view === "graph" && docs.length > 0 && (
-            <div className="flex flex-col gap-3">
-              <DocsGraph docs={docs} />
-              <p className="text-sm text-muted">
-                Link documents with <code className="font-mono text-xs">[[notes/commands]]</code> anywhere in the text. A
-                dashed circle is a link to a file that does not exist yet.
-              </p>
-            </div>
+            <DocsGraph docs={docs} />
           )}
 
           {view === "list" && grouped.map((group) =>
