@@ -9,6 +9,7 @@ import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
 import { DesktopBar } from "@/components/shell/DesktopBar";
+import { SyncAgent } from "@/components/shell/SyncAgent";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -60,6 +61,7 @@ export function AppShell({
   boards,
   managedByEnvironment,
   problem: serverProblem,
+  sync,
   children,
 }: {
   repo: string | null;
@@ -71,6 +73,8 @@ export function AppShell({
   managedByEnvironment: boolean;
   /** Why the open project did not open, when the server could not open it. */
   problem: AccessProblem | null;
+  /** Automatic sync of the boards for the open project. */
+  sync: { autoSync: boolean; syncedAt: number | null };
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -216,6 +220,7 @@ export function AppShell({
               {/* In the desktop app: a strip to drag the window by, where its buttons sit. */}
               <div className="rb-desktop-titlebar" aria-hidden />
               <DesktopBar />
+              <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.
                 children

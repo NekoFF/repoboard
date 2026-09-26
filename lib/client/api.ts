@@ -46,6 +46,20 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     body = { error: `The server answered with an error (${response.status})` };
   }
 
+  if (response.ok && typeof window !== "undefined" && url.startsWith("/api/board") && init?.method === "POST") {
+    // A change to the boards on this computer: automatic sync picks it up (components/shell/SyncAgent).
+    const action = (() => {
+      try {
+        return JSON.parse(String(init.body ?? "{}")).action as string | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    if (action && !["board-status", "board-pull", "board-push", "sync-now", "sync-settings"].includes(action)) {
+      window.dispatchEvent(new Event("rb-boards-changed"));
+    }
+  }
+
   if (!response.ok) {
     throw new ApiError(
       body.error ?? `Request failed (${response.status})`,
@@ -248,10 +262,15 @@ export const api = {
     }),
 
   boardStatus: () =>
-    request<{ tracked: boolean; changes: string[]; sha: string | null }>(
+    request<{ tracked: boolean; changes: string[]; sha: string | null; autoSync: boolean; syncedAt: number | null }>(
       "/api/board",
       { method: "POST", body: JSON.stringify({ action: "board-status" }) },
     ),
+
+  /** Boards both ways through the repoboard branch (lib/board-service.ts syncBoards). */
+  syncNow: () => post<{ pulled: number; pushed: number; syncedAt: number }>("/api/board", { action: "sync-now" }),
+  setAutoSync: (autoSync: boolean) =>
+    post<{ pulled: number; pushed: number; syncedAt: number | null }>("/api/board", { action: "sync-settings", autoSync }),
 
   boardPush: () =>
     request<{ commitSha: string; changes: string[] }>("/api/board", {

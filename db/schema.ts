@@ -23,6 +23,9 @@ export const repositories = sqliteTable("repositories", {
   // The project's cover (components/ProjectArt.tsx); null picks one from the name.
   art: text("art"),
   hue: integer("hue"),
+  // Boards kept in step with GitHub on their own, through the repoboard branch.
+  autoSync: integer("auto_sync", { mode: "boolean" }).notNull().default(false),
+  syncedAt: integer("synced_at", { mode: "timestamp_ms" }),
 });
 
 // A project (repository) has several boards: one per person ("Dima",

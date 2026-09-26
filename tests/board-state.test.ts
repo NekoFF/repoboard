@@ -209,3 +209,14 @@ describe("several boards in one file", () => {
     expect(read.boards?.[0].cards).toEqual([]);
   });
 });
+
+describe("a card read back from the file", () => {
+  it("is not an edit when only the order of its fields differs", () => {
+    const here = card({ priority: 2, milestone: "Beta" });
+    const back = parseBoardState(serialiseBoardState({ version: 1, columns: ["Todo"], cards: [here] }))!.cards[0];
+    // The database lists fields in another order than the parser does.
+    const reordered = Object.fromEntries(Object.entries(back).reverse()) as BoardStateCard;
+    expect(describeChanges([here], [reordered])).toEqual([]);
+    expect(describeChanges([{ ...here, title: "Renamed" }], [reordered])).toEqual(["renamed: A card → Renamed"]);
+  });
+});

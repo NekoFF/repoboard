@@ -17,6 +17,11 @@ Everything that is not code lives in one folder at the root of the repository:
   decisions/       what was decided and why, with sources
 ```
 
+`board.json` lives on the default branch when boards are saved by hand
+(Board → Save to repo). With automatic sync on, RepoBoard keeps it on a
+branch of its own, `repoboard`, cut from the default branch the first time;
+only that file is ever written there.
+
 RepoBoard tracks every `.md` file under `.repoboard/` automatically.
 Checklists are pinned in the sidebar; notes and decisions are on the
 Documents screen. Other markdown files in the repository can be tracked by

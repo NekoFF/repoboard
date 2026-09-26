@@ -221,6 +221,25 @@ export function mergeBoardState(
 }
 
 /** A short, readable description of what pushing would change. */
+/**
+ * Two cards are the same card when every field is — whatever order the
+ * fields came in (a card read from the file lists them differently from one
+ * read from the database).
+ */
+export function sameCard(a: BoardStateCard, b: BoardStateCard): boolean {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value as Record<string, unknown>)
+              .sort()
+              .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+          )
+        : value;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
 export function describeChanges(
   local: BoardStateCard[],
   remote: BoardStateCard[],
@@ -241,7 +260,7 @@ export function describeChanges(
       lines.push(`${card.title}: ${there.column} → ${card.column}`);
     } else if (card.title !== there.title) {
       lines.push(`renamed: ${there.title} → ${card.title}`);
-    } else if (JSON.stringify(card) !== JSON.stringify(there)) {
+    } else if (!sameCard(card, there)) {
       lines.push(`edited: ${card.title}`);
     }
   }

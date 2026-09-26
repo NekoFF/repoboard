@@ -566,7 +566,8 @@ export class GitHubClient {
         throw error;
       });
     const main = branches.find((b) => b.name === repo.defaultBranch);
-    const others = branches.filter((b) => b.name !== repo.defaultBranch);
+    // RepoBoard's own sync branch carries board.json, not work: not part of the project's life.
+    const others = branches.filter((b) => b.name !== repo.defaultBranch && b.name !== "repoboard");
     const bySha = new Map<string, GraphCommit>();
     type Listed = Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"];
     const add = (c: Listed[number]) => {
@@ -823,6 +824,37 @@ export class GitHubClient {
     });
     await this.octokit.rest.git.updateRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}`, sha: commit.sha, force: false });
     return { commitSha: commit.sha };
+  }
+
+  /**
+   * Makes sure a branch exists, cut from the default branch's tip when it
+   * does not — for RepoBoard's own sync branch, which keeps board.json out
+   * of the history of the code.
+   */
+  async ensureBranch(name: string): Promise<void> {
+    const found = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${name}` })
+      .then(() => true)
+      .catch((error: { status?: number }) => {
+        if (error.status === 404) return false;
+        throw error;
+      });
+    if (found) return;
+    const repo = await this.getRepo();
+    const base = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${repo.defaultBranch}` })
+      .catch((error: { status?: number }) => {
+        if (error.status === 404 || error.status === 409) {
+          throw new Error("The repository has no commits yet, so there is nothing to keep the boards next to. Push a first commit.");
+        }
+        throw error;
+      });
+    await this.octokit.rest.git
+      .createRef({ owner: this.owner, repo: this.repo, ref: `refs/heads/${name}`, sha: base.data.object.sha })
+      .catch((error: { status?: number }) => {
+        // Another computer made it a moment ago.
+        if (error.status !== 422) throw error;
+      });
   }
 
   /**

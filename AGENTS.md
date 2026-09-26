@@ -39,7 +39,13 @@ Project (a GitHub repository)
   `boards.updated_at` (a never-edited board is 0, so the repository's name
   wins), cards one by one by their own `updatedAt`, milestones by name. Any
   change to a board's own fields must set `updatedAt`. Sync and "Save to
-  repo" are on every board.
+  repo" are on every board. With automatic sync on
+  (`repositories.auto_sync`), `components/shell/SyncAgent.tsx` syncs on
+  open, on focus, every minute and a few seconds after a local change
+  (`rb-boards-changed`, fired by `lib/client/api.ts`); the header shows
+  `SyncChip` instead of "Save to repo". Cards compare by content
+  (`sameCard`), never by `JSON.stringify` of objects built in different
+  places — field order differs between the database and the parser.
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.
@@ -58,7 +64,13 @@ Project (a GitHub repository)
    goes through `DocWriteDialog` too and lands as one commit
    (`GitHubClient.commitChanges`, which checks every edited file's SHA). If the remote SHA moved,
    the write is refused until the user decides. Do not add a code path that
-   calls the Contents or Git Data API from anywhere else.
+   calls the Contents or Git Data API from anywhere else. The one exception
+   the owner chose: with **automatic sync** turned on for a project (a
+   dialog that says what it writes), `syncBoards` in `lib/board-service.ts`
+   writes `.repoboard/board.json` — and only that — on the `repoboard`
+   branch (`SYNC_BRANCH`, cut from the default branch by `ensureBranch`),
+   merging first and with the SHA it read. Never the default branch, never
+   another file.
 2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),
    the list view and the card page all go through `useCommitMove` in
    `lib/client/moves.ts`, so a markdown-backed card always joins the queue of

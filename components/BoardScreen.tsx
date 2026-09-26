@@ -26,6 +26,7 @@ import { MarkdownWriteDialog } from "@/components/MarkdownWriteDialog";
 import { DocWriteDialog } from "@/components/DocWriteDialog";
 import { NewCardDialog } from "@/components/NewCardDialog";
 import { MilestonesDialog } from "@/components/MilestonesDialog";
+import { AutoSyncDialog, SyncChip } from "@/components/SyncControls";
 import { FilterBar, type FilterBarHandle } from "@/components/FilterBar";
 import { Menu, MenuItem, MenuSeparator, Modal, Segmented, Spinner, Tooltip, useToast } from "@/components/ui";
 import { api, ApiError, useResource } from "@/lib/client/api";
@@ -53,7 +54,7 @@ export function BoardScreen({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<BoardView>("board");
   const [syncing, setSyncing] = useState(false);
-  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save">(null);
+  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save" | "autosync">(null);
   const [saving, setSaving] = useState(false);
   const [ids, setIds] = useState<{ path: string; content: string; baseSha: string; count: number } | null>(null);
 
@@ -205,6 +206,7 @@ export function BoardScreen({
 
   const pendingMoves = pending.data?.moves.length ?? 0;
   const boardChanges = boardState.data?.changes.length ?? 0;
+  const autoSync = boardState.data?.autoSync ?? false;
 
   return (
     <>
@@ -230,7 +232,8 @@ export function BoardScreen({
                 </button>
               </Tooltip>
             )}
-            {boardChanges > 0 && (
+            {autoSync && <SyncChip />}
+            {!autoSync && boardChanges > 0 && (
               <Tooltip content="Boards, card order, checklists and links are kept in .repoboard/board.json so teammates see them">
                 <button className="rb-btn rb-btn-sm" onClick={() => setDialog("save")}>
                   <CloudUpload className="size-3.5" /> Save to repo
@@ -259,6 +262,10 @@ export function BoardScreen({
               </MenuItem>
               <MenuItem icon={<Download className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("import")}>
                 Import GitHub issues
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={<CloudUpload className="size-3.5" />} disabled={!connected} onSelect={() => setDialog("autosync")}>
+                {autoSync ? "Automatic sync is on" : "Sync the boards automatically…"}
               </MenuItem>
               {primary && <MenuSeparator />}
               {primary && <MenuItem icon={<RefreshCw className="size-3.5" />} onSelect={() => router.push("/docs")}>
@@ -366,6 +373,18 @@ export function BoardScreen({
             Newer edits from the repository are merged in first, card by card, so nobody else’s work is overwritten.
           </p>
         </Modal>
+      )}
+
+      {dialog === "autosync" && (
+        <AutoSyncDialog
+          on={autoSync}
+          onClose={() => setDialog(null)}
+          onChanged={() => {
+            setDialog(null);
+            boardState.reload();
+            router.refresh();
+          }}
+        />
       )}
 
       {dialog === "import" && data.columns[0] && (

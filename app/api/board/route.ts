@@ -32,6 +32,8 @@ import {
   moveTaskLocally,
   unlinkTask,
   updateTask,
+  setAutoSync,
+  syncBoards,
 } from "@/lib/board-service";
 
 export const dynamic = "force-dynamic";
@@ -171,6 +173,8 @@ const commentSchema = z.object({
 const boardStatusSchema = z.object({ action: z.literal("board-status") });
 const boardPullSchema = z.object({ action: z.literal("board-pull") });
 const boardPushSchema = z.object({ action: z.literal("board-push") });
+const syncNowSchema = z.object({ action: z.literal("sync-now") });
+const syncSettingsSchema = z.object({ action: z.literal("sync-settings"), autoSync: z.boolean() });
 
 const importSchema = z.object({
   action: z.literal("import-issues"),
@@ -214,6 +218,8 @@ const bodySchema = z.discriminatedUnion("action", [
   boardStatusSchema,
   boardPullSchema,
   boardPushSchema,
+  syncNowSchema,
+  syncSettingsSchema,
 ]);
 
 /** Every change made through this route is attributed to the token's owner. */
@@ -384,6 +390,11 @@ async function handlePost(request: Request) {
       return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
     case "board-push":
       return NextResponse.json(await pushBoardState());
+    case "sync-now":
+      return NextResponse.json(await syncBoards());
+    case "sync-settings":
+      setAutoSync(body.autoSync);
+      return NextResponse.json(body.autoSync ? await syncBoards() : { pulled: 0, pushed: 0, syncedAt: null });
     case "item-done":
       return NextResponse.json({ checklist: setItemDone(body.taskId, body.itemId, body.done) });
     case "restore": {

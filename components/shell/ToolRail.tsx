@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CheckCheck, CloudUpload, FilePlus2, FileText, Keyboard, Moon, Pin as PinIcon, Plus, Sun, X } from "lucide-react";
+import { CheckCheck, CloudOff, CloudUpload, FilePlus2, FileText, Keyboard, Moon, Pin as PinIcon, Plus, Sun, X } from "lucide-react";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
@@ -9,6 +9,7 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator, ProgressRing, StatusIcon, Too
 import { api, useResource } from "@/lib/client/api";
 import { newCardHref } from "@/lib/client/current-board";
 import { MAX_PINS, usePins, type Pin } from "@/lib/client/pins";
+import { requestSync, useSyncStatus } from "@/lib/client/sync";
 import { statusOfColumn } from "@/lib/status";
 import { boardColor, boardHref } from "@/components/labelColor";
 
@@ -89,7 +90,9 @@ export function ToolRail() {
     const items = (tracked.data?.docs ?? []).reduce((sum, d) => sum + (d.review ?? 0), 0);
     return inReview + items;
   }, [cards.data, tracked.data]);
-  const unsaved = boardState.data?.changes.length ?? 0;
+  // With automatic sync on, nothing waits to be saved by hand; a failed sync is what waits.
+  const sync = useSyncStatus();
+  const unsaved = boardState.data?.autoSync || sync.state !== "off" ? 0 : (boardState.data?.changes.length ?? 0);
 
   // What "pin this page" would pin, if this page can be pinned.
   const here = useMemo((): Pin | null => {
@@ -258,7 +261,12 @@ export function ToolRail() {
           <Count n={unsaved} tone="accent" />
         </RailButton>
       )}
-      {(toCheck > 0 || unsaved > 0) && <span className="my-1 h-px w-5 shrink-0 bg-border" />}
+      {sync.state === "error" && (
+        <RailButton label={`Sync failed: ${sync.error ?? "unknown error"}. Press to try again.`} onClick={requestSync}>
+          <CloudOff className="size-4 text-danger" />
+        </RailButton>
+      )}
+      {(toCheck > 0 || unsaved > 0 || sync.state === "error") && <span className="my-1 h-px w-5 shrink-0 bg-border" />}
 
       <RailButton label="Keyboard shortcuts" shortcut="?" onClick={openShortcuts}>
         <Keyboard className="size-4" />

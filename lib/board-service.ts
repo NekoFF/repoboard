@@ -66,13 +66,15 @@ export function activeRepository() {
  * conflict/write path testable without network access or a live repository.
  */
 export interface MarkdownGitHub {
-  getFile(path: string): Promise<{ path: string; content: string; sha: string }>;
+  getFile(path: string, ref?: string): Promise<{ path: string; content: string; sha: string }>;
   putFile(args: {
     path: string;
     content: string;
     expectedSha?: string;
     message: string;
+    branch?: string;
   }): Promise<{ commitSha: string; contentSha: string }>;
+  ensureBranch?(name: string): Promise<void>;
 }
 
 type ClientFactory = () => Promise<MarkdownGitHub>;
@@ -1586,10 +1588,13 @@ function applyBoardFileNow(repositoryId: string, state: BoardState): void {
  * saving over it would throw away everything only the file has, so both
  * directions refuse until someone fixes it.
  */
-async function readBoardFile(gh: Awaited<ReturnType<ClientFactory>>): Promise<{ state: BoardState | null; sha: string | null }> {
+async function readBoardFile(
+  gh: Awaited<ReturnType<ClientFactory>>,
+  ref?: string,
+): Promise<{ state: BoardState | null; sha: string | null }> {
   let file: { content: string; sha: string };
   try {
-    file = await gh.getFile(BOARD_STATE_PATH);
+    file = await gh.getFile(BOARD_STATE_PATH, ref);
   } catch (error) {
     if ((error as { status?: number }).status === 404 || /not found|is not a file/i.test((error as Error).message)) {
       return { state: null, sha: null };
@@ -1642,14 +1647,110 @@ export interface BoardStateStatus {
   tracked: boolean;
   changes: string[];
   sha: string | null;
+  /** Kept in step on their own, through SYNC_BRANCH. */
+  autoSync: boolean;
+  syncedAt: number | null;
+}
+
+/**
+ * Where the boards travel when they sync on their own: a branch of their
+ * own, so the code's history stays the code's. Cut from the default branch
+ * the first time, so it starts with whatever board.json was saved there.
+ */
+export const SYNC_BRANCH = "repoboard";
+
+export function syncSettings(): { autoSync: boolean; syncedAt: number | null } {
+  const repository = activeRepository();
+  if (!repository) return { autoSync: false, syncedAt: null };
+  const row = db
+    .select({ autoSync: repositories.autoSync, syncedAt: repositories.syncedAt })
+    .from(repositories)
+    .where(eq(repositories.id, repository.id))
+    .get();
+  return { autoSync: Boolean(row?.autoSync), syncedAt: row?.syncedAt?.getTime() ?? null };
+}
+
+export function setAutoSync(on: boolean): void {
+  const repository = activeRepository();
+  if (!repository) throw new Error("Not connected");
+  db.update(repositories).set({ autoSync: on }).where(eq(repositories.id, repository.id)).run();
+  logActivity({
+    repositoryId: repository.id,
+    type: "sync_settings",
+    message: on ? `turned on automatic sync of the boards (branch ${SYNC_BRANCH})` : "turned off automatic sync of the boards",
+  });
 }
 
 /** What pushing the boards would change in the repository, in words. */
 export async function boardStateStatus(
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<BoardStateStatus> {
-  const { state, sha } = await readBoardFile(await clientFactory());
-  return { tracked: sha !== null, sha, changes: describeFileChanges(localBoardState(), state) };
+  const settings = syncSettings();
+  const gh = await clientFactory();
+  // Before the sync branch exists, what it would start from is the default branch's file.
+  const { state, sha } = settings.autoSync
+    ? await readBoardFile(gh, SYNC_BRANCH).catch(() => readBoardFile(gh))
+    : await readBoardFile(gh);
+  return { tracked: sha !== null, sha, changes: describeFileChanges(localBoardState(), state), ...settings };
+}
+
+/**
+ * Both ways at once, on its own: what others changed comes in, what this
+ * computer changed goes out — merged per card and per board, as a pull and
+ * a push are. Writes only board.json on SYNC_BRANCH, with the SHA it read,
+ * and tries again once if another computer wrote in between.
+ */
+export async function syncBoards(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ pulled: number; pushed: number; syncedAt: number }> {
+  const repository = activeRepository();
+  if (!repository) throw new Error("Not connected");
+  if (!syncSettings().autoSync) throw new Error("Automatic sync is off for this project");
+  const gh = await clientFactory();
+  if (!gh.ensureBranch) throw new Error("This GitHub client cannot make branches");
+  await gh.ensureBranch(SYNC_BRANCH);
+
+  let pulled = 0;
+  let pushed = 0;
+  for (let attempt = 0; ; attempt += 1) {
+    const { state: remote, sha } = await readBoardFile(gh, SYNC_BRANCH);
+    if (remote) {
+      const merged = mergeBoardFile(localBoardState(), remote);
+      applyBoardFile(repository.id, merged.state);
+      const arrived = merged.added + merged.updated + merged.newBoards.length;
+      if (arrived) {
+        pulled += arrived;
+        logActivity({
+          repositoryId: repository.id,
+          type: "board_pulled",
+          message: `synced the boards from GitHub: ${merged.added} new, ${merged.updated} updated${
+            merged.newBoards.length ? `, new board${merged.newBoards.length === 1 ? "" : "s"} ${merged.newBoards.join(", ")}` : ""
+          }`,
+        });
+      }
+    }
+    const changes = describeFileChanges(localBoardState(), remote);
+    if (changes.length === 0) break;
+    try {
+      await gh.putFile({
+        path: BOARD_STATE_PATH,
+        content: serialiseBoardState(localBoardState()),
+        expectedSha: sha ?? undefined,
+        branch: SYNC_BRANCH,
+        message: `RepoBoard: sync boards (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+      });
+      pushed = changes.length;
+      break;
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      // Someone else wrote first: read theirs, merge, try once more.
+      if (attempt === 0 && (status === 409 || status === 422)) continue;
+      throw error;
+    }
+  }
+  const syncedAt = Date.now();
+  db.update(repositories).set({ syncedAt: new Date(syncedAt) }).where(eq(repositories.id, repository.id)).run();
+  return { pulled, pushed, syncedAt };
 }
 
 /** Repository → this machine, every board. Newer edits win per card and per board. */

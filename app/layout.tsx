@@ -9,7 +9,7 @@ import { AppShell } from "@/components/AppShell";
 import { THEME_SCRIPT } from "@/components/shell/ThemeProvider";
 import { getAccessState, getViewer } from "@/lib/github/access";
 import { isEnvironmentConfigured, listProjects } from "@/lib/github/auth-provider";
-import { listBoards, projectLooks, projectSummaries } from "@/lib/board-service";
+import { listBoards, projectLooks, projectSummaries, syncSettings } from "@/lib/board-service";
 import { listDocs } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +79,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           boards={boards}
           managedByEnvironment={isEnvironmentConfigured()}
           problem={access.state === "failed" ? { slug: access.slug, reason: access.reason, message: access.message } : null}
+          sync={verified ? syncSettings() : { autoSync: false, syncedAt: null }}
         >
           {children}
         </AppShell>
