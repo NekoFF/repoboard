@@ -390,6 +390,21 @@ function SignInFlow({
       .finally(() => setBusy(null));
   };
 
+  // Back from GitHub after choosing repositories: look again without being asked.
+  const empty = repos !== null && repos.length === 0;
+  useEffect(() => {
+    if (!login || !empty) return;
+    const look = () => document.visibilityState === "visible" && loadRepos();
+    window.addEventListener("focus", look);
+    document.addEventListener("visibilitychange", look);
+    return () => {
+      window.removeEventListener("focus", look);
+      document.removeEventListener("visibilitychange", look);
+    };
+    // loadRepos reads only state setters and fixed props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [login, empty]);
+
   // Already signed in: go straight to the repositories.
   useEffect(() => {
     if (status.login) loadRepos();
@@ -545,22 +560,33 @@ function SignInFlow({
       )}
       {repos && repos.length > 0 && <RepoList repos={repos} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />}
       {repos && repos.length === 0 && (
-        <div className="rb-enter rounded-xl bg-pill p-3 text-sm text-muted">
-          <p className="text-ink">RepoBoard is not on any repository you can open yet.</p>
-          <p className="mt-1">
-            {status.installUrl ? (
-              <>
-                <a className={linkClass} href={status.installUrl} target="_blank" rel="noreferrer noopener">
-                  Add RepoBoard to your repositories on GitHub <ExternalLink className="size-3" />
-                </a>
-                , then{" "}
-              </>
-            ) : null}
-            <button type="button" className={linkClass} onClick={loadRepos}>
-              look again
-            </button>
-            .
-          </p>
+        <div className="rb-enter flex flex-col gap-3 rounded-2xl bg-accent/[0.07] p-4 shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.18)]">
+          <div>
+            <p className="text-md font-semibold text-ink">One more step on GitHub</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              Choose which repositories RepoBoard may open — GitHub asks this once. Pick{" "}
+              <em>Only select repositories</em>, tick yours and press <em>Install</em>. Then come back here: the list fills
+              in by itself.
+            </p>
+          </div>
+          {status.installUrl && (
+            <a
+              className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md"
+              href={status.installUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Choose repositories on GitHub <ExternalLink className="size-3.5" />
+            </a>
+          )}
+          <button
+            type="button"
+            className="flex items-center justify-center gap-2 text-xs text-muted hover:text-ink"
+            onClick={loadRepos}
+            disabled={busy === "repos"}
+          >
+            {busy === "repos" && <Spinner />} I did it — look again
+          </button>
         </div>
       )}
       {repos && repos.length > 0 && status.installUrl && (
@@ -576,6 +602,7 @@ function SignInFlow({
         </p>
       )}
       {problem && <ProblemBox problem={problem} />}
+      {repos && repos.length > 0 && (
       <button
         type="button"
         className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md"
@@ -591,6 +618,7 @@ function SignInFlow({
               ? `${connectedRepos.includes(picked[0].toLowerCase()) ? "Open" : "Add"} ${picked[0].split("/")[1]}`
               : "Pick a repository"}
       </button>
+      )}
     </div>
   );
 }
