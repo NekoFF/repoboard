@@ -277,14 +277,13 @@ export function SettingsScreen({
                       <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
                         Create a token on GitHub <ExternalLink className="size-3" />
                       </a>{" "}
-                      with the repository's owner as <em>Resource owner</em>, <em>Only select repositories</em> → this repository, and these permissions:
+                      with the repository's owner as <em>Resource owner</em>, <em>Only select repositories</em> → this repository, and under <em>Add permissions</em>:
                     </p>
                     <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <li><span className="text-ink">Contents</span> — read and write</li>
-                      <li><span className="text-ink">Metadata</span> — read</li>
                       <li><span className="text-ink">Pull requests</span> — read</li>
+                      <li><span className="text-ink">Metadata</span> — added by GitHub</li>
                       <li><span className="text-ink">Issues</span> — read</li>
-                      <li><span className="text-ink">Checks</span> — read</li>
                     </ul>
                   </div>
                   {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}

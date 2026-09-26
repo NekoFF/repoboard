@@ -87,9 +87,8 @@ paste a fine-grained token:
 3. **Expiration:** as long as you are comfortable with — when it runs out,
    RepoBoard asks for a new one.
 4. **Repository access:** *Only select repositories* → the repository.
-5. **Permissions:** Contents *read and write*; Metadata, Pull requests,
-   Issues and Checks *read-only* (Checks shows whether a pull request's
-   tests pass).
+5. **Permissions** (*+ Add permissions*): Contents *read and write*;
+   Pull requests and Issues *read-only*. GitHub adds Metadata by itself.
 6. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
 
 Then open **Documents** and create the `.repoboard/` folder from the
