@@ -150,7 +150,11 @@ function KeyFlow({
   };
 
   const label = (() => {
-    if (busy) return targets.length > 1 ? `Adding ${busy.split("/")[1] ?? busy}…` : "Checking with GitHub…";
+    if (busy) {
+      const order = [...targets.slice(1), targets[0]];
+      const n = order.indexOf(busy) + 1;
+      return targets.length > 1 ? `Adding ${busy.split("/")[1] ?? busy} · ${n} of ${targets.length}` : "Checking with GitHub…";
+    }
     if (replacing) return "Save the new key";
     if (targets.length > 1) return `Add ${targets.length} projects`;
     if (targets.length === 1) return `Add ${targets[0].split("/")[1] ?? targets[0]}`;
@@ -254,7 +258,11 @@ function KeyFlow({
 
       {error && <ProblemBox problem={error} />}
 
-      <button className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md" disabled={Boolean(busy) || !haveToken || !targets.length}>
+      <button
+        className={`rb-btn-primary h-11 w-full justify-center rounded-xl text-md ${busy ? "pointer-events-none" : ""}`}
+        disabled={!haveToken || !targets.length}
+        aria-busy={Boolean(busy)}
+      >
         {busy && <Spinner />}
         {label}
       </button>
@@ -462,16 +470,25 @@ function SignInFlow({
       .finally(() => setBusy(null));
   };
 
+  const [progress, setProgress] = useState<{ name: string; n: number; of: number } | null>(null);
   const connect = async () => {
-    if (!picked.length) return;
+    if (!picked.length || busy) return;
     setBusy("connect");
     setProblem(null);
+    // One at a time, so the button can say how far along it is. The first
+    // picked opens: connect it last, as connecting opens a project.
+    const order = [...picked.slice(1), picked[0]];
+    let opened = "";
     try {
-      const result = await api.githubSignIn.connect(picked);
-      onConnected(result.opened);
+      for (const [index, repo] of order.entries()) {
+        setProgress({ name: repo.split("/")[1] ?? repo, n: index + 1, of: order.length });
+        opened = (await api.githubSignIn.connect([repo])).opened;
+      }
+      onConnected(opened);
     } catch (err) {
       setProblem(problemOf(err));
       setBusy(null);
+      setProgress(null);
     }
   };
 
@@ -605,13 +622,17 @@ function SignInFlow({
       {repos && repos.length > 0 && (
       <button
         type="button"
-        className="rb-btn-primary h-11 w-full justify-center rounded-xl text-md"
-        disabled={busy !== null || !picked.length}
+        // Stays bright while it works: a faded button over glass reads as something laid on top.
+        className={`rb-btn-primary h-11 w-full justify-center rounded-xl text-md ${busy === "connect" ? "pointer-events-none" : ""}`}
+        disabled={!picked.length}
+        aria-busy={busy === "connect"}
         onClick={connect}
       >
         {busy === "connect" && <Spinner />}
         {busy === "connect"
-          ? "Opening…"
+          ? progress && progress.of > 1
+            ? `Adding ${progress.name} · ${progress.n} of ${progress.of}`
+            : `Opening ${progress?.name ?? ""}…`
           : picked.length > 1
             ? `Add ${picked.length} projects`
             : picked.length === 1
