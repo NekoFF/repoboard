@@ -49,6 +49,10 @@ Project (a GitHub repository)
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.
+- A card moves to another board with the card page's menu (`move-board`,
+  `moveTaskToBoard`: the column and milestone of the same name there, number,
+  items and links kept; markdown-backed cards stay on the main board) or an
+  agent's `move_card(board)`; `mergeBoardFile` keeps it on one board.
 - Every board action carries `boardId`; the route rejects an unknown one.
   `getBoardData(boardId?)` without an id is the main board.
 - Items are a tree (`lib/checklist.ts`), stored as JSON on the card. Ticking an

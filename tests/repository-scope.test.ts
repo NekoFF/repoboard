@@ -173,3 +173,44 @@ describe("roles from GitHub", () => {
     }
   });
 });
+
+describe("moving a card to another board", () => {
+  const post = (body: Record<string, unknown>) =>
+    boardRoute.POST(new Request("http://localhost/api/board", { method: "POST", body: JSON.stringify(body) }));
+
+  it("keeps its number and items, takes the milestone by name, and settles an agent's close", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const releaseId = service.createBoard({ name: "Release" });
+    const release = service.getBoardData(releaseId);
+    service.createMilestone({ boardId: main.boardId!, repositoryId: main.repository!.id, name: "Beta" });
+    const betaThere = service.createMilestone({ boardId: releaseId, repositoryId: main.repository!.id, name: "Beta" });
+    const beta = service.getBoardData().milestones.find((m) => m.name === "Beta")!;
+    const review = main.columns.find((c) => c.name === "Review")!;
+    const card = service.createTask({ boardId: main.boardId!, columnId: review.id, title: "Store listing", repositoryId: main.repository!.id });
+    service.updateTask(card, { milestoneId: beta.id, checklist: [{ id: "i1", text: "Screenshots", done: false, notes: null, assignee: null, due: null, children: [], comments: [] }] });
+    sqlite2().prepare("UPDATE tasks SET done_by = ? WHERE id = ?").run(JSON.stringify({ name: "Claude", kind: "agent", reason: "verified", note: "Ran it and saw it", at: 1 }), card);
+    const number = service.getBoardData().tasks.find((t) => t.id === card)!.number;
+
+    const response = await post({ boardId: main.boardId, action: "move-board", taskId: card, toBoardId: releaseId });
+    expect(response.status).toBe(200);
+    const moved = service.getBoardData(releaseId).tasks.find((t) => t.id === card)!;
+    expect(moved).toMatchObject({ number, milestoneId: betaThere, doneBy: null });
+    expect(moved.columnId).toBe(release.columns.find((c) => c.name === "Review")!.id);
+    expect(moved.checklist.map((i) => i.text)).toEqual(["Screenshots"]);
+    expect(service.getBoardData().tasks.some((t) => t.id === card)).toBe(false);
+    expect(service.findCardBoard(`RB-${number}`)).toEqual({ boardId: releaseId, taskId: card });
+
+    // A board this person cannot see is not a destination.
+    const hidden = service.createBoard({ name: "Max only", owner: "max", visibility: "owner" });
+    access.role = "member";
+    const refused = await post({ boardId: releaseId, action: "move-board", taskId: card, toBoardId: hidden });
+    expect(refused.status).toBe(404);
+    access.role = "manager";
+  });
+});
+
+function sqlite2() {
+  return new Database(databaseFile);
+}
