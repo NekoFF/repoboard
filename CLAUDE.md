@@ -257,7 +257,7 @@ its type, or make a parameter required — agents written against it would
 break. Run the tests with `UPDATE_MCP_CONTRACT=1` to record additions. On Windows the installer closes every
 process started from the install folder, agents' servers included, and
 clients do not reconnect stdio servers; so the app keeps a copy of the
-runtime and the server in `%LOCALAPPDATA%\RepoBoard\mcp`
+runtime and the server in `%LOCALAPPDATA%\NekoFF\RepoBoard\mcp`
 (`desktop/mcp-home.cjs`, refreshed at every start, in-use files moved aside)
 and Settings points agents there (`REPOBOARD_MCP_HOME`, `ready.json`).
 `desktop/test/mcp-copy.mjs` proves it on a Windows runner

@@ -31,7 +31,7 @@ const exeName = fs.readdirSync(install).find((f) => /^RepoBoard(\.exe)?$/i.test(
 if (!exeName) throw new Error(`No RepoBoard executable in ${install}`);
 const serverDir = path.join(install, "resources", "server");
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "repoboard-mcp-copy-"));
-const home = path.join(scratch, "LocalAppData", "RepoBoard", "mcp");
+const home = path.join(scratch, "LocalAppData", "NekoFF", "RepoBoard", "mcp");
 
 const fail = (message) => {
   console.error(`FAIL: ${message}`);

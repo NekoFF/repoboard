@@ -5,7 +5,7 @@
  * it writes the new version, and an agent's MCP server is such a process
  * (RepoBoard.exe in Node mode). Stdio servers are not reconnected by their
  * clients, so every update would cut agents off. From a copy in
- * %LOCALAPPDATA%\RepoBoard\mcp the server keeps running through an update,
+ * %LOCALAPPDATA%\NekoFF\RepoBoard\mcp the server keeps running through an update,
  * and loads the new tools itself when the app, started again, refreshes the
  * copy (scripts/mcp-server.mjs looks at mcp-core.mjs before every request).
  *

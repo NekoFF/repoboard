@@ -37,7 +37,9 @@ let win = null;
  */
 function mcpHome() {
   if (process.platform !== "win32" || !app.isPackaged) return null;
-  return path.join(process.env.LOCALAPPDATA || app.getPath("userData"), "RepoBoard", "mcp");
+  // Not under a folder named RepoBoard…: the installer closes whatever runs from a
+  // path that starts with its own (…\Local\RepoBoard would catch …\Local\RepoBoard\mcp).
+  return path.join(process.env.LOCALAPPDATA || app.getPath("userData"), "NekoFF", "RepoBoard", "mcp");
 }
 
 function serverDir() {
