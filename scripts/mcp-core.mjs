@@ -27,6 +27,10 @@ import { fileURLToPath } from "node:url";
 // from where RepoBoard is installed, never from the current directory.
 const APP_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOME_DIR = path.join(os.homedir(), ".repoboard");
+// Windows closes a server started from the install folder on every update, and
+// clients do not reconnect it; the copy Settings points to survives (desktop/mcp-home.cjs).
+const FROM_INSTALL_FOLDER =
+  process.platform === "win32" && /[\\/]resources[\\/]server[\\/]mcp[\\/]/i.test(fileURLToPath(import.meta.url));
 
 /* ------------------------------------------------------------- database -- */
 
@@ -1302,6 +1306,9 @@ const handlers = {
       note: `People assign work to you as "${agentLabel()}". Everything you change is shown under that name, marked AI.`,
       // Some clients never show the server's instructions: they come with the first answer too.
       rules: INSTRUCTIONS,
+      setup: FROM_INSTALL_FOLDER
+        ? "You are connected through RepoBoard's install folder, so every RepoBoard update will cut you off until the person reconnects you. Ask them once to set RepoBoard up again with the command in Settings → AI agents: it now runs from a copy that updates do not close."
+        : undefined,
     };
   },
 
