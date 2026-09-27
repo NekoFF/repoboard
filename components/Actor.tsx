@@ -41,7 +41,9 @@ export function ActorAvatar({
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const { people, agents } = useShell();
+  const { people, agents, projects } = useShell();
+  // Photos come from github.com by login; a GitLab project's people are someone else there.
+  const onGitLab = projects.find((p) => p.active)?.host?.kind === "gitlab";
   // A card assigned to "Claude" is assigned to an agent: show it as one.
   if (kind === "agent" || (kind !== "person" && isAgentName(name, agents))) {
     return (
@@ -55,7 +57,7 @@ export function ActorAvatar({
     );
   }
   const login = name.replace(/^@/, "");
-  if (failed || !/^[A-Za-z0-9-]+$/.test(login) || !people.includes(login.toLowerCase())) {
+  if (failed || onGitLab || !/^[A-Za-z0-9-]+$/.test(login) || !people.includes(login.toLowerCase())) {
     return (
       <span
         title={login}

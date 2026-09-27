@@ -83,12 +83,17 @@ export interface ProjectInfo {
   lastSyncAt?: number | null;
   /** Pasted key, or signing in with GitHub. */
   via?: "key" | "github";
+  /** GitHub, or the GitLab server it was connected from. */
+  host?: HostChoice;
   /** Its cover (components/ProjectArt); null picks one from the name. */
   art?: string | null;
   hue?: number | null;
   /** Whether its token opens the repository now (only from `projectsHealth`). */
   health?: ProjectHealth;
 }
+
+/** Where a repository lives: GitHub, or a GitLab server by its address. */
+export type HostChoice = { kind: "github" } | { kind: "gitlab"; url: string };
 
 /** Why a project does not open: see GitHubAccessError on the server. */
 export type AccessReason = "expired" | "no_access" | "forbidden" | "offline" | "unknown";
@@ -118,18 +123,18 @@ export const api = {
   /** The connection plus whether each project's token still works (asks GitHub, cached a few minutes). */
   projectsHealth: () => request<ConnectionInfo>("/api/repo?health=1"),
 
-  connectRepository: (token: string, repo: string) =>
+  connectRepository: (token: string, repo: string, host?: HostChoice) =>
     post<{
       connected: boolean;
       repo: { owner: string; name: string; defaultBranch: string; visibility: string };
       projects: ProjectInfo[];
-    }>("/api/repo", { token, repo }),
+    }>("/api/repo", { token, repo, host }),
 
   /** Asks GitHub which repositories this token opens; the token goes to our server only. */
-  repositoriesFor: (token: string) =>
+  repositoriesFor: (token: string, host?: HostChoice) =>
     post<{ repos: { fullName: string; private: boolean; description: string | null; pushedAt: string | null }[] }>(
       "/api/repo",
-      { action: "repos", token },
+      { action: "repos", token, host },
     ),
 
   setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>

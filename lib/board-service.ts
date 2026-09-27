@@ -19,6 +19,7 @@ import {
   workspaces,
 } from "@/db/schema";
 import { canSeeBoard, type Who } from "@/lib/roles";
+import { GITHUB, type RepoHost } from "@/lib/github/auth-provider";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
 import { locate, normalise, progress, setDone, type ChecklistItem } from "@/lib/checklist";
@@ -2130,8 +2131,8 @@ export function projectSummaries(
   return result;
 }
 
-export async function connectRepository(token: string, slug: string) {
-  const summary = await GitHubClient.probe(token, slug);
+export async function connectRepository(token: string, slug: string, host: RepoHost = GITHUB) {
+  const summary = await GitHubClient.probeOn(host, token, slug);
   const { repositoryId } = ensureBootstrap({
     owner: summary.owner,
     name: summary.name,

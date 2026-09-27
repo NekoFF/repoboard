@@ -170,7 +170,16 @@ not expire): the person enters a short code on github.com and picks from
 the repositories the app is installed on that they may open — including
 ones where they are only a collaborator, which fine-grained keys cannot
 reach. The token is kept like a key (`account` in credentials.json);
-projects added this way have `via: "github"`. `app/api/auth/github`. `app/error.tsx`,
+projects added this way have `via: "github"`. `app/api/auth/github`.
+**GitLab** (gitlab.com or a company's own server): the connect screen's
+GitLab tab takes the server's address and a personal access token (the api
+scope; the link opens GitLab's page with it filled in). A project's `host`
+in credentials.json says where it lives; `GitHubClient.create()` returns
+`GitLabClient` (`lib/gitlab/client.ts`) for it — the same `RepoClient`
+methods, merge requests for pull requests, access levels for roles, git's
+own blob SHAs for the reviewed-write checks. Links to the web go through
+`useRepoLinks()` (`lib/client/links.ts`), never a hard-coded github.com.
+Projects in GitLab subgroups (a/b/c) are not supported yet. `app/error.tsx`,
 `app/global-error.tsx` and `app/not-found.tsx` always offer a way on. The Inbox (`components/InboxScreen.tsx`) shows what
 others did since the person last looked (a timestamp in localStorage) and
 suggestions from GitHub, applied through `useCommitMove`.

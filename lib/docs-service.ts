@@ -1,3 +1,4 @@
+import { activeHost } from "@/lib/github/auth-provider";
 import { and, asc, eq } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
@@ -92,9 +93,12 @@ async function resolveProofs(edits: DocEdit[], gh: DocsGitHub): Promise<DocEdit[
           const count = file.content.split("\n").length;
           const from = proof.from ? Math.min(Math.max(1, proof.from), count) : null;
           const to = from && proof.to ? Math.min(Math.max(from, proof.to), count) : from;
-          const anchor = from ? `#L${from}${to && to !== from ? `-L${to}` : ""}` : "";
+          const host = activeHost();
+          // GitHub: #L3-L5; GitLab: #L3-5, under /-/blob/.
+          const anchor = from ? `#L${from}${to && to !== from ? (host.kind === "gitlab" ? `-${to}` : `-L${to}`) : ""}` : "";
           const ref = head ?? "HEAD";
-          const url = `https://github.com/${repository.owner}/${repository.name}/blob/${ref}/${path.split("/").map(encodeURIComponent).join("/")}${anchor}`;
+          const web = host.kind === "gitlab" ? `${host.url}/${repository.owner}/${repository.name}/-` : `https://github.com/${repository.owner}/${repository.name}`;
+          const url = `${web}/blob/${ref}/${path.split("/").map(encodeURIComponent).join("/")}${anchor}`;
           const label = `${path}${from ? `, line${to && to !== from ? `s ${from}–${to}` : ` ${from}`}` : ""}`;
           return { kind: "link", url, label };
         }),

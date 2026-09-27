@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, ExternalLink, Globe, Lock } from "lucide-react";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
-import { GitHubMark, Spinner } from "@/components/ui";
-import { ApiError, api, type AccessReason } from "@/lib/client/api";
+import { GitHubMark, GitLabMark, Segmented, Spinner } from "@/components/ui";
+import { useShell } from "@/components/shell/ShellContext";
+import { ApiError, api, type AccessReason, type HostChoice } from "@/lib/client/api";
 import { repoSlug } from "@/lib/github/slug";
 import { TOKENS_PAGE, tokenTemplateUrl } from "@/lib/github/token-link";
 
@@ -19,7 +20,21 @@ const problemOf = (err: unknown): Problem => ({
 });
 
 /** What to do next for each way GitHub can refuse. */
-function NextStep({ reason }: { reason?: AccessReason }) {
+function NextStep({ reason, gitlab }: { reason?: AccessReason; gitlab?: string }) {
+  if (gitlab) {
+    // GitLab keys are per person, not per repository: scope and membership are what matter.
+    return (
+      <span>
+        Open{" "}
+        <a className={linkClass} href={gitlabTokenUrl(gitlab)} target="_blank" rel="noreferrer noopener">
+          your keys on GitLab <ExternalLink className="size-3" />
+        </a>
+        {reason === "expired"
+          ? " and make a new one."
+          : ": the key needs the api scope, and your account must be a member of the project."}
+      </span>
+    );
+  }
   if (reason === "expired") {
     return (
       <a className={linkClass} href={tokenTemplateUrl()} target="_blank" rel="noreferrer noopener">
@@ -42,13 +57,13 @@ function NextStep({ reason }: { reason?: AccessReason }) {
   return null;
 }
 
-function ProblemBox({ problem }: { problem: Problem }) {
+function ProblemBox({ problem, gitlab }: { problem: Problem; gitlab?: string }) {
   return (
     <div className="rb-enter rounded-xl bg-danger-bg p-3 text-sm text-danger">
       <p>{problem.message}</p>
       {problem.reason && problem.reason !== "offline" && problem.reason !== "unknown" && (
         <p className="mt-1.5 text-ink">
-          <NextStep reason={problem.reason} />
+          <NextStep reason={problem.reason} gitlab={gitlab} />
         </p>
       )}
     </div>
@@ -63,15 +78,27 @@ function ProblemBox({ problem }: { problem: Problem }) {
  *
  * `replacing` gives a project that is already connected a new key.
  */
+/** GitLab's page for a new personal access token, with the name and the api scope filled in. */
+function gitlabTokenUrl(base: string): string {
+  return `${base.replace(/\/+$/, "")}/-/user_settings/personal_access_tokens?name=RepoBoard&scopes=api`;
+}
+
 function KeyFlow({
   replacing,
   connectedRepos = [],
   onConnected,
+  host,
 }: {
   replacing?: string | null;
   connectedRepos?: string[];
   onConnected: (opened: string) => void;
+  /** A GitLab server: its keys, its page for making one. */
+  host?: HostChoice;
 }) {
+  const gl = host?.kind === "gitlab" ? host : null;
+  const service = gl ? "GitLab" : "GitHub";
+  // GitLab keys (glpat-…) are shorter than GitHub's.
+  const minLength = gl ? 20 : 40;
   const [opened, setOpened] = useState(false);
   const [token, setToken] = useState("");
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -90,7 +117,7 @@ function KeyFlow({
     setRepos(null);
     setLookError(null);
     setError(null);
-    if (value.length < 40) {
+    if (value.length < minLength) {
       setLooking(false);
       return;
     }
@@ -98,7 +125,7 @@ function KeyFlow({
     setLooking(true);
     const timer = window.setTimeout(() => {
       api
-        .repositoriesFor(value)
+        .repositoriesFor(value, host)
         .then(({ repos: found }) => {
           if (id !== asked.current) return;
           setRepos(found);
@@ -116,9 +143,9 @@ function KeyFlow({
     return () => window.clearTimeout(timer);
     // connectedRepos and replacing are fixed for the life of the screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, gl?.url]);
 
-  const haveToken = token.trim().length >= 40;
+  const haveToken = token.trim().length >= minLength;
   const listed = Boolean(repos && repos.length > 0);
   const showTyped = typing || lookError !== null || (repos !== null && repos.length === 0);
   const targets = showTyped ? (typed.trim() ? [repoSlug(typed)] : []) : picked;
@@ -137,7 +164,7 @@ function KeyFlow({
     for (const target of order) {
       setBusy(target);
       try {
-        const body = await api.connectRepository(token, target);
+        const body = await api.connectRepository(token, target, host);
         last = `${body.repo.owner}/${body.repo.name}`;
       } catch (err) {
         const problem = problemOf(err);
@@ -153,7 +180,7 @@ function KeyFlow({
     if (busy) {
       const order = [...targets.slice(1), targets[0]];
       const n = order.indexOf(busy) + 1;
-      return targets.length > 1 ? `Adding ${busy.split("/")[1] ?? busy} · ${n} of ${targets.length}` : "Checking with GitHub…";
+      return targets.length > 1 ? `Adding ${busy.split("/")[1] ?? busy} · ${n} of ${targets.length}` : `Checking with ${service}…`;
     }
     if (replacing) return "Save the new key";
     if (targets.length > 1) return `Add ${targets.length} projects`;
@@ -166,14 +193,19 @@ function KeyFlow({
       <div className="flex flex-col gap-2">
         <a
           className="rb-btn h-10 w-full justify-center"
-          href={tokenTemplateUrl({ owner: replacing?.split("/")[0] })}
+          href={gl ? gitlabTokenUrl(gl.url) : tokenTemplateUrl({ owner: replacing?.split("/")[0] })}
           target="_blank"
           rel="noreferrer noopener"
           onClick={() => setOpened(true)}
         >
-          {replacing ? "Get a new key from GitHub" : "Get a key from GitHub"} <ExternalLink className="size-3.5" />
+          {replacing ? `Get a new key from ${service}` : `Get a key from ${service}`} <ExternalLink className="size-3.5" />
         </a>
-        {opened && !haveToken ? (
+        {opened && !haveToken && gl ? (
+          <p className="rb-enter rounded-xl bg-accent/[0.08] p-3 text-sm leading-relaxed text-ink">
+            GitLab opens with the name and the <em>api</em> scope filled in. Choose an expiry date, press{" "}
+            <em>Create personal access token</em> and copy it here.
+          </p>
+        ) : opened && !haveToken ? (
           <p className="rb-enter rounded-xl bg-accent/[0.08] p-3 text-sm leading-relaxed text-ink">
             GitHub opens with everything filled in. Under <em>Repository access</em> pick <em>Only select repositories</em>,
             tick {replacing ? <span className="font-mono">{replacing.split("/")[1]}</span> : "your repositories"}, press{" "}
@@ -185,7 +217,9 @@ function KeyFlow({
         ) : (
           !haveToken && (
             <p className="text-xs leading-relaxed text-faint">
-              A key lets RepoBoard open the repositories you choose, and nothing else.
+              {gl
+                ? "A key lets RepoBoard open the projects your account can open on this GitLab; you pick which ones to add."
+                : "A key lets RepoBoard open the repositories you choose, and nothing else."}
             </p>
           )
         )}
@@ -196,7 +230,7 @@ function KeyFlow({
         <input
           type="password"
           className="rb-input h-11 w-full rounded-xl font-mono"
-          placeholder="Paste it here — github_pat_…"
+          placeholder={gl ? "Paste it here — glpat-…" : "Paste it here — github_pat_…"}
           value={token}
           onChange={(event) => setToken(event.target.value)}
           autoComplete="off"
@@ -210,12 +244,12 @@ function KeyFlow({
           <Spinner /> Looking for the repositories this key opens…
         </p>
       )}
-      {lookError && <ProblemBox problem={lookError} />}
+      {lookError && <ProblemBox problem={lookError} gitlab={gl?.url} />}
       {repos && repos.length === 0 && (
         <div className="rb-enter rounded-xl bg-pill p-3 text-sm text-muted">
-          <p className="text-ink">GitHub accepted the key, but it opens no repositories yet.</p>
+          <p className="text-ink">{service} accepted the key, but it opens no {gl ? "projects" : "repositories"} yet.</p>
           <p className="mt-1">
-            <NextStep reason="no_access" />
+            <NextStep reason="no_access" gitlab={gl?.url} />
           </p>
         </div>
       )}
@@ -223,7 +257,7 @@ function KeyFlow({
       {listed && !typing && (
         <>
           <RepoList repos={repos!} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />
-          {repos!.some((r) => !r.private) && (
+          {!gl && repos!.some((r) => !r.private) && (
             <p className="-mt-3 text-xs leading-relaxed text-faint">
               Public repositories show up with any key, because anyone may read them. To save checklists and boards to
               one, the key must include it.
@@ -256,7 +290,7 @@ function KeyFlow({
           </button>
         ))}
 
-      {error && <ProblemBox problem={error} />}
+      {error && <ProblemBox problem={error} gitlab={gl?.url} />}
 
       <button
         className={`rb-btn-primary h-11 w-full justify-center rounded-xl text-md ${busy ? "pointer-events-none" : ""}`}
@@ -645,10 +679,65 @@ function SignInFlow({
 }
 
 /**
- * Connecting repositories: sign in with GitHub when this copy of RepoBoard
- * has the GitHub App, with a key as the other way; a key only, otherwise.
+ * Connecting repositories, from GitHub or from GitLab. GitHub: sign in when
+ * this copy of RepoBoard has the GitHub App, with a key as the other way.
+ * GitLab (gitlab.com or a company's own server): a personal access token.
  */
 export function ConnectFlow({
+  replacing,
+  connectedRepos = [],
+  onConnected,
+}: {
+  replacing?: string | null;
+  connectedRepos?: string[];
+  onConnected: (opened: string) => void;
+}) {
+  const { projects } = useShell();
+  const renewing = replacing ? projects.find((p) => p.repo.toLowerCase() === replacing.toLowerCase())?.host : undefined;
+  const [provider, setProvider] = useState<"github" | "gitlab">(renewing?.kind === "gitlab" ? "gitlab" : "github");
+  const [server, setServer] = useState(renewing?.kind === "gitlab" ? renewing.url : "https://gitlab.com");
+
+  return (
+    <div className="flex flex-col gap-5">
+      {!replacing && (
+        <Segmented
+          value={provider}
+          onChange={setProvider}
+          options={[
+            { value: "github", label: <><GitHubMark size={14} /> GitHub</> },
+            { value: "gitlab", label: <><GitLabMark size={14} /> GitLab</> },
+          ]}
+        />
+      )}
+      {provider === "gitlab" ? (
+        <div className="flex flex-col gap-5">
+          <label className="flex flex-col gap-2 text-sm font-medium text-ink">
+            GitLab server
+            <input
+              className="rb-input h-10 w-full rounded-xl font-mono"
+              value={server}
+              onChange={(event) => setServer(event.target.value)}
+              placeholder="https://gitlab.com"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <span className="text-xs font-normal text-faint">gitlab.com, or your company&rsquo;s own GitLab address.</span>
+          </label>
+          <KeyFlow
+            replacing={replacing}
+            connectedRepos={connectedRepos}
+            onConnected={onConnected}
+            host={{ kind: "gitlab", url: server.trim() || "https://gitlab.com" }}
+          />
+        </div>
+      ) : (
+        <GitHubConnect replacing={replacing} connectedRepos={connectedRepos} onConnected={onConnected} />
+      )}
+    </div>
+  );
+}
+
+function GitHubConnect({
   replacing,
   connectedRepos = [],
   onConnected,
