@@ -235,7 +235,11 @@ owner or id — and default to the main board), cards (create, move, update,
 delete/restore, checklist, comment — found by RB-n on any board), documents
 (list, read from GitHub), the needs-check queue and activity. Every event it writes
 is attributed to the agent (`REPOBOARD_AGENT`, else the client's reported
-name) with `actor_kind = agent`; Settings shows per-client setup.
+name) with `actor_kind = agent`; Settings shows per-client setup. Every call
+is checked against its tool's `inputSchema` before the handler runs
+(`checkArguments`: required, types, enums, unknown fields), runs in one
+transaction, and database errors never reach the agent raw — so a tool's
+schema is its contract; keep it exact (`tests/mcp-arguments.test.ts`).
 
 People: events written through the app are attributed to the GitHub login of
 the active token (route handlers wrap their work in `runAs` from

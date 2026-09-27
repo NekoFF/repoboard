@@ -139,7 +139,10 @@ function requireBoard(boardName) {
   if (boardName) {
     const wanted = String(boardName).toLowerCase();
     board = all.find((b) => b.id === boardName || b.name.toLowerCase() === wanted || (b.owner ?? "").toLowerCase() === wanted);
-    if (!board) throw new Error(`No board "${boardName}". Boards: ${all.map((b) => b.name).join(", ")}`);
+    if (!board) {
+      const names = all.map((b) => (b.owner ? `${b.name} (owner ${b.owner})` : b.name));
+      throw new Error(`No board "${boardName}". Boards: ${names.join(", ")}`);
+    }
   }
   return { project, repo, board, boards: all };
 }
@@ -150,11 +153,14 @@ function columns(boardId) {
 
 function resolveColumn(boardId, name) {
   const all = columns(boardId);
-  const wanted = String(name).toLowerCase();
+  const available = all.map((c) => c.name).join(", ") || "none";
+  // An empty name would match every column by prefix.
+  if (typeof name !== "string" || name.trim() === "") throw new Error(`Name a column. Available: ${available}`);
+  const wanted = name.trim().toLowerCase();
   const found =
     all.find((c) => c.name.toLowerCase() === wanted) ??
     all.find((c) => c.name.toLowerCase().startsWith(wanted));
-  if (!found) throw new Error(`No column "${name}". Available: ${all.map((c) => c.name).join(", ")}`);
+  if (!found) throw new Error(`No column "${name}". Available: ${available}`);
   return found;
 }
 
@@ -168,17 +174,46 @@ function resolveMilestone(boardId, name) {
   return found.id;
 }
 
+/**
+ * A card of the project by its id or its reference ("RB-12" or 12), deleted
+ * ones included; null when there is none.
+ */
+function findCard(ref, boards = requireBoard().boards) {
+  if ((typeof ref !== "string" && typeof ref !== "number") || String(ref).trim() === "") {
+    throw new Error('Name a card: RB-12, 12 or the card id.');
+  }
+  const ids = boards.map((b) => b.id);
+  const marks = ids.map(() => "?").join(",");
+  const wanted = String(ref).trim();
+  const number = wanted.match(/^(?:rb-?)?(\d+)$/i)?.[1];
+  return (
+    (number
+      ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks}) ORDER BY deleted_at IS NOT NULL`).get(Number(number), ...ids)
+      : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks})`).get(wanted, ...ids)) ?? null
+  );
+}
+
+/** Says what exists when a card reference finds nothing. */
+function noCard(ref, boards) {
+  const ids = boards.map((b) => b.id);
+  const range = db
+    .prepare(
+      `SELECT MIN(card_number) AS lo, MAX(card_number) AS hi FROM tasks WHERE deleted_at IS NULL AND board_id IN (${ids.map(() => "?").join(",")})`,
+    )
+    .get(...ids);
+  const known = range?.hi != null ? `cards here run RB-${range.lo} to RB-${range.hi}` : "the project has no cards yet";
+  return new Error(`No card "${ref}" in this project (${known}; find one with search_cards or get_board).`);
+}
+
 /** Accepts the card's id or its reference ("RB-12" or 12). */
 function cardOf(ref) {
   // Card numbers are unique across the project's boards, so RB-12 needs no board.
   const { boards } = requireBoard();
-  const ids = boards.map((b) => b.id);
-  const marks = ids.map(() => "?").join(",");
-  const number = String(ref).match(/^(?:rb-)?(\d+)$/i)?.[1];
-  const task = number
-    ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks}) AND deleted_at IS NULL`).get(Number(number), ...ids)
-    : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks}) AND deleted_at IS NULL`).get(ref, ...ids);
-  if (!task) throw new Error(`No card ${ref} in this project`);
+  const task = findCard(ref, boards);
+  if (task?.deleted_at != null) {
+    throw new Error(`${task.card_number != null ? `RB-${task.card_number}` : task.id} (${task.title}) is deleted; restore_card brings it back.`);
+  }
+  if (!task) throw noCard(ref, boards);
   return task;
 }
 
@@ -280,7 +315,7 @@ function nextCardNumber(boardId) {
 }
 
 function priorityValue(word) {
-  if (word === undefined) return undefined;
+  if (word == null) return undefined;
   const index = PRIORITY.indexOf(String(word).toLowerCase());
   if (index === -1) throw new Error(`Priority must be one of: ${PRIORITY.join(", ")}`);
   return index;
@@ -289,10 +324,13 @@ function priorityValue(word) {
 function dueValue(date) {
   if (date === undefined) return undefined;
   if (date === null || date === "") return null;
-  const time = Date.parse(`${date}T00:00:00Z`);
-  if (Number.isNaN(time)) throw new Error("dueDate must look like 2026-10-01");
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? Date.parse(`${date}T00:00:00Z`) : NaN;
+  if (Number.isNaN(time)) throw new Error(`dueDate must look like 2026-10-01 (got "${date}")`);
   return time;
 }
+
+/** Labels as given, without blanks or repeats. */
+const cleanLabels = (labels) => [...new Set((labels ?? []).map((l) => String(l).trim()).filter(Boolean))];
 
 /* ------------------------------------------------------ checklist tree -- */
 
@@ -308,7 +346,9 @@ function numbered(list, prefix = "") {
 }
 /** An item by its number ("1.2") or its text; a number is never ambiguous. */
 function findItem(list, text) {
+  if (typeof text !== "string" && typeof text !== "number") return null;
   const wanted = String(text).trim();
+  if (wanted === "") return null;
   if (/^\d+(\.\d+)*$/.test(wanted)) return numbered(list).find((n) => n.number === wanted)?.item ?? null;
   const lower = wanted.toLowerCase();
   return flattenItems(list).find((i) => i.text.trim().toLowerCase() === lower) ?? null;
@@ -322,8 +362,12 @@ function ancestorsOf(list, target, trail = []) {
   return null;
 }
 const DONE_COLUMN = /^(done|complete|completed|shipped|closed)$/i;
+/** The card's items as the app numbers them, for "no such item" answers. */
 function allTexts(list) {
-  return flattenItems(list).map((i) => i.text);
+  return numbered(list).map(({ number, item }) => `${number} ${item.text}`);
+}
+function noItem(given, list) {
+  return new Error(`No checklist item "${given}" on this card. Items (by number or text): ${allTexts(list).join("; ") || "none"}`);
 }
 function saveChecklist(taskId, list) {
   db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), taskId);
@@ -345,24 +389,38 @@ async function readFromGitHub(project, filePath) {
   if (!project.token) throw new Error("No token available to read the repository.");
   const segments = String(filePath).split("/").filter(Boolean);
   if (segments.some((seg) => seg === "." || seg === "..")) throw new Error("Paths are relative to the repository root, without . or ..");
+  if (segments.length === 0) throw new Error("Name a file, e.g. .repoboard/checklists/release.md (list_documents shows the tracked ones).");
+  // fetch() fails with a bare TypeError when the network is down; say so plainly.
+  const get = async (url, headers, service) => {
+    try {
+      return await fetch(url, { headers });
+    } catch (error) {
+      throw new Error(`Could not reach ${service} to read ${filePath} (${error.cause?.code ?? error.message}).`);
+    }
+  };
   // A project connected from GitLab reads through GitLab's API.
   if (project.host?.kind === "gitlab" && typeof project.host.url === "string") {
     const gitlab = String(project.host.url).replace(/\/+$/, "");
     const url = `${gitlab}/api/v4/projects/${encodeURIComponent(project.repo)}/repository/files/${encodeURIComponent(segments.join("/"))}?ref=HEAD`;
-    const response = await fetch(url, { headers: { authorization: `Bearer ${project.token}`, accept: "application/json" } });
+    const response = await get(url, { authorization: `Bearer ${project.token}`, accept: "application/json" }, "GitLab");
     if (response.status === 404) throw new Error(`${filePath} is not in ${project.repo}`);
     if (!response.ok) throw new Error(`GitLab answered ${response.status} for ${filePath}`);
     const data = await response.json();
+    if (typeof data?.content !== "string") throw new Error(`${filePath} is not a file GitLab can return as text`);
     return Buffer.from(data.content, "base64").toString("utf8");
   }
   const base = process.env.GITHUB_API_URL || "https://api.github.com";
   const url = `${base}/repos/${project.repo}/contents/${segments.map(encodeURIComponent).join("/")}`;
-  const response = await fetch(url, {
-    headers: { authorization: `Bearer ${project.token}`, accept: "application/vnd.github+json" },
-  });
+  const response = await get(url, { authorization: `Bearer ${project.token}`, accept: "application/vnd.github+json" }, "GitHub");
   if (response.status === 404) throw new Error(`${filePath} is not in ${project.repo}`);
   if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${filePath}`);
   const data = await response.json();
+  if (Array.isArray(data)) {
+    throw new Error(`${filePath} is a folder, not a file. In it: ${data.map((entry) => entry.name).join(", ") || "nothing"}`);
+  }
+  if (typeof data?.content !== "string" || data.encoding !== "base64") {
+    throw new Error(`${filePath} is not a file GitHub can return as text (too large, or not a regular file)`);
+  }
   return Buffer.from(data.content, "base64").toString("utf8");
 }
 
@@ -436,7 +494,7 @@ const tools = [
       type: "object",
       properties: {
         card: { type: "string", description: "RB-12, 12 or the card id" },
-        title: text,
+        title: { type: "string", minLength: 1 },
         description: text,
         assignee: text,
         labels: { type: "array", items: text },
@@ -487,7 +545,7 @@ const tools = [
       properties: {
         card: text,
         item: { type: "string", description: "Current text of the item" },
-        text: { type: "string", description: "New text" },
+        text: { type: "string", minLength: 1, description: "New text" },
         notes: text,
         assignee: text,
         comment: text,
@@ -548,7 +606,7 @@ const tools = [
   {
     name: "get_activity",
     description: "Recent events on the board and documents, newest first.",
-    inputSchema: { type: "object", properties: { limit: { type: "number" } } },
+    inputSchema: { type: "object", properties: { limit: { type: "number", minimum: 1, description: "How many, up to 200 (default 30)" } } },
   },
 ];
 
@@ -650,7 +708,7 @@ const handlers = {
       );
   },
 
-  create_card({ title, column, description, labels = [], assignee, priority, milestone, dueDate, board: boardName }) {
+  create_card({ title, column, description, labels, assignee, priority, milestone, dueDate, board: boardName }) {
     const { repo, board } = requireBoard(boardName);
     const col = resolveColumn(board.id, column);
     // Agents propose, people verify: nothing an agent makes starts out as done.
@@ -680,7 +738,7 @@ const handlers = {
       now(),
       now(),
     );
-    for (const label of labels) {
+    for (const label of cleanLabels(labels)) {
       db.prepare("INSERT INTO task_labels (id, task_id, label) VALUES (?,?,?)").run(randomUUID(), id, label);
     }
     logActivity(repo.id, id, "card_created", `created ${serialiseCard(cardOf(id)).ref} ${title} in ${col.name}`);
@@ -737,7 +795,7 @@ const handlers = {
     );
     if (labels) {
       db.prepare("DELETE FROM task_labels WHERE task_id = ?").run(task.id);
-      for (const label of labels) {
+      for (const label of cleanLabels(labels)) {
         db.prepare("INSERT INTO task_labels (id, task_id, label) VALUES (?,?,?)").run(randomUUID(), task.id, label);
       }
     }
@@ -748,7 +806,7 @@ const handlers = {
     if (priority !== undefined && priorityValue(priority) !== (task.priority ?? 0)) changes.push(`set priority to ${priority}`);
     if (milestone !== undefined) changes.push(milestone ? `moved it to milestone ${milestone}` : "removed the milestone");
     if (dueDate !== undefined) changes.push(dueDate ? `set the due date to ${dueDate}` : "cleared the due date");
-    if (labels) changes.push(`set labels to ${labels.join(", ") || "none"}`);
+    if (labels) changes.push(`set labels to ${cleanLabels(labels).join(", ") || "none"}`);
     logActivity(
       repo.id,
       task.id,
@@ -764,7 +822,7 @@ const handlers = {
     const item = { id: randomUUID(), text: itemText, done: false, notes: notes ?? null, assignee: assignee ?? null, children: [], comments: [] };
     if (parent) {
       const host = findItem(list, parent);
-      if (!host) throw new Error(`No checklist item "${parent}" on this card. Items: ${allTexts(list).join(", ") || "none"}`);
+      if (!host) throw noItem(parent, list);
       host.children = [...(host.children ?? []), item];
     } else {
       list.push(item);
@@ -779,9 +837,7 @@ const handlers = {
     const task = cardOf(card);
     const list = task.checklist ? JSON.parse(task.checklist) : [];
     const item = findItem(list, itemText);
-    if (!item) {
-      throw new Error(`No checklist item "${itemText}". Items: ${allTexts(list).join(", ") || "none"}`);
-    }
+    if (!item) throw noItem(itemText, list);
     if (done) {
       throw new Error(
         "Agents do not tick items done — the person does, after checking. Use update_checklist_item with a comment that says it is done and how to check it.",
@@ -800,7 +856,7 @@ const handlers = {
     const task = cardOf(card);
     const list = task.checklist ? JSON.parse(task.checklist) : [];
     const item = findItem(list, current);
-    if (!item) throw new Error(`No checklist item "${current}". Items: ${allTexts(list).join(", ") || "none"}`);
+    if (!item) throw noItem(current, list);
     const changes = [];
     if (newText !== undefined && newText !== item.text) {
       item.text = newText;
@@ -834,13 +890,9 @@ const handlers = {
 
   restore_card({ card }) {
     const { repo, boards } = requireBoard();
-    const ids = boards.map((b) => b.id);
-    const marks = ids.map(() => "?").join(",");
-    const number = String(card).match(/^(?:rb-)?(\d+)$/i)?.[1];
-    const task = number
-      ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks})`).get(Number(number), ...ids)
-      : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks})`).get(card, ...ids);
-    if (!task) throw new Error(`No card ${card} on this board`);
+    const task = findCard(card, boards);
+    if (!task) throw noCard(card, boards);
+    if (task.deleted_at == null) return { ...serialiseCard(task), note: "This card was not deleted; nothing to restore." };
     const inColumn = db.prepare("SELECT name FROM columns WHERE id = ?").get(task.column_id);
     if (inColumn && DONE_COLUMN.test(inColumn.name.trim())) {
       throw new Error(`${task.title} was deleted while done; bringing it back would count as finished work. Ask a person to restore it.`);
@@ -968,13 +1020,13 @@ const handlers = {
     return [...fromDocs, ...fromBoard];
   },
 
-  get_activity({ limit = 30 }) {
+  get_activity({ limit = 30 } = {}) {
     const { repo } = requireBoard();
     return db
       .prepare(
         "SELECT type, message, task_id, actor, actor_kind, created_at FROM activity_events WHERE repository_id = ? ORDER BY created_at DESC LIMIT ?",
       )
-      .all(repo.id, Math.min(Number(limit) || 30, 200))
+      .all(repo.id, Math.min(Math.max(Math.floor(Number(limit)) || 30, 1), 200))
       .map((e) => ({
         by: e.actor ? `${e.actor}${e.actor_kind === "agent" ? " (AI)" : ""}` : null,
         type: e.type,
@@ -985,22 +1037,160 @@ const handlers = {
   },
 };
 
+/* ------------------------------------------------------------ arguments -- */
+
+// Agents get arguments wrong — a missing column, an object where a string
+// goes, "ten" for a limit. Each call is checked against its tool's
+// inputSchema first, so the agent hears what was wrong and what is expected,
+// never a database error.
+
+const kindOf = (value) =>
+  value === null ? "null" : Array.isArray(value) ? "a list" : typeof value === "object" ? "an object" : `a ${typeof value}`;
+
+/** What the agent can pass for these, read from the project; null when unknown. */
+function choicesFor(name, args) {
+  try {
+    const board = typeof args.board === "string" && args.board.trim() ? args.board : undefined;
+    if (name === "board") return requireBoard().boards.map((b) => b.name);
+    if (name === "column") {
+      const card = typeof args.card === "string" && args.card.trim() ? findCard(args.card) : null;
+      const boardId = card?.board_id ?? requireBoard(board).board.id;
+      // Agents never put a card in a done column, so those are not offered.
+      return columns(boardId).map((c) => c.name).filter((n) => !DONE_COLUMN.test(n.trim()));
+    }
+    if (name === "milestone") {
+      const card = typeof args.card === "string" && args.card.trim() ? findCard(args.card) : null;
+      const boardId = card?.board_id ?? requireBoard(board).board.id;
+      return db.prepare("SELECT name FROM milestones WHERE board_id = ? ORDER BY position").all(boardId).map((m) => m.name);
+    }
+  } catch {
+    /* no project, or the card itself is wrong — the handler says so */
+  }
+  return null;
+}
+
+function expectedOf(name, schema, args) {
+  const choices = schema.enum ?? choicesFor(name, args);
+  if (choices) return choices.length ? `one of: ${choices.join(", ")}` : `${schema.type} (there are none yet)`;
+  const what = schema.type === "array" ? `a list of ${schema.items?.type ?? "value"}s` : `a ${schema.type}`;
+  return schema.description ? `${what}: ${schema.description}` : what;
+}
+
+/** One line per argument, for answers that must say what the tool takes. */
+function schemaSummary(tool) {
+  const { properties = {}, required = [] } = tool.inputSchema;
+  const parts = Object.entries(properties).map(([name, schema]) => {
+    const type = schema.enum ? schema.enum.join("|") : schema.type === "array" ? `${schema.items?.type ?? "value"}[]` : schema.type;
+    return `${name}${required.includes(name) ? "" : "?"}: ${type}`;
+  });
+  return `${tool.name}(${parts.join(", ")})`;
+}
+
+/**
+ * Checks the arguments against the tool's inputSchema. Returns the arguments
+ * to call the handler with (nulls on optional fields dropped, numbers given
+ * as text read as numbers) or the problems found.
+ */
+function checkArguments(tool, raw) {
+  const { properties = {}, required = [] } = tool.inputSchema;
+  const allowed = Object.keys(properties);
+  if (raw === undefined || raw === null) raw = {};
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { problems: [`arguments must be an object with ${allowed.length ? allowed.join(", ") : "no fields"}, not ${kindOf(raw)}`] };
+  }
+  const args = {};
+  const problems = [];
+  for (const [name, value] of Object.entries(raw)) {
+    if (!Object.hasOwn(properties, name)) {
+      problems.push(
+        allowed.length
+          ? `unknown argument "${name}" — allowed: ${allowed.join(", ")}`
+          : `unknown argument "${name}" — this tool takes no arguments`,
+      );
+    } else if (value !== null) {
+      args[name] = value;
+    }
+  }
+  for (const name of required) {
+    const value = args[name];
+    if (value === undefined || (typeof value === "string" && value.trim() === "")) {
+      problems.push(`"${name}" is required — ${expectedOf(name, properties[name], args)}`);
+    }
+  }
+  for (const [name, value] of Object.entries(args)) {
+    const schema = properties[name];
+    if (required.includes(name) && typeof value === "string" && value.trim() === "") continue;
+    const wrong = () => problems.push(`"${name}" must be ${expectedOf(name, schema, args)} — got ${kindOf(value)}`);
+    if (schema.type === "string") {
+      if (typeof value !== "string") wrong();
+      else if (schema.minLength && value.trim().length < schema.minLength) problems.push(`"${name}" must not be empty`);
+      else if (schema.enum && !schema.enum.includes(value.toLowerCase())) {
+        problems.push(`"${name}" must be one of: ${schema.enum.join(", ")} — got "${value}"`);
+      }
+    } else if (schema.type === "number") {
+      const number = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+      if (typeof number !== "number" || !Number.isFinite(number)) problems.push(`"${name}" must be a number — got ${kindOf(value)}`);
+      else if (schema.minimum != null && number < schema.minimum) problems.push(`"${name}" must be at least ${schema.minimum}`);
+      else args[name] = number;
+    } else if (schema.type === "boolean") {
+      if (typeof value !== "boolean") problems.push(`"${name}" must be true or false — got ${kindOf(value)}`);
+    } else if (schema.type === "array") {
+      if (!Array.isArray(value)) wrong();
+      else if (schema.items?.type) {
+        const bad = value.findIndex((v) => typeof v !== schema.items.type);
+        if (bad !== -1) problems.push(`"${name}" must be a list of ${schema.items.type}s — item ${bad + 1} is ${kindOf(value[bad])}`);
+      }
+    }
+  }
+  return problems.length ? { problems } : { args };
+}
+
+/**
+ * better-sqlite3 and the JavaScript runtime speak about bindings and
+ * constraints, not about cards. These errors mean the arguments reached a
+ * place they should not have; the agent gets a plain answer instead.
+ */
+function internalReason(error) {
+  const message = String(error?.message ?? "");
+  const code = String(error?.code ?? "");
+  if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") return "the board database is busy — try again in a moment";
+  if (code.startsWith("SQLITE_CONSTRAINT") || /constraint failed/i.test(message)) return "a value is missing or not allowed";
+  if (/can only bind|parameter values|bind parameters|named parameters/i.test(message)) return "a value has the wrong type";
+  if (code.startsWith("SQLITE_") || error?.name === "SqliteError") return "the board database refused it";
+  if (error instanceof TypeError || error instanceof RangeError) return "a value is missing or has the wrong shape";
+  return null;
+}
+
 /* --------------------------------------------------------------- server -- */
 
 server = new Server({ name: "repoboard", version: "0.5.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
+const refuse = (message) => ({ isError: true, content: [{ type: "text", text: message }] });
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const handler = handlers[request.params.name];
-  if (!handler) {
-    return { isError: true, content: [{ type: "text", text: `Unknown tool ${request.params.name}` }] };
-  }
+  const name = request.params.name;
+  const handler = Object.hasOwn(handlers, name) ? handlers[name] : null;
+  const tool = tools.find((t) => t.name === name);
+  if (!handler || !tool) return refuse(`Unknown tool ${name}. Tools: ${tools.map((t) => t.name).join(", ")}`);
+  const checked = checkArguments(tool, request.params.arguments);
+  if (checked.problems) return refuse(`${name}: ${checked.problems.join("; ")}`);
   try {
-    const result = await handler(request.params.arguments ?? {});
+    // A call that writes several rows writes all of them or none, so a
+    // failure halfway never leaves half a card behind. read_document is the
+    // one async handler and only reads.
+    const result =
+      handler.constructor.name === "AsyncFunction" ? await handler(checked.args) : db.transaction(() => handler(checked.args))();
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   } catch (error) {
-    return { isError: true, content: [{ type: "text", text: error.message }] };
+    // A rolled-back call may have taken the "joined the project" event with it;
+    // the next call looks in the database again.
+    introduced.clear();
+    const reason = internalReason(error);
+    if (!reason) return refuse(error.message);
+    console.error(`[repoboard-mcp] ${name} failed:`, error);
+    return refuse(`${name}: RepoBoard could not do that with these arguments (${reason}). Check the arguments: ${schemaSummary(tool)}`);
   }
 });
 
