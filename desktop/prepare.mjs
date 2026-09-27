@@ -96,20 +96,26 @@ if (!fetched) {
   });
 }
 
-// 4. The MCP server for agents, as one file: it runs with the app's own
+// 4. The MCP server for agents, as two files side by side: the process
+// (mcp-server.mjs) and the tools with their rules (mcp-core.mjs), which the
+// process loads again when an update replaces it. It runs with the app's own
 // Electron in Node mode (ELECTRON_RUN_AS_NODE), so it shares this
 // better-sqlite3 and needs no Node installed. Settings shows the command.
 // esbuild's own API: no shell in between, which on Windows splits arguments.
 const esbuild = createRequire(path.join(root, "package.json"))("esbuild");
 await esbuild.build({
-  entryPoints: [path.join(root, "scripts", "mcp-server.mjs")],
+  entryPoints: {
+    "mcp-server": path.join(root, "scripts", "mcp-server.mjs"),
+    "mcp-core": path.join(root, "scripts", "mcp-core.mjs"),
+  },
   bundle: true,
   platform: "node",
   format: "esm",
   target: "node20",
   external: ["better-sqlite3"],
   banner: { js: "import { createRequire as __rbRequire } from 'node:module'; const require = __rbRequire(import.meta.url);" },
-  outfile: path.join(out, "mcp", "mcp-server.mjs"),
+  outdir: path.join(out, "mcp"),
+  outExtension: { ".js": ".mjs" },
   logLevel: "info",
 });
 

@@ -237,7 +237,16 @@ Rules while more than one entry is in this table:
 
 ## MCP server
 
-`scripts/mcp-server.mjs` exposes the boards and documents to any MCP client
+`scripts/mcp-server.mjs` is only the process; the tools, their rules and
+`INSTRUCTIONS` live in `scripts/mcp-core.mjs`. Before every request the process
+looks whether that file changed (an app update, a pull) and loads it again:
+the client is told the tools changed, and when `RULES_VERSION` moved the next
+answer starts with the new rules — so an agent connected for hours follows
+the current version without a restart. Keep everything that can change in
+the core, and the process small. `whoami` and `get_overview` carry `tidyUp`:
+what is already in the wrong place (a plan kept as a checklist document,
+steps in a card's description, a pile on the main board) for the agent to
+put right. The server exposes the boards and documents to any MCP client
 over stdio (Claude Code, Codex, Cursor, Claude Desktop…): overview, boards
 (`list_boards`; `get_board` and `create_card` take an optional `board` — name,
 owner or id — and default to the main board), cards (create, move, update,
