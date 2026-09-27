@@ -67,4 +67,13 @@ describe("checklist tree", () => {
     expect(waitingForCheck(reopened)).toBe(1);
     expect(normalise([{ id: "e", text: "Checked", done: true, doneBy: { ...by, reason: "verified" } }])[0].doneBy?.reason).toBe("verified");
   });
+
+  it("cuts fields that came in longer than a card may save", () => {
+    const [item] = normalise([
+      { id: "x", text: "t".repeat(3000), done: true, notes: "n".repeat(50_000), doneBy: { name: "Claude", reason: "verified", note: "p".repeat(5000), at: 1 } },
+    ]);
+    expect(item.text).toHaveLength(2000);
+    expect(item.notes).toHaveLength(40_000);
+    expect(item.doneBy?.note).toHaveLength(4000);
+  });
 });

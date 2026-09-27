@@ -172,6 +172,8 @@ describe("MCP server arguments", () => {
     expect(toCheck).toMatchObject({ column: "Review" });
     // Closing needs a reason with a real note, and the project has to allow it.
     await refused("move_card", { card: "RB-1", column: "Done", reason: "verified", note: "works" }, "needs proof", "what you saw");
+    await refused("move_card", { card: "RB-1", column: "Done", reason: "verified", note: "x".repeat(5000) }, "under 4000 characters", "comment_on_card");
+    await refused("add_checklist_item", { card: "RB-1", text: "y".repeat(2500) }, '"text" is longer than 2000 characters');
     const closed = await client.call("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "Landed in commit abc123 last week" });
     expect(JSON.parse(closed.text)).toMatchObject({ column: "Done" });
     const doneBy = sqlite.prepare("SELECT done_by FROM tasks WHERE card_number = 1").get() as { done_by: string };

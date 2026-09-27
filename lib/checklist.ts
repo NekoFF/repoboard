@@ -156,11 +156,25 @@ export function waitingForCheck(items: Checklist): number {
   );
 }
 
+/**
+ * How long each field may be — the board route accepts no more. Items that
+ * came in longer (an agent, a hand-edited board.json) are cut to fit when
+ * read, so a card never becomes one nobody can save.
+ */
+export const LIMITS = { text: 2000, notes: 40_000, name: 100, note: 4000, comment: 10_000, children: 200, comments: 500 } as const;
+const cut = (value: string, max: number) => (value.length > max ? value.slice(0, max) : value);
+
 /** An agent's closing record as it came from a file or the database, or null if it is not one. */
 export function cleanDoneBy(value: unknown): DoneBy | null {
   const by = value as Partial<DoneBy> | null | undefined;
   return by && typeof by === "object" && typeof by.name === "string" && (DONE_REASONS as readonly string[]).includes(by.reason as string)
-    ? { name: by.name, kind: "agent", reason: by.reason as DoneReason, note: typeof by.note === "string" ? by.note : "", at: typeof by.at === "number" ? by.at : 0 }
+    ? {
+        name: cut(by.name, LIMITS.name),
+        kind: "agent",
+        reason: by.reason as DoneReason,
+        note: cut(typeof by.note === "string" ? by.note : "", LIMITS.note),
+        at: typeof by.at === "number" ? by.at : 0,
+      }
     : null;
 }
 
@@ -168,29 +182,31 @@ export function normalise(value: unknown): Checklist {
   if (!Array.isArray(value)) return [];
   return value
     .filter((v) => v && typeof v === "object" && typeof (v as ChecklistItem).text === "string")
+    .slice(0, LIMITS.children)
     .map((v) => {
       const item = v as ChecklistItem;
       // Items can come from a teammate's board.json: keep only fields of the right kind.
-      const str = (x: unknown) => (typeof x === "string" ? x : null);
+      const str = (x: unknown, max: number) => (typeof x === "string" ? cut(x, max) : null);
       const doneBy = cleanDoneBy(item.doneBy);
       return {
         id: String(item.id ?? Math.random().toString(36).slice(2)),
-        text: item.text,
+        text: cut(item.text, LIMITS.text),
         done: Boolean(item.done),
         ...(item.review === true ? { review: true } : {}),
         ...(doneBy ? { doneBy } : {}),
-        notes: str(item.notes),
-        assignee: str(item.assignee),
+        notes: str(item.notes, LIMITS.notes),
+        assignee: str(item.assignee, LIMITS.name),
         due: typeof item.due === "number" ? item.due : null,
         children: normalise(item.children),
         comments: Array.isArray(item.comments)
           ? item.comments
               .filter((c) => c && typeof c === "object" && typeof (c as { text?: unknown }).text === "string")
+              .slice(-LIMITS.comments)
               .map((c) => ({
                 id: String(c.id ?? ""),
-                author: typeof c.author === "string" ? c.author : "",
+                author: typeof c.author === "string" ? cut(c.author, LIMITS.name) : "",
                 kind: c.kind === "agent" ? ("agent" as const) : ("person" as const),
-                text: c.text,
+                text: cut(c.text, LIMITS.comment),
                 at: typeof c.at === "number" ? c.at : 0,
               }))
           : [],
