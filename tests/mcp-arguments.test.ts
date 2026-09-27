@@ -171,7 +171,7 @@ describe("MCP server arguments", () => {
     const toCheck = JSON.parse((await client.call("move_card", { card: "RB-1", column: "Done" })).text);
     expect(toCheck).toMatchObject({ column: "Review" });
     // Closing needs a reason with a real note, and the project has to allow it.
-    await refused("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "yes" }, "needs a note", "commit");
+    await refused("move_card", { card: "RB-1", column: "Done", reason: "verified", note: "works" }, "needs proof", "what you saw");
     const closed = await client.call("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "Landed in commit abc123 last week" });
     expect(JSON.parse(closed.text)).toMatchObject({ column: "Done" });
     const doneBy = sqlite.prepare("SELECT done_by FROM tasks WHERE card_number = 1").get() as { done_by: string };
@@ -188,6 +188,20 @@ describe("MCP server arguments", () => {
     expect(ticked.isError, ticked.text).toBe(false);
     const list = JSON.parse((sqlite.prepare("SELECT checklist FROM tasks WHERE card_number = 1").get() as { checklist: string }).checklist);
     expect(list[0]).toMatchObject({ done: false, review: true });
+    const waiting = JSON.parse((await client.call("needs_check", {})).text);
+    expect(waiting).toContainEqual(expect.objectContaining({ card: "RB-1", itemNumber: "1", item: "Write notes" }));
+    // A person said it works: the agent closes it with that as proof.
+    const confirmed = await client.call("set_checklist_item", {
+      card: "RB-1",
+      text: "1",
+      done: true,
+      reason: "person_confirmed",
+      note: "Dima said in chat that he read the notes",
+    });
+    expect(confirmed.isError, confirmed.text).toBe(false);
+    const after = JSON.parse((sqlite.prepare("SELECT checklist FROM tasks WHERE card_number = 1").get() as { checklist: string }).checklist);
+    expect(after[0]).toMatchObject({ done: true, doneBy: { reason: "person_confirmed" } });
+    await client.call("set_checklist_item", { card: "RB-1", text: "1", done: false });
     await refused("set_checklist_item", { card: "RB-1", text: "7", done: false }, 'No checklist item "7"', "1 Write notes");
     await refused("get_card", { card: "RB-2" }, "cards here run RB-1 to RB-1");
 

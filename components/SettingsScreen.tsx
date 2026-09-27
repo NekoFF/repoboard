@@ -160,13 +160,13 @@ function AgentPolicy({ initial, canChange }: { initial: "propose" | "reason"; ca
         value={policy}
         onChange={(v) => canChange && void change(v)}
         options={[
-          { value: "reason", label: "Close with a reason" },
+          { value: "reason", label: "Close with proof" },
           { value: "propose", label: "Only send to check" },
         ]}
       />
       <p className="text-sm text-muted">
         {policy === "reason"
-          ? "Agents send finished work to Review for you to check. They close it themselves only when it was already done or no person can check it, and say why; you confirm or reopen it."
+          ? "Agents close work when they can show it is done: they checked it themselves, you told them you did, or it was done before. The proof shows on the card and you can reopen it. Without proof, work waits in Review for you."
           : "Agents never close anything: finished work always waits in Review for you."}
         {!canChange && " Only a project admin can change this."}
       </p>

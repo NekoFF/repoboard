@@ -3,14 +3,17 @@
 import { useState } from "react";
 import { CalendarDays, ChevronRight, CornerDownRight, MessageSquareText, NotebookText, Plus, Trash2 } from "lucide-react";
 import {
+  DONE_REASON_LABEL,
   newId,
   addItem,
   locate,
   progress,
   removeItem,
   setDone,
+  updateItem,
   type Checklist,
-  type ChecklistItem, updateItem } from "@/lib/checklist";
+  type ChecklistItem,
+} from "@/lib/checklist";
 import { ActorAvatar } from "@/components/Actor";
 import { ChecklistItemDialog } from "@/components/card/ChecklistItemDialog";
 import { DueLabel, ProgressRing, StatusIcon, Tooltip, useToast } from "@/components/ui";
@@ -108,15 +111,15 @@ export function ChecklistTree({
           <span className="flex shrink-0 items-center gap-2 text-2xs text-faint">
             {/* An agent said it is finished: a person checks, then ticks it. */}
             {item.review && !item.done && <span className="rb-pill-review">Needs your check</span>}
-            {/* An agent closed it, with a reason: confirm to make it yours, or reopen. */}
+            {/* An agent closed it and left its proof; pressing hides the note. */}
             {item.done && item.doneBy && (
-              <Tooltip content={`${item.doneBy.note} — press to confirm`}>
+              <Tooltip content={`${item.doneBy.name}: ${item.doneBy.note} — press to hide`}>
                 <button
-                  className="rb-pill-review inline-flex items-center gap-1 hover:opacity-80"
+                  className="rb-pill inline-flex items-center gap-1 hover:opacity-80"
                   onClick={() => onChange(updateItem(items, item.id, (i) => ({ ...i, doneBy: null })))}
                 >
                   <ActorAvatar name={item.doneBy.name} kind="agent" size={12} />
-                  {item.doneBy.reason === "already_done" ? "Done before" : "Can't be checked"}
+                  {DONE_REASON_LABEL[item.doneBy.reason].short}
                 </button>
               </Tooltip>
             )}

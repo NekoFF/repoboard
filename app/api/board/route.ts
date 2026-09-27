@@ -38,6 +38,7 @@ import {
   listArchivedBoards,
   confirmAgentDone,
 } from "@/lib/board-service";
+import { DONE_REASONS } from "@/lib/checklist";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,7 @@ const checklistItem: z.ZodType<ChecklistItem> = z.lazy(() =>
       .object({
         name: z.string().max(100),
         kind: z.literal("agent"),
-        reason: z.enum(["already_done", "cannot_be_checked"]),
+        reason: z.enum(DONE_REASONS),
         note: z.string().max(4000),
         at: z.number(),
       })

@@ -18,14 +18,25 @@ export interface ChecklistComment {
 }
 
 /**
- * Who closed an item, when it was not the person who looked: an AI agent,
- * allowed to by the project (lib/roles.ts agentsMayFinish), and why — it was
- * done before (with where), or it is nothing a person could check.
+ * An AI agent closed it, and the proof it gave: it checked the work itself,
+ * a person told it they had, it was done before, or nothing a person could
+ * look at would check it. The note says how (what ran, who said so, where).
  */
+export const DONE_REASONS = ["verified", "person_confirmed", "already_done", "cannot_be_checked"] as const;
+export type DoneReason = (typeof DONE_REASONS)[number];
+
+/** How the proof reads: short on an item, whole in a sentence on a card. */
+export const DONE_REASON_LABEL: Record<DoneReason, { short: string; long: string }> = {
+  verified: { short: "Checked", long: "checked it itself" },
+  person_confirmed: { short: "You confirmed", long: "closed it because a person confirmed it" },
+  already_done: { short: "Done before", long: "found it was already done" },
+  cannot_be_checked: { short: "Nothing to check", long: "closed it: nothing a person could check" },
+};
+
 export interface DoneBy {
   name: string;
   kind: "agent";
-  reason: "already_done" | "cannot_be_checked";
+  reason: DoneReason;
   note: string;
   at: number;
 }
@@ -137,10 +148,10 @@ export function findByText(items: Checklist, text: string): ChecklistItem | null
 }
 
 /** Accepts anything that was ever stored as a checklist and returns a clean tree. */
-/** Items at any depth an agent left for a person: sent to check, or closed with a reason. */
+/** Items at any depth an agent sent for a person's check. What it closed with proof waits for nobody. */
 export function waitingForCheck(items: Checklist): number {
   return items.reduce(
-    (sum, item) => sum + ((item.review && !item.done) || item.doneBy ? 1 : 0) + waitingForCheck(item.children ?? []),
+    (sum, item) => sum + (item.review && !item.done ? 1 : 0) + waitingForCheck(item.children ?? []),
     0,
   );
 }
@@ -148,8 +159,8 @@ export function waitingForCheck(items: Checklist): number {
 /** An agent's closing record as it came from a file or the database, or null if it is not one. */
 export function cleanDoneBy(value: unknown): DoneBy | null {
   const by = value as Partial<DoneBy> | null | undefined;
-  return by && typeof by === "object" && typeof by.name === "string" && (by.reason === "already_done" || by.reason === "cannot_be_checked")
-    ? { name: by.name, kind: "agent", reason: by.reason, note: typeof by.note === "string" ? by.note : "", at: typeof by.at === "number" ? by.at : 0 }
+  return by && typeof by === "object" && typeof by.name === "string" && (DONE_REASONS as readonly string[]).includes(by.reason as string)
+    ? { name: by.name, kind: "agent", reason: by.reason as DoneReason, note: typeof by.note === "string" ? by.note : "", at: typeof by.at === "number" ? by.at : 0 }
     : null;
 }
 

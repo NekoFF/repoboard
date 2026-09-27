@@ -27,7 +27,7 @@ export const repositories = sqliteTable("repositories", {
   autoSync: integer("auto_sync", { mode: "boolean" }).notNull().default(false),
   syncedAt: integer("synced_at", { mode: "timestamp_ms" }),
   // What AI agents may do here: only propose (a person marks done), or also
-  // close work with a reason (it was done before, or a person cannot check it).
+  // close work when they give proof (checked it, a person confirmed, done before, cannot be checked).
   agentPolicy: text("agent_policy", { enum: ["propose", "reason"] }).notNull().default("reason"),
 });
 

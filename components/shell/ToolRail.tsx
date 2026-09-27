@@ -87,9 +87,9 @@ export function ToolRail() {
   const toCheck = useMemo(() => {
     const data = cards.data;
     const status = new Map((data?.columns ?? []).map((c) => [c.id, statusOfColumn(c.name)]));
-    // Cards in review or closed by an agent, and card items an agent left for a person.
+    // Cards in review, and cards with items an agent sent for a person's check.
     const inReview = (data?.tasks ?? []).filter(
-      (t) => status.get(t.columnId) === "review" || t.doneBy || waitingForCheck(t.checklist) > 0,
+      (t) => status.get(t.columnId) === "review" || waitingForCheck(t.checklist) > 0,
     ).length;
     const items = (tracked.data?.docs ?? []).reduce((sum, d) => sum + (d.review ?? 0), 0);
     return inReview + items;

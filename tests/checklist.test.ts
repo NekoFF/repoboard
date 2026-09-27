@@ -57,12 +57,14 @@ describe("checklist tree", () => {
     expect(left[0].review).toBe(true);
     expect(left[1].doneBy).toEqual(by);
     expect(left[2].doneBy).toBeUndefined();
-    expect(waitingForCheck(left)).toBe(2);
+    // What an agent closed with proof waits for nobody.
+    expect(waitingForCheck(left)).toBe(1);
     // A person ticking or reopening settles it.
     const ticked = setDone(left, "a", true);
     expect(ticked[0]).toMatchObject({ done: true, review: false, doneBy: null });
     const reopened = setDone(left, "c", false);
     expect(reopened[1]).toMatchObject({ done: false, doneBy: null });
     expect(waitingForCheck(reopened)).toBe(1);
+    expect(normalise([{ id: "e", text: "Checked", done: true, doneBy: { ...by, reason: "verified" } }])[0].doneBy?.reason).toBe("verified");
   });
 });

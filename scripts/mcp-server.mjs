@@ -366,8 +366,8 @@ const REVIEW_COLUMN = /review|qa|verify|check/i;
 
 /**
  * Whether agents may close work in this project (Settings → AI agents):
- * "reason" — with a reason, when it was done before or a person cannot
- * check it; "propose" — never, a person always does.
+ * "reason" — when they give proof (a reason and a note saying how they
+ * know); "propose" — never, a person always does.
  */
 function agentPolicy(repoId) {
   try {
@@ -377,18 +377,28 @@ function agentPolicy(repoId) {
   }
 }
 
-const FINISH_REASONS = ["already_done", "cannot_be_checked"];
+/** Why an agent may close work, and what its note has to show (lib/checklist.ts DONE_REASONS). */
+const FINISH_REASONS = ["verified", "person_confirmed", "already_done", "cannot_be_checked"];
+const PROOF = {
+  verified: "how you checked it and what you saw (the command or test you ran and its result, the screen you opened)",
+  person_confirmed: "who confirmed it and where (e.g. 'Dima said in chat on 27 Sept that he tested it on the TV')",
+  already_done: "where it was done (commit, pull request or file)",
+  cannot_be_checked: "why nobody can check it by looking",
+};
+const PROOF_TEXT = "verified (you checked it yourself), person_confirmed (a person told you they checked it), already_done (done before) or cannot_be_checked";
+const WHY = { verified: "checked", person_confirmed: "a person confirmed", already_done: "done before", cannot_be_checked: "nothing to check" };
 
 /**
- * Closing needs a reason and a note. Without them, the work goes to a
- * person's check instead: that is the normal way; closing is the exception.
- * Returns the record to keep, or null (send it to check), or throws when the
+ * Closing needs proof: a reason and a note that says how you know. Without
+ * a reason the work goes to a person's check. Returns the record to keep, or
+ * null (send it to check), or throws when the proof is missing or the
  * project lets only people close.
  */
 function closing(repoId, reason, note) {
   if (!reason) return null;
-  if (!note || String(note).trim().length < 8) {
-    throw new Error(`Closing with reason "${reason}" needs a note: ${reason === "already_done" ? "where it was done (commit, pull request, file)" : "why no person can check it"}.`);
+  if (!FINISH_REASONS.includes(reason)) throw new Error(`reason must be one of: ${PROOF_TEXT}.`);
+  if (!note || String(note).trim().length < 12) {
+    throw new Error(`Closing with reason "${reason}" needs proof in note: ${PROOF[reason]}. Without proof, leave out reason and the work goes to a person's check.`);
   }
   if (agentPolicy(repoId) === "propose") {
     throw new Error("In this project only people mark work done (Settings → AI agents). Leave out reason to send it for a person's check.");
@@ -530,7 +540,7 @@ const tools = [
         dueDate: { type: "string", description: "YYYY-MM-DD" },
         board: { type: "string", description: "Board name, owner or id (default: the main board)" },
         reason: { type: "string", enum: FINISH_REASONS, description: "Only to create it already done — see move_card" },
-        note: { type: "string", description: "With reason: where it was done, or why no person can check it" },
+        note: { type: "string", description: "With reason: the proof — how you know it is done" },
       },
       required: ["title", "column"],
     },
@@ -538,14 +548,14 @@ const tools = [
   {
     name: "move_card",
     description:
-      "Move a card to another column. Finished work goes to Review (moving to Done without a reason lands it there): say how to check it with comment_on_card and a person moves it on. Close it yourself (column Done with a reason and a note) only when it was already done before — note where (commit, pull request, file) — or when it is nothing a person could check — note why; the card then shows it was closed by you, and a person can confirm or reopen it. A card from the markdown file changes on the board only; the commit waits for the person's review in the app.",
+      "Move a card to another column. To close it (a done column) give proof: reason and a note that says how you know — verified (you checked it yourself: what you ran and saw), person_confirmed (a person told you they checked it: who, where), already_done (where it was done) or cannot_be_checked (why). Without a reason, moving to Done sends it to Review for a person's check instead; say how to check it with comment_on_card. Writing the code is not proof that it works. The card shows your proof, and a person can reopen it. A card from the markdown file changes on the board only; the commit waits for the person's review in the app.",
     inputSchema: {
       type: "object",
       properties: {
         card: { type: "string", description: "RB-12, 12 or the card id" },
         column: text,
-        reason: { type: "string", enum: FINISH_REASONS, description: "Only for Done: already_done or cannot_be_checked" },
-        note: { type: "string", description: "With reason: where it was done, or why no person can check it" },
+        reason: { type: "string", enum: FINISH_REASONS, description: "Only for Done: why you may close it" },
+        note: { type: "string", description: "With reason: the proof — how you know it is done" },
       },
       required: ["card", "column"],
     },
@@ -587,15 +597,15 @@ const tools = [
   {
     name: "set_checklist_item",
     description:
-      "Finish or reopen a checklist item, found by its number like 1.2 or its text. done: true marks it 'needs a person's check' — the normal way when you finish something; add a comment (update_checklist_item) on how to check it. Close it outright only with a reason and a note: already_done (note where: commit, pull request, file) or cannot_be_checked (note why no person could). done: false reopens it.",
+      "Finish or reopen a checklist item, found by its number like 1.2 or its text. done: true with proof (reason and note: verified, person_confirmed, already_done or cannot_be_checked) closes it. done: true without a reason marks it 'needs a person's check' — say how to check it (update_checklist_item). done: false reopens it.",
     inputSchema: {
       type: "object",
       properties: {
         card: text,
         text,
         done: { type: "boolean" },
-        reason: { type: "string", enum: FINISH_REASONS, description: "Only to close outright: already_done or cannot_be_checked" },
-        note: { type: "string", description: "With reason: where it was done, or why no person can check it" },
+        reason: { type: "string", enum: FINISH_REASONS, description: "To close it outright: why you may" },
+        note: { type: "string", description: "With reason: the proof — how you know it is done" },
       },
       required: ["card", "text", "done"],
     },
@@ -657,7 +667,7 @@ const tools = [
   {
     name: "needs_check",
     description:
-      "Everything waiting for a person to verify: checklist items marked [?] and cards in a review column. Use it to hand work over, not to tick things off.",
+      "Everything waiting for a person to verify: document items marked [?], cards in a review column, and card items marked for a check. When a person has told you one works, close it with reason person_confirmed (set_checklist_item, move_card) and say who and where.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -823,7 +833,7 @@ const handlers = {
       repo.id,
       id,
       "card_created",
-      `created ${serialiseCard(cardOf(id)).ref} ${title} in ${col.name}${doneBy ? ` (${doneBy.reason === "already_done" ? "done before" : "no one can check it"}: ${doneBy.note})` : ""}`,
+      `created ${serialiseCard(cardOf(id)).ref} ${title} in ${col.name}${doneBy ? ` (${WHY[doneBy.reason]}: ${doneBy.note})` : ""}`,
     );
     return {
       ...serialiseCard(cardOf(id)),
@@ -865,7 +875,7 @@ const handlers = {
       repo.id,
       task.id,
       "card_moved",
-      `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}${doneBy ? ` (${doneBy.reason === "already_done" ? "done before" : "no one can check it"}: ${doneBy.note})` : ""}`,
+      `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}${doneBy ? ` (${WHY[doneBy.reason]}: ${doneBy.note})` : ""}`,
     );
     return {
       ...serialiseCard(cardOf(task.id)),
@@ -964,7 +974,7 @@ const handlers = {
         repo.id,
         task.id,
         "card_updated",
-        `closed “${item.text}” on ${task.title} (${doneBy.reason === "already_done" ? "done before" : "no one can check it"}: ${doneBy.note})`,
+        `closed “${item.text}” on ${task.title} (${WHY[doneBy.reason]}: ${doneBy.note})`,
       );
       return { checklist: list };
     }
@@ -1163,7 +1173,23 @@ const handlers = {
             .map((t) => ({ source: `board ${board.name}`, card: t.card_number != null ? `RB-${t.card_number}` : t.id, item: t.title }))
         : [];
     });
-    return [...fromDocs, ...fromBoard];
+    // Card items an agent marked for a check: close them with person_confirmed once a person says they work.
+    const fromItems = boards.flatMap((board) =>
+      db
+        .prepare("SELECT * FROM tasks WHERE board_id = ? AND deleted_at IS NULL")
+        .all(board.id)
+        .flatMap((t) =>
+          numbered(t.checklist ? JSON.parse(t.checklist) : [])
+            .filter(({ item }) => item.review && !item.done)
+            .map(({ number, item }) => ({
+              source: `board ${board.name}`,
+              card: t.card_number != null ? `RB-${t.card_number}` : t.id,
+              itemNumber: number,
+              item: item.text,
+            })),
+        ),
+    );
+    return [...fromDocs, ...fromBoard, ...fromItems];
   },
 
   get_activity({ limit = 30 } = {}) {
@@ -1318,9 +1344,15 @@ Organise the work:
 - A card is one topic on a board (RB-n). Its steps are checklist items, nested 1, 1.1, 1.2 — with notes on what to do and how to check it.
 - Put each card on the board of its area: create_card(board: "Security", …).
 
-Finishing work:
-- Normal: mark it for a person's check — move the card to Review, or set_checklist_item(done: true) without a reason — and say how to check it in a comment.
-- Close it yourself only with a reason and a note: already_done (it was done before — note the commit, pull request or file) or cannot_be_checked (no person could verify it — note why). It then shows as closed by you, and a person can confirm or reopen it.
+Finishing work — close it when you can prove it is done, send it to check when you cannot:
+- Close it (move_card to Done, set_checklist_item done: true) with a reason and the proof in note:
+  verified — you checked it yourself: ran the tests or the app and saw it work (say what you ran and what you saw);
+  person_confirmed — a person told you they checked it, now or earlier in the conversation, and it is not marked yet (say who and where);
+  already_done — it was done before (the commit, pull request or file);
+  cannot_be_checked — there is nothing to look at (say why).
+- Writing the code is not proof. If you could not check it, leave out reason: the card goes to Review (the item is marked for a check) — then say in a comment how to check it.
+- Look at needs_check now and then: if a person has since said an item works, close it with person_confirmed.
+- Your proof shows on the card; a person can reopen it.
 - Checklists in documents (privacy policy, release, licences) are ticked [x] by people only; you mark items [?] with proof.
 You cannot commit to GitHub from here; edit .repoboard/ files in your own checkout.`;
 

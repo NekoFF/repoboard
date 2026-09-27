@@ -97,14 +97,16 @@ Project (a GitHub repository)
    branches, commits, pull requests, issues); the sidebar does not repeat them.
 9. **Agents propose, people verify.** Nothing an agent does may set a
    document item to `[x]` or write `Checked:`; the MCP server has no GitHub
-   write tool. On boards, finished work goes to a person's check: a card to
-   the review column, a card item marked `review`. An agent closes a card or
-   item itself only with a `reason` (`already_done`, `cannot_be_checked`)
-   and a note, and only if the project allows it
-   (`repositories.agent_policy`, Settings → AI agents, managers only). That
-   leaves `doneBy` on the card or item — shown, counted in "Needs your
-   check", carried in `board.json` — until a person confirms it
-   (`confirm-done`), ticks, reopens or moves it.
+   write tool. On boards an agent closes a card or item when it gives proof:
+   a `reason` (`DONE_REASONS` in `lib/checklist.ts`: `verified` — it
+   checked itself, `person_confirmed` — a person told it they did,
+   `already_done`, `cannot_be_checked`) and a note saying how it knows,
+   unless the project lets only people close (`repositories.agent_policy`,
+   Settings → AI agents, managers only). Without proof, finished work goes
+   to a person's check: the card to the review column, the item marked
+   `review` (these count in "Needs your check"). Proof stays on the card or
+   item as `doneBy` — shown, carried in `board.json`, not counted as waiting
+   — until a person hides it (`confirm-done`), ticks, reopens or moves it.
 10. **The server answers only RepoBoard.** `middleware.ts` refuses other
    hosts on every path, pages too (DNS rebinding), and API writes that are
    not same-origin JSON with `x-repoboard: 1`, which `lib/client/api.ts`
