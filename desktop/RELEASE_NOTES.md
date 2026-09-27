@@ -1,5 +1,12 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.1
+
+- **Agents keep up with RepoBoard.** An AI agent that is already connected follows a new version right away, with no restart. Its next answer brings the new rules.
+- **Cards filled in properly.** Agents put the steps of a card in its items, with sub-items and notes on how to do and check each. If an agent writes a list of steps into the description, RepoBoard sends it back.
+- **Work on the right board.** Agents move cards between boards and hear when the main board holds a pile that belongs on a board of its own.
+- **Plans belong on boards.** A plan of work goes on a board. Documents are for lists you check against: a release, the privacy policy, licences. Agents are told what is already in the wrong place, and they move it.
+
 ## What's new in 0.6.0
 
 - **AI agents close work when they can prove it.** An agent marks a card or item done when it checked the work itself, when you told it you did, or when it was done before, and it says how it knows. The proof shows on the card, and *Reopen* sends it back. Without proof, the work waits in Review for you. In Settings → AI agents you can make every close wait for you instead.
