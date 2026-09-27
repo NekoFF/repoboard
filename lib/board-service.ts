@@ -1104,7 +1104,8 @@ export async function syncFromMarkdown(
       if (existing.deletedAt) return;
       if (existing.title !== mdTask.title || existing.columnId !== columnId) {
         db.update(tasks)
-          .set({ title: mdTask.title, columnId, updatedAt: now() })
+          // Moved in the file: whatever an agent had closed is settled.
+          .set({ title: mdTask.title, columnId, ...(existing.columnId !== columnId ? { doneBy: null } : {}), updatedAt: now() })
           .where(eq(tasks.id, existing.id))
           .run();
         updated += 1;

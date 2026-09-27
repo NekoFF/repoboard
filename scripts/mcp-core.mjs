@@ -459,7 +459,9 @@ function boardAdvice(repoId, board, { placed = true } = {}) {
   return parts.join(" ") || undefined;
 }
 
-const PLAN_WORDS = /\b(day|week|phase|sprint|stage|step)\s*\d|\b(день|неделя|этап|фаза|шаг|спринт)\s*\d|\b(plan|roadmap|backlog|todo)\b|план|бэклог|задачи/i;
+// Word edges by letters, not \b, which knows no Cyrillic.
+const PLAN_WORDS =
+  /(?<![\p{L}\p{N}])(day|week|phase|sprint|stage|step|день|неделя|этап|фаза|шаг|спринт)\s*\d|(?<![\p{L}\p{N}])(plan|roadmap|backlog|todo)(?![\p{L}\p{N}])|план|бэклог|задачи/iu;
 
 /**
  * What is already in the wrong place, for an agent to put right: a plan of

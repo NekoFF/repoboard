@@ -267,7 +267,7 @@ describe("MCP server arguments", () => {
   it("points out what is already in the wrong place", async () => {
     const snapshot = {
       version: 1,
-      title: "План сборки",
+      title: "Krumeto",
       total: 6,
       done: 0,
       review: 5,
@@ -276,11 +276,12 @@ describe("MCP server arguments", () => {
       links: [],
     };
     sqlite
-      .prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_plan', ?, '.repoboard/checklists/build-plan.md', 'checklist', ?)")
+      // A name that says nothing: the Russian heading alone gives it away.
+      .prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_plan', ?, '.repoboard/checklists/krumeto.md', 'checklist', ?)")
       .run(REPO, JSON.stringify(snapshot));
     sqlite.prepare("UPDATE tasks SET description = 'Add the repo; pick a domain; rent a server; write the Impressum', checklist = '[]' WHERE card_number = 1").run();
     const me = JSON.parse((await client.call("whoami", {})).text);
-    expect(me.tidyUp.join("\n")).toContain(".repoboard/checklists/build-plan.md");
+    expect(me.tidyUp.join("\n")).toContain(".repoboard/checklists/krumeto.md");
     expect(me.tidyUp.join("\n")).toContain("День 1 — скелет");
     expect(me.tidyUp.join("\n")).toContain("RB-1 keep their steps in the description");
     sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_plan'").run();

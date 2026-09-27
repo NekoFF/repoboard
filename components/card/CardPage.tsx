@@ -688,7 +688,7 @@ export function CardPage({
         {/* ------------------------------------------------------- main -- */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-9">
-            {task.doneBy && (
+            {task.doneBy && status === "done" && (
               <AgentClosed
                 doneBy={task.doneBy}
                 onConfirm={async () => {
