@@ -34,6 +34,8 @@ export interface ShellState {
    * typed for a board or a card may be anyone's login on GitHub.
    */
   people: string[];
+  /** Photos of the project's people by lower-case login, from GitHub or GitLab. */
+  avatars: Record<string, string>;
   connected: boolean;
   projects: ProjectInfo[];
   docs: SidebarDoc[];
@@ -51,6 +53,7 @@ export const ShellContext = createContext<ShellState>({
   repo: null,
   viewer: null,
   people: [],
+  avatars: {},
   connected: false,
   projects: [],
   docs: [],
