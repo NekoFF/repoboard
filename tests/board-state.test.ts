@@ -163,6 +163,13 @@ describe("several boards in one file", () => {
     expect(back.boards?.[0].cards.map((c) => c.id)).toEqual(["c3"]);
   });
 
+  it("says a card moved between boards in one line", () => {
+    const main = { name: "Main", description: null, color: null, art: null, owner: null, updatedAt: 0 };
+    const mine = file({ board: main, boards: [board({ cards: [card({ id: "c3", title: "Icons", updatedAt: 5000 })] })] });
+    const theirs = file({ board: main, cards: [card({ id: "c3", title: "Icons" })], boards: [board()] });
+    expect(describeFileChanges(mine, theirs)).toEqual(["moved Icons from the board Main to Max"]);
+  });
+
   it("merges each board's cards one by one", () => {
     const mine = file({ boards: [board({ cards: [card({ id: "x", title: "Mine", updatedAt: 3000 })] })] });
     const theirs = file({ boards: [board({ cards: [card({ id: "x", title: "Theirs", updatedAt: 2000 }), card({ id: "y" })] })] });

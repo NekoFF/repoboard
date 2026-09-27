@@ -396,7 +396,25 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
 
 /** What pushing the whole file would change, in words; other boards are named. */
 export function describeFileChanges(local: BoardState, remote: BoardState | null): string[] {
-  const lines = describeChanges(local.cards, remote?.cards ?? []);
+  // A card on another board than in the file moved; it is not added here and gone there.
+  const homes = (state: BoardState | null) => {
+    const map = new Map<string, { board: string; card: BoardStateCard }>();
+    for (const card of state?.cards ?? []) map.set(card.id, { board: state?.board?.name ?? "the main board", card });
+    for (const b of state?.boards ?? []) for (const card of b.cards) map.set(card.id, { board: b.name, card });
+    return map;
+  };
+  const [mine, theirs0] = [homes(local), homes(remote)];
+  const moved = new Set<string>();
+  const movedLines: string[] = [];
+  for (const [id, here] of mine) {
+    const there = theirs0.get(id);
+    if (there && there.board !== here.board && !here.card.deletedAt) {
+      moved.add(id);
+      movedLines.push(`moved ${here.card.title} from the board ${there.board} to ${here.board}`);
+    }
+  }
+  const keep = (cards: BoardStateCard[]) => cards.filter((c) => !moved.has(c.id));
+  const lines = [...movedLines, ...describeChanges(keep(local.cards), keep(remote?.cards ?? []))];
   if (local.board && remote?.board && local.board.updatedAt > remote.board.updatedAt) {
     lines.push(`edited the board ${local.board.name}`);
   }
@@ -410,7 +428,7 @@ export function describeFileChanges(local: BoardState, remote: BoardState | null
     } else if (board.updatedAt > there.updatedAt) {
       lines.push(there.name !== board.name ? `renamed the board ${there.name} to ${board.name}` : `edited the board ${board.name}`);
     }
-    for (const line of describeChanges(board.cards, there?.cards ?? [])) lines.push(`${board.name}: ${line}`);
+    for (const line of describeChanges(keep(board.cards), keep(there?.cards ?? []))) lines.push(`${board.name}: ${line}`);
   }
   for (const board of remote?.boards ?? []) {
     if (!(local.boards ?? []).some((b) => b.id === board.id) && !board.archivedAt) lines.push(`only on GitHub: board ${board.name}`);
