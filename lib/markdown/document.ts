@@ -275,6 +275,8 @@ export type DocEdit =
   | { type: "state"; line: number; title: string; id?: string | null; state: ItemState }
   | { type: "toggle"; line: number; title: string; id?: string | null; done: boolean }
   | { type: "add"; section: string | null; title: string }
+  /** The card doing the work for this item: `RB-n` written on its line. */
+  | { type: "card"; line: number; title: string; id?: string | null; card: number }
   /** A review note under an item: "> author date: text". */
   | { type: "note"; line: number; title: string; id?: string | null; author: string; text: string; date?: string }
   /**
@@ -375,6 +377,7 @@ function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
   let added = 0;
   let noted = 0;
   let proved = 0;
+  let linked = 0;
 
   for (const edit of edits) {
     const parsed = parseDocument(lines.join("\n"));
@@ -431,6 +434,16 @@ function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
         proved += evidence.length;
       }
       applied += 1;
+    } else if (edit.type === "card") {
+      const item = findItem(parsed, edit);
+      if (!item) {
+        missed.push(edit.title);
+        continue;
+      }
+      if (item.cards.includes(edit.card)) continue;
+      lines[item.line] = `${lines[item.line].replace(/\s+$/, "")} RB-${edit.card}`;
+      applied += 1;
+      linked += 1;
     } else if (edit.type === "add") {
       const text = edit.title.trim().replace(/\s+/g, " ");
       if (!text) continue;
@@ -477,6 +490,7 @@ function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
   if (added) parts.push(`add ${plural(added)}`);
   if (noted) parts.push(`add ${noted} note${noted === 1 ? "" : "s"}`);
   if (proved) parts.push(`add ${proved} proof${proved === 1 ? "" : "s"}`);
+  if (linked) parts.push(`link ${linked} card${linked === 1 ? "" : "s"}`);
 
   return {
     content: next,

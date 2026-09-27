@@ -261,7 +261,7 @@ describe("MCP server arguments", () => {
     expect(answer).toContain("Other boards: Design");
     const me = JSON.parse((await client.call("whoami", {})).text);
     expect(me.boards).toEqual(["Alpha", "Design"]);
-    expect(me.rules).toContain("A board is a large, lasting area");
+    expect(me.rules).toContain("Two kinds of things");
   });
 
   it("points out what is already in the wrong place", async () => {
@@ -285,6 +285,28 @@ describe("MCP server arguments", () => {
     expect(me.tidyUp.join("\n")).toContain("День 1 — скелет");
     expect(me.tidyUp.join("\n")).toContain("RB-1 keep their steps in the description");
     sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_plan'").run();
+  });
+
+  it("lists a check whose work is done, for the agent to verify", async () => {
+    const snapshot = {
+      version: 1,
+      title: "Privacy",
+      total: 1,
+      done: 0,
+      review: 0,
+      sections: [],
+      items: [{ title: "Impressum reachable in two taps", text: "Impressum reachable in two taps RB-1", state: "todo", done: false, section: 0, line: 4, cards: [1] }],
+      links: [],
+    };
+    sqlite
+      .prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_privacy', ?, '.repoboard/checklists/privacy.md', 'checklist', ?)")
+      .run(REPO, JSON.stringify(snapshot));
+    const before = sqlite.prepare("SELECT board_id, column_id FROM tasks WHERE card_number = 1").get() as { board_id: string; column_id: string };
+    sqlite.prepare("UPDATE tasks SET board_id = ?, column_id = 'col_3' WHERE card_number = 1").run(MAIN);
+    const waiting = JSON.parse((await client.call("needs_check", {})).text);
+    expect(waiting).toContainEqual(expect.objectContaining({ source: ".repoboard/checklists/privacy.md", line: 5, workDone: "RB-1" }));
+    sqlite.prepare("UPDATE tasks SET board_id = ?, column_id = ? WHERE card_number = 1").run(before.board_id, before.column_id);
+    sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_privacy'").run();
   });
 
   it("turns a database error into a plain answer and writes nothing half-way", async () => {

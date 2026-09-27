@@ -175,7 +175,7 @@ export function CardPage({
   const branch = draft.branches[0] ?? null;
   const milestone = data.milestones.find((m) => m.id === draft.milestoneId) ?? null;
 
-  const activity = useResource(() => api.activity(200, task.id), [task.id, task.updatedAt]);
+  const activity = useResource(() => api.activity(200, task.id), [task.id, task.updatedAt], { live: true });
   const branches = useResource(api.branches, [], { enabled: connected });
   const pulls = useResource(api.pulls, [], { enabled: connected });
   const issues = useResource(api.issues, [], { enabled: connected });

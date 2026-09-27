@@ -66,7 +66,7 @@ export function ToolRail() {
   const { resolved, toggle } = useTheme();
   const { pins, pin, unpin, full } = usePins(repo);
 
-  const cards = useResource(api.projectCards, [repo, pathname], { enabled: connected });
+  const cards = useResource(api.projectCards, [repo, pathname], { enabled: connected, live: true });
   const tracked = useResource(api.docs, [repo, pathname], { enabled: connected });
   const boardState = useResource(api.boardStatus, [repo], { enabled: connected });
 

@@ -544,6 +544,32 @@ export function moveTaskToBoard(taskId: string, toBoardId: string): { title: str
   return { title: task.title, from: from.name, to: to.name, column: column.name };
 }
 
+/**
+ * A fingerprint of the project's boards: it changes whenever a card, a board
+ * or the activity does — also when an agent writes through the MCP server,
+ * which the app does not otherwise hear about. Open pages ask for it every
+ * few seconds and refresh when it moves (components/shell/LiveRefresh.tsx).
+ */
+export function liveVersion(): string {
+  const repository = activeRepository();
+  if (!repository) return "none";
+  const ids = db.select({ id: boards.id, updatedAt: boards.updatedAt, archivedAt: boards.archivedAt }).from(boards).where(eq(boards.repositoryId, repository.id)).all();
+  const cards = ids.length
+    ? db
+        .select({ at: sql<number>`coalesce(max(${tasks.updatedAt}), 0)`, n: sql<number>`count(*)` })
+        .from(tasks)
+        .where(inArray(tasks.boardId, ids.map((b) => b.id)))
+        .get()
+    : { at: 0, n: 0 };
+  const events = db
+    .select({ at: sql<number>`coalesce(max(${activityEvents.createdAt}), 0)` })
+    .from(activityEvents)
+    .where(eq(activityEvents.repositoryId, repository.id))
+    .get();
+  const boardsAt = ids.reduce((m, b) => Math.max(m, Number(b.updatedAt ?? 0), Number(b.archivedAt ?? 0)), 0);
+  return [repository.id, ids.length, boardsAt, cards?.n ?? 0, cards?.at ?? 0, events?.at ?? 0].join(":");
+}
+
 /** A person settles what an agent closed: confirming keeps it done and makes it theirs. */
 export function confirmAgentDone(taskId: string): void {
   db.update(tasks).set({ doneBy: null, updatedAt: now() }).where(eq(tasks.id, taskId)).run();

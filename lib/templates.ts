@@ -55,7 +55,7 @@ shows as checklists, notes and progress.
 
 | Folder | What goes there |
 | ------ | --------------- |
-| \`checklists/\` | Standing lists a person **checks against**: a release, the privacy policy, licences, store requirements. Not a plan of work — that is cards on a board. |
+| \`checklists/\` | **Checks** — what must be true and be verified, often again: the privacy policy, each release (\`release-1.0.md\`: everything that must hold before it ships), licences, store rules. Written as statements, with how to verify and why. The work they need is cards on a board, named on the item's line (\`RB-12\`). |
 | \`notes/\` | Knowledge: how to run and test the project, where things live, commands. |
 | \`decisions/\` | What was decided and why, with sources, so nobody re-argues it later. |
 | \`evidence/\` | Screenshots that prove checklist items, added by RepoBoard when an item is ticked with proof. |
@@ -94,11 +94,12 @@ Details go underneath as plain bullets, review notes as a quote:
    editing someone else's text.
 4. **Cite sources** for anything legal, licensing or security related.
 5. **Keep one topic per file**, and link files with \`[[…]]\` instead of repeating them.
-6. **Work goes on a board, not in a checklist.** Building, fixing, setting up, a
-   plan by days or phases: cards on the board of their area, with the steps as
-   the card's items and a milestone per phase. A checklist here is a list that is
-   checked against — a release, the privacy policy, licences. If you would write
-   "Day 1" or "Step 3" in it, it belongs on a board.
+6. **Work is cards, checks are here.** Building, fixing, setting up, a plan by
+   days or phases: cards on the board of their area, steps as the card's items.
+   A checklist item is a check — a statement that must hold, with \`Verify:\`
+   and \`Source:\`. When a check needs work, make the card and write its
+   \`RB-n\` on the item's line; when the card is done, check the item and set
+   it to \`[?]\` with proof. If you would write "Day 1" in a checklist, it is work.
 `;
 
 /* ------------------------------------------------------------ templates -- */

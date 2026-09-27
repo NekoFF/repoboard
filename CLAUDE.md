@@ -46,6 +46,12 @@ Project (a GitHub repository)
   `SyncChip` instead of "Save to repo". Cards compare by content
   (`sameCard`), never by `JSON.stringify` of objects built in different
   places — field order differs between the database and the parser.
+- Open pages stay current on their own: `components/shell/LiveRefresh.tsx`
+  asks `/api/board?live=1` (`liveVersion`, a fingerprint of cards, boards
+  and activity) every 3 s while the page is visible, and on a change calls
+  `router.refresh()` and fires `rb-live` (resources with `live: true`
+  reload) — not while the person drags or types. Agents' MCP writes reach
+  the screen this way.
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.
@@ -55,6 +61,12 @@ Project (a GitHub repository)
   agent's `move_card(board)`; `mergeBoardFile` keeps it on one board.
 - Every board action carries `boardId`; the route rejects an unknown one.
   `getBoardData(boardId?)` without an id is the main board.
+- **Work is cards, checks are document items.** A document checklist item
+  is a statement that must hold (privacy, release gate, store rules); the
+  card doing its work is named on the item's line (`RB-n`). *Make a card* on
+  an item creates it and queues that `RB-n` as a document edit (`type:
+  "card"`, reviewed with the rest). Items show their cards and "Work done —
+  check it" once every card is done; MCP `needs_check` lists those too.
 - Items are a tree (`lib/checklist.ts`), stored as JSON on the card. Ticking an
   item ticks its children and reopens its ancestors (`setDone`).
 

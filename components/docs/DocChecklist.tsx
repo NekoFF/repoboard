@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCheck, ChevronRight, MessageSquareText, Paperclip, Plus, SquarePlus } from "lucide-react";
 import type { DocItem, ParsedDocument } from "@/lib/markdown/document";
@@ -105,7 +106,9 @@ function ItemRow({
   pendingProofs,
   author,
   depth,
+  cards,
 }: {
+  cards: LinkedCard[];
   item: DocItem;
   children: DocItem[];
   state: ItemState;
@@ -173,12 +176,32 @@ function ItemRow({
 
         <button className="min-w-0 flex-1 text-left" onClick={onToggle} aria-expanded={expanded}>
           <span className={`text-base leading-[1.45] ${closed ? "text-muted" : "text-ink"} ${state === "cancelled" ? "line-through decoration-faint" : ""}`}>
-            <InlineMarkdown text={item.title} />
+            {/* A card shown as a chip beside it is not repeated in the text. */}
+            <InlineMarkdown text={item.title.replace(/\s*\bRB-(\d+)\b/g, (m, n) => (cards.some((c) => c.number === Number(n)) ? "" : m))} />
           </span>
           <ItemMetaChips item={item} />
+          {/* The cards doing the work for this check. */}
+          {cards.map((card) => (
+            <Link
+              key={card.number}
+              href={`/board/card/RB-${card.number}`}
+              onClick={(event) => event.stopPropagation()}
+              className="ml-2 inline-flex h-5 max-w-[16rem] items-center gap-1 rounded-sm bg-pill px-1.5 align-middle text-2xs text-muted hover:text-ink"
+              title={card.title}
+            >
+              <StatusIcon status={card.status} size={11} />
+              <span className="font-mono">RB-{card.number}</span>
+            </Link>
+          ))}
           {state === "review" && (
             <span className="ml-2 inline-flex h-5 items-center rounded-sm bg-state-review/10 px-1.5 align-middle text-2xs font-medium text-state-review">
               Needs your check
+            </span>
+          )}
+          {/* Every card doing the work is done, the check itself is still open. */}
+          {!closed && state !== "review" && cards.length > 0 && cards.every((c) => c.status === "done") && (
+            <span className="ml-2 inline-flex h-5 items-center rounded-sm bg-state-review/10 px-1.5 align-middle text-2xs font-medium text-state-review">
+              Work done — check it
             </span>
           )}
           {pending && (
@@ -274,9 +297,9 @@ function ItemRow({
               </button>
             )}
             {onCreateCard && (
-              <Tooltip content="Put this on the board as a card that links back here">
+              <Tooltip content="Make a card for the work this check needs; the item gets its RB-n">
                 <button className="rb-btn-ghost" onClick={onCreateCard}>
-                  <SquarePlus className="size-3.5" /> Card
+                  <SquarePlus className="size-3.5" /> Make a card
                 </button>
               </Tooltip>
             )}
@@ -292,6 +315,13 @@ function ItemRow({
  * to show why, what to do and how to verify, and the notes people and agents
  * left under them. Sub-items stay folded inside their parent until opened.
  */
+/** A card that an item names (RB-n), as the boards have it now. */
+export interface LinkedCard {
+  number: number;
+  title: string;
+  status: ItemState;
+}
+
 export function DocChecklist({
   doc,
   filter,
@@ -306,7 +336,10 @@ export function DocChecklist({
   onProof,
   docPath,
   pendingProofs,
+  cards = new Map(),
 }: {
+  /** The project's cards by number, to show the ones items name. */
+  cards?: Map<number, LinkedCard>;
   doc: ParsedDocument;
   filter: ChecklistFilter;
   states: Map<number, ItemState>;
@@ -387,6 +420,7 @@ export function DocChecklist({
           onState={(s) => onState(item, s)}
           onNote={(text) => onNote(item, text)}
           onCreateCard={onCreateCard ? () => onCreateCard(item) : undefined}
+          cards={item.cards.map((n) => cards.get(n)).filter((c): c is LinkedCard => Boolean(c))}
           onProof={onProof ? () => onProof(item) : undefined}
           docPath={docPath}
           pendingProofs={pendingProofs.get(item.line) ?? 0}

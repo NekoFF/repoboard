@@ -279,3 +279,17 @@ describe("Windows line endings", () => {
     expect(out).toBe("# List\r\n\r\n- [x] One\r\n- [ ] Two\r\n");
   });
 });
+
+describe("linking a check to the card that does the work", () => {
+  it("writes RB-n on the item's line once, and the parser reads it back", () => {
+    const raw = "# Privacy\n\n- [ ] Impressum reachable in two taps #legal\n  - Verify: from a fresh install\n";
+    const parsed = parseDocument(raw);
+    const item = parsed.items[0];
+    const edit = { type: "card" as const, line: item.line, title: item.text, card: 12 };
+    const once = applyDocEdits(raw, [edit]);
+    expect(once.content).toContain("- [ ] Impressum reachable in two taps #legal RB-12\n  - Verify: from a fresh install");
+    expect(once.summary).toBe("Link 1 card");
+    expect(parseDocument(once.content).items[0].cards).toEqual([12]);
+    expect(applyDocEdits(once.content, [edit]).applied).toBe(0);
+  });
+});

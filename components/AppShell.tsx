@@ -10,6 +10,7 @@ import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
 import { DesktopBar } from "@/components/shell/DesktopBar";
 import { SyncAgent } from "@/components/shell/SyncAgent";
+import { LiveRefresh } from "@/components/shell/LiveRefresh";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -234,6 +235,7 @@ export function AppShell({
               <div className="rb-desktop-titlebar" aria-hidden />
               <DesktopBar />
               <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
+              {unlocked && <LiveRefresh />}
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.
                 children

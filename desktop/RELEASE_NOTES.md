@@ -1,5 +1,12 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.5
+
+- **Boards update by themselves.** What an agent or a teammate changes appears within a few seconds, with no reload. RepoBoard waits while you drag or type. The reload button still works.
+- **Work and checks, joined.** Cards are for work. Document items are checks, things that must be true. *Make a card* on a check creates the work and adds its RB-n to the item. The item then shows the card and its state, and when the work is done it says *Work done — check it*.
+- **Releases as documents.** Agents keep one document per release with everything that has to hold before it ships.
+- **macOS: downloads open again.** A downloaded RepoBoard was reported as "damaged". It is now signed ad hoc, so macOS only says the developer is unknown, and you can allow that in System Settings → Privacy & Security.
+
 ## What's new in 0.6.4
 
 - **Windows: updates no longer disconnect your AI agents.** Until now, every RepoBoard update on Windows closed the agents' connection, and it did not come back on its own. RepoBoard now keeps a copy of the agents' server that updates leave running, and that copy takes on the new version by itself. Set your agent up once more from **Settings → AI agents**, with the new command shown there. An agent on the old setup reminds you.
