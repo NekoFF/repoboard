@@ -1,5 +1,9 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.4
+
+- **Windows: updates no longer disconnect your AI agents.** Until now, every RepoBoard update on Windows closed the agents' connection, and it did not come back on its own. RepoBoard now keeps a copy of the agents' server that updates leave running, and that copy takes on the new version by itself. Set your agent up once more from **Settings → AI agents**, with the new command shown there. An agent on the old setup reminds you.
+
 ## What's new in 0.6.3
 
 - **Boards keep syncing after a card changes boards.** When you or an agent moved a card to another board, the other computers could no longer sync. They now take the card on its new board.
