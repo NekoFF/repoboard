@@ -1,5 +1,6 @@
 "use client";
 
+import { useRepoLinks } from "@/lib/client/links";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -64,6 +65,7 @@ export function DocScreen({ path }: { path: string }) {
   const router = useRouter();
   const toast = useToast();
   const { repo, viewer } = useShell();
+  const links = useRepoLinks();
   const doc = useResource(() => api.doc(path), [path]);
   const [mode, setMode] = useState<Mode>("checklist");
   const [filter, setFilter] = useState<ChecklistFilter>("all");
@@ -268,7 +270,7 @@ export function DocScreen({ path }: { path: string }) {
 
   const kind = kindOfPath(path);
   const tracked = data?.tracked ?? null;
-  const githubUrl = repo ? `https://github.com/${repo}/blob/HEAD/${path.split("/").map(encodeURIComponent).join("/")}` : null;
+  const githubUrl = links.blob("HEAD", path) ?? null;
 
   return (
     <>
@@ -304,7 +306,7 @@ export function DocScreen({ path }: { path: string }) {
             )}
             {githubUrl && (
               <Tooltip content="Open on GitHub">
-                <a className="rb-icon-btn" href={githubUrl} target="_blank" rel="noreferrer noopener" aria-label="Open on GitHub">
+                <a className="rb-icon-btn" href={githubUrl} target="_blank" rel="noreferrer noopener" aria-label={`Open on ${links.service}`}>
                   <ExternalLink className="size-4" />
                 </a>
               </Tooltip>

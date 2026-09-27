@@ -15,7 +15,7 @@ type UpdateState =
   | { state: "idle" }
   | { state: "available"; version: string }
   | { state: "downloading"; version: string; progress?: number }
-  | { state: "ready"; version: string }
+  | { state: "ready"; version: string; inPlace?: boolean }
   | { state: "failed"; version: string; error?: string };
 
 interface DesktopBridge {
@@ -140,7 +140,7 @@ export function DesktopBar() {
     }
     return (
       <button type="button" className="rb-desktop-pill rb-desktop-pill-ready" onClick={() => void updates.install()}>
-        {mac ? `Open RepoBoard ${update.version}` : `Restart to update`}
+        {update.inPlace || !mac ? "Restart to update" : `Open RepoBoard ${update.version}`}
       </button>
     );
   })();

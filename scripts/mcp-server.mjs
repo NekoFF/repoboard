@@ -73,7 +73,8 @@ function checkoutRepo() {
     if (fs.existsSync(config)) {
       const text = fs.readFileSync(config, "utf8");
       const origin = text.match(/\[remote "origin"\][^[]*?url\s*=\s*(\S+)/);
-      const slug = origin?.[1].match(/github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?$/i)?.[1];
+      // github.com or any GitLab server: the last two parts of the remote.
+      const slug = origin?.[1].match(/[:/]([^/\s:]+\/[^/\s]+?)(?:\.git)?$/i)?.[1];
       return slug ?? null;
     }
     const up = path.dirname(dir);
@@ -87,6 +88,7 @@ function checkoutRepo() {
 function activeProject() {
   let repo = process.env.REPOBOARD_REPO || process.env.GITHUB_REPO || null;
   let token = process.env.GITHUB_PAT || null;
+  let host = null;
   if (!repo || !token) {
     try {
       const raw = JSON.parse(fs.readFileSync(credentialsFile(), "utf8"));
@@ -101,6 +103,7 @@ function activeProject() {
         repo = repo ?? found?.repo ?? null;
         // Only the token that belongs to this repository.
         token = token ?? (found && same(found.repo, repo) ? found.token : null);
+        host = found && same(found.repo, repo) ? (found.host ?? null) : null;
       } else {
         repo = repo ?? raw?.repo ?? null;
         token = token ?? raw?.token ?? null;
@@ -110,7 +113,7 @@ function activeProject() {
     }
   }
   if (typeof repo !== "string" || !/^[^/\s]+\/[^/\s]+$/.test(repo)) return null;
-  return { repo, token, id: `repo_${repo.replace("/", "_")}`.toLowerCase() };
+  return { repo, token, host, id: `repo_${repo.replace("/", "_")}`.toLowerCase() };
 }
 
 /** The project's boards, the primary one (board_<repo>) first. */
@@ -339,10 +342,20 @@ function documents(repositoryId) {
 }
 
 async function readFromGitHub(project, filePath) {
-  if (!project.token) throw new Error("No token available to read from GitHub.");
-  const base = process.env.GITHUB_API_URL || "https://api.github.com";
+  if (!project.token) throw new Error("No token available to read the repository.");
   const segments = String(filePath).split("/").filter(Boolean);
   if (segments.some((seg) => seg === "." || seg === "..")) throw new Error("Paths are relative to the repository root, without . or ..");
+  // A project connected from GitLab reads through GitLab's API.
+  if (project.host?.kind === "gitlab" && typeof project.host.url === "string") {
+    const gitlab = String(project.host.url).replace(/\/+$/, "");
+    const url = `${gitlab}/api/v4/projects/${encodeURIComponent(project.repo)}/repository/files/${encodeURIComponent(segments.join("/"))}?ref=HEAD`;
+    const response = await fetch(url, { headers: { authorization: `Bearer ${project.token}`, accept: "application/json" } });
+    if (response.status === 404) throw new Error(`${filePath} is not in ${project.repo}`);
+    if (!response.ok) throw new Error(`GitLab answered ${response.status} for ${filePath}`);
+    const data = await response.json();
+    return Buffer.from(data.content, "base64").toString("utf8");
+  }
+  const base = process.env.GITHUB_API_URL || "https://api.github.com";
   const url = `${base}/repos/${project.repo}/contents/${segments.map(encodeURIComponent).join("/")}`;
   const response = await fetch(url, {
     headers: { authorization: `Bearer ${project.token}`, accept: "application/vnd.github+json" },

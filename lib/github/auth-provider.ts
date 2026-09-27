@@ -22,7 +22,14 @@ export interface StoredProject {
   savedAt: string;
   /** How the token was made: pasted by hand, or from signing in with GitHub. */
   via?: "key" | "github";
+  /** Where the repository lives: GitHub (the default) or a GitLab server. */
+  host?: RepoHost;
 }
+
+/** GitHub, or a GitLab server by its address (https://gitlab.com, or a company's own). */
+export type RepoHost = { kind: "github" } | { kind: "gitlab"; url: string };
+
+export const GITHUB: RepoHost = { kind: "github" };
 
 /** The person signed in with GitHub (the RepoBoard GitHub App), when they did. */
 interface StoredAccount {
@@ -44,6 +51,7 @@ export interface ProjectRef {
   savedAt: string;
   active: boolean;
   via?: "key" | "github";
+  host?: RepoHost;
 }
 
 const CREDENTIALS_DIR = dataDir();
@@ -110,15 +118,30 @@ export function isEnvironmentConfigured(): boolean {
 }
 
 /** Adds (or re-keys) a project and makes it the active one. */
-export function saveProject(repo: string, token: string, via: "key" | "github" = "key"): void {
+export function saveProject(repo: string, token: string, via: "key" | "github" = "key", host: RepoHost = GITHUB): void {
   const store = readStore();
   const others = store.projects.filter((p) => !same(p.repo, repo));
   writeStore({
     ...store,
     version: 2,
     active: repo,
-    projects: [...others, { repo, token, savedAt: new Date().toISOString(), via }],
+    projects: [
+      ...others,
+      { repo, token, savedAt: new Date().toISOString(), via, ...(host.kind === "gitlab" ? { host } : {}) },
+    ],
   });
+}
+
+/** Where the open project lives (GitHub unless it was connected from GitLab). */
+export function activeHost(): RepoHost {
+  if (process.env.GITHUB_REPO) return GITHUB;
+  const host = activeProject()?.host;
+  return host?.kind === "gitlab" && typeof host.url === "string" ? host : GITHUB;
+}
+
+export function hostFor(repo: string): RepoHost {
+  const host = readStore().projects.find((p) => same(p.repo, repo))?.host;
+  return host?.kind === "gitlab" && typeof host.url === "string" ? host : GITHUB;
 }
 
 /** Signing in with GitHub: the person and their token, kept like the keys (never sent to a page). */
@@ -183,6 +206,7 @@ export function listProjects(): ProjectRef[] {
     savedAt: p.savedAt,
     active: Boolean(store.active && same(store.active, p.repo)),
     via: p.via ?? "key",
+    host: p.host?.kind === "gitlab" ? p.host : GITHUB,
   }));
 }
 

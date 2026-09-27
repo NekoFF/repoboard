@@ -241,3 +241,12 @@ export function GitHubMark({ size = 16, className = "" }: { size?: number; class
     </svg>
   );
 }
+
+/** GitLab's mark (the tanuki, simplified), in the current text colour. */
+export function GitLabMark({ size = 16, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={`shrink-0 ${className}`} fill="currentColor" aria-hidden>
+      <path d="M12 21.4 15.7 10H8.3L12 21.4Zm0 0L8.3 10H3.1L12 21.4Zm-8.9-11.4L2 13.4c-.1.3 0 .7.3.9L12 21.4 3.1 10Zm0 0h5.2L6.1 3.2c-.1-.3-.6-.3-.7 0L3.1 10ZM12 21.4 15.7 10h5.2L12 21.4Zm8.9-11.4 1.1 3.4c.1.3 0 .7-.3.9L12 21.4 20.9 10Zm0 0h-5.2l2.2-6.8c.1-.3.6-.3.7 0l2.3 6.8Z" />
+    </svg>
+  );
+}

@@ -25,8 +25,8 @@ export function ConnectScreen({
   const lead = replacing
     ? "The old key no longer opens it. Its boards and checklists are safe on this computer."
     : firstRun
-      ? "Connect a GitHub repository to start. Its boards, checklists and notes live next to the code."
-      : "Connect another GitHub repository. Each project keeps its own boards and key.";
+      ? "Connect a repository from GitHub or GitLab to start. Its boards, checklists and notes live next to the code."
+      : "Connect another repository, from GitHub or GitLab. Each project keeps its own boards and key.";
 
   return (
     <StartFrame

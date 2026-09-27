@@ -212,6 +212,11 @@ export function SettingsScreen({
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 truncate text-base font-medium text-ink">
                         {p.repo}
+                        {p.host?.kind === "gitlab" && (
+                          <span className="rb-pill" title={p.host.url}>
+                            GitLab
+                          </span>
+                        )}
                         {p.active && !broken && state === "ok" && <span className="rb-pill-ok">Open</span>}
                         {p.active && connected && (
                           <span className="rb-pill" title="Your role in this repository on GitHub decides what you can change here">

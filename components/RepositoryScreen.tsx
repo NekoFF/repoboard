@@ -1,5 +1,6 @@
 "use client";
 
+import { useRepoLinks } from "@/lib/client/links";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -97,6 +98,7 @@ function Patch({ patch }: { patch: string }) {
 }
 
 function CommitSheet({ sha, repo, onClose }: { sha: string; repo: string | null; onClose: () => void }) {
+  const links = useRepoLinks();
   const commit = useResource(() => api.commit(sha), [sha]);
   const c: CommitDetail | undefined = commit.data?.commit;
   const [title, ...body] = (c?.message ?? "").split("\n");
@@ -107,8 +109,8 @@ function CommitSheet({ sha, repo, onClose }: { sha: string; repo: string | null;
         <span className="font-mono text-sm text-ink">{sha.slice(0, 7)}</span>
         <div className="flex-1" />
         {repo && (
-          <a className="rb-btn-ghost" href={`https://github.com/${repo}/commit/${sha}`} target="_blank" rel="noreferrer noopener">
-            GitHub <ExternalLink className="size-3.5" />
+          <a className="rb-btn-ghost" href={links.commit(sha)} target="_blank" rel="noreferrer noopener">
+            {links.service} <ExternalLink className="size-3.5" />
           </a>
         )}
         <button className="rb-icon-btn" onClick={onClose} aria-label="Close">
@@ -175,6 +177,7 @@ export function RepositoryScreen({
   const params = useSearchParams();
   const toast = useToast();
   const { repo } = useShell();
+  const links = useRepoLinks();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [branch, setBranch] = useState<string | null>(params.get("branch"));
   const [query, setQuery] = useState("");
@@ -257,8 +260,8 @@ export function RepositoryScreen({
         meta={repo ?? undefined}
         actions={
           repo && (
-            <a className="rb-btn rb-btn-sm" href={`https://github.com/${repo}`} target="_blank" rel="noreferrer noopener">
-              GitHub <ExternalLink className="size-3.5" />
+            <a className="rb-btn rb-btn-sm" href={links.web ?? undefined} target="_blank" rel="noreferrer noopener">
+              {links.service} <ExternalLink className="size-3.5" />
             </a>
           )
         }
@@ -395,7 +398,7 @@ export function RepositoryScreen({
                     <a
                       key={pr.number}
                       className={rowClass}
-                      href={repo ? `https://github.com/${repo}/pull/${pr.number}` : undefined}
+                      href={links.pull(pr.number)}
                       target="_blank"
                       rel="noreferrer noopener"
                     >
@@ -441,7 +444,7 @@ export function RepositoryScreen({
                       <span className="w-10 shrink-0 font-mono text-xs text-faint">#{issue.number}</span>
                       <a
                         className="min-w-0 flex-1 truncate text-sm text-ink hover:underline"
-                        href={repo ? `https://github.com/${repo}/issues/${issue.number}` : undefined}
+                        href={links.issue(issue.number)}
                         target="_blank"
                         rel="noreferrer noopener"
                       >

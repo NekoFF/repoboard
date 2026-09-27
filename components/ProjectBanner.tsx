@@ -1,5 +1,6 @@
 "use client";
 
+import { useRepoLinks } from "@/lib/client/links";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, Palette } from "lucide-react";
@@ -138,6 +139,7 @@ export function ProjectBanner({
   syncedAt: number | null;
 }) {
   const { projects, role } = useShell();
+  const links = useRepoLinks();
   const [editing, setEditing] = useState(false);
   const stored = repo ? projects.find((p) => p.repo.toLowerCase() === repo.toLowerCase()) : undefined;
   const look: Look = { art: stored?.art ?? null, hue: stored?.hue ?? null };
@@ -153,8 +155,8 @@ export function ProjectBanner({
           </button>
         )}
         {repo && (
-          <a className="rb-btn rb-glass" href={`https://github.com/${repo}`} target="_blank" rel="noreferrer noopener">
-            GitHub <ExternalLink className="size-3.5" />
+          <a className="rb-btn rb-glass" href={links.web ?? undefined} target="_blank" rel="noreferrer noopener">
+            {links.service} <ExternalLink className="size-3.5" />
           </a>
         )}
       </div>

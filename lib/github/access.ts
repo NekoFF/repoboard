@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { getAuthProvider, getConfiguredRepo, listProjects, tokenFor } from "@/lib/github/auth-provider";
+import {
+  activeHost,
+  getAuthProvider,
+  getConfiguredRepo,
+  GITHUB,
+  hostFor,
+  listProjects,
+  tokenFor,
+  type RepoHost,
+} from "@/lib/github/auth-provider";
 import { GitHubAccessError, GitHubClient, type AccessReason, type RepoSummary } from "@/lib/github/client";
 import type { Who } from "@/lib/roles";
 
@@ -17,8 +26,8 @@ export type AccessState =
   | { state: "ok"; repo: RepoSummary }
   | { state: "failed"; slug: string; reason: AccessReason; message: string };
 
-function probeState(token: string, slug: string): Promise<AccessState> {
-  return GitHubClient.probe(token, slug)
+function probeState(token: string, slug: string, host: RepoHost = GITHUB): Promise<AccessState> {
+  return GitHubClient.probeOn(host, token, slug)
     .then((repo): AccessState => ({ state: "ok", repo }))
     .catch((error): AccessState => {
       const known = error instanceof GitHubAccessError;
@@ -49,7 +58,7 @@ export async function getAccessState(): Promise<AccessState> {
     if (cached.pending) return cached.pending;
     if (cached.until > Date.now()) return cached.result;
   }
-  const pending = probeState(token, slug);
+  const pending = probeState(token, slug, activeHost());
   cached = { key, until: 0, result: { state: "none" }, pending };
   const result = await pending;
   if (cached?.key === key) {
@@ -94,7 +103,7 @@ export async function projectHealth(): Promise<Map<string, ProjectHealth>> {
       const known = health.get(id);
       let result = known && known.key === key && known.until > Date.now() ? known.result : null;
       if (!result) {
-        result = await probeState(token, p.repo);
+        result = await probeState(token, p.repo, hostFor(p.repo));
         health.set(id, { key, until: Date.now() + (result.state === "ok" ? HEALTH_FOR_MS : FAILED_FOR_MS * 6), result });
       }
       out.set(id, result.state === "ok" ? "ok" : result.state === "failed" ? result.reason : "unknown");
@@ -118,7 +127,7 @@ export async function getViewer(): Promise<string | null> {
   if (!token) return null;
   const key = createHash("sha256").update(token).digest("hex");
   if (viewers.has(key)) return viewers.get(key) ?? null;
-  const login = await GitHubClient.viewer(token);
+  const login = await GitHubClient.viewerOn(activeHost(), token);
   if (login) viewers.set(key, login);
   return login;
 }

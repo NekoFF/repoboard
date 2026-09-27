@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import { getAuthProvider, getConfiguredRepo } from "./auth-provider";
+import { activeHost, getAuthProvider, getConfiguredRepo, type RepoHost } from "./auth-provider";
 import { roleOf, type Role } from "@/lib/roles";
 
 export class GitHubNotConfiguredError extends Error {
@@ -184,6 +184,35 @@ export function isEmptyRepository(error: unknown): boolean {
 const referenceCache = new Map<string, { at: number; refs: CardReference[] }>();
 const REFERENCE_TTL_MS = 60_000;
 
+/**
+ * What RepoBoard asks of a repository host. GitHubClient and GitLabClient
+ * both provide it; code outside lib/github and lib/gitlab uses only this.
+ */
+export type RepoClient = Pick<
+  GitHubClient,
+  | "owner"
+  | "repo"
+  | "getRepo"
+  | "listBranches"
+  | "listCommits"
+  | "getCommit"
+  | "listPullRequests"
+  | "listIssues"
+  | "findReferences"
+  | "commitGraph"
+  | "storyGraph"
+  | "listPeople"
+  | "listMarkdownFiles"
+  | "getFile"
+  | "createFiles"
+  | "headCommit"
+  | "listFiles"
+  | "getFileBytes"
+  | "commitChanges"
+  | "ensureBranch"
+  | "putFile"
+>;
+
 export class GitHubClient {
   private constructor(
     private readonly octokit: Octokit,
@@ -191,11 +220,38 @@ export class GitHubClient {
     readonly repo: string,
   ) {}
 
-  static async create(): Promise<GitHubClient> {
+  /**
+   * The open project's client: GitHub's, or GitLab's for a project connected
+   * from a GitLab server (lib/gitlab/client.ts) — the same methods, so every
+   * caller works with either.
+   */
+  static async create(): Promise<RepoClient> {
     const token = await getAuthProvider().getToken();
     const repo = getConfiguredRepo();
     if (!token || !repo) throw new GitHubNotConfiguredError();
+    const host = activeHost();
+    if (host.kind === "gitlab") {
+      const { GitLabClient } = await import("@/lib/gitlab/client");
+      return new GitLabClient(token, repo.owner, repo.name, host.url);
+    }
     return new GitHubClient(makeOctokit(token), repo.owner, repo.name);
+  }
+
+  /** Checks a token and repository on whichever host the project lives. */
+  static async probeOn(host: RepoHost, token: string, slug: string): Promise<RepoSummary> {
+    if (host.kind === "gitlab") {
+      const { GitLabClient } = await import("@/lib/gitlab/client");
+      return GitLabClient.probe(token, slug, host.url);
+    }
+    return GitHubClient.probe(token, slug);
+  }
+
+  static async viewerOn(host: RepoHost, token: string): Promise<string | null> {
+    if (host.kind === "gitlab") {
+      const { GitLabClient } = await import("@/lib/gitlab/client");
+      return GitLabClient.viewer(token, host.url);
+    }
+    return GitHubClient.viewer(token);
   }
 
   /** Validates a token/repo pair before it is persisted by the connect flow. */

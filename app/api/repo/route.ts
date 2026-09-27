@@ -12,7 +12,9 @@ import {
 } from "@/lib/board-service";
 import {
   getAuthProvider,
+  GITHUB,
   isEnvironmentConfigured,
+  type RepoHost,
   listProjects,
   removeProject,
   saveProject,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/github/auth-provider";
 import { currentWho, getAccessState, invalidateAccessCache, projectHealth, type ProjectHealth } from "@/lib/github/access";
 import { GitHubAccessError, GitHubClient } from "@/lib/github/client";
+import { GitLabClient, gitlabBase } from "@/lib/gitlab/client";
 import { repoSlug } from "@/lib/github/slug";
 
 export const dynamic = "force-dynamic";
@@ -80,13 +83,24 @@ const slug = z
   .transform(repoSlug)
   .pipe(z.string().regex(/^[^/\s]+\/[^/\s]+$/, "Pick a repository, or type it as owner/name"));
 
+/** Where the repository lives: GitHub unless a GitLab server is named. */
+const hostSchema = z
+  .object({ kind: z.literal("gitlab"), url: z.string().max(300) })
+  .or(z.object({ kind: z.literal("github") }))
+  .optional();
+
+function hostOf(host: z.infer<typeof hostSchema>): RepoHost {
+  return host?.kind === "gitlab" ? { kind: "gitlab", url: gitlabBase(host.url) } : GITHUB;
+}
+
 const bodySchema = z.union([
   z.object({
     action: z.literal("connect").optional(),
     token: z.string().min(10, "Token looks too short"),
     repo: slug,
+    host: hostSchema,
   }),
-  z.object({ action: z.literal("repos"), token: z.string().min(10, "Token looks too short") }),
+  z.object({ action: z.literal("repos"), token: z.string().min(10, "Token looks too short"), host: hostSchema }),
   z.object({
     action: z.literal("look"),
     repo: slug,
@@ -121,13 +135,18 @@ async function handlePost(request: Request) {
 
   try {
     if (body.action === "repos") {
-      const repos = await GitHubClient.repositoriesFor(body.token.trim());
+      const host = hostOf(body.host);
+      const repos =
+        host.kind === "gitlab"
+          ? await GitLabClient.repositoriesFor(body.token.trim(), host.url)
+          : await GitHubClient.repositoriesFor(body.token.trim());
       return NextResponse.json({ repos });
     }
     if ("token" in body) {
-      const summary = await connectRepository(body.token.trim(), body.repo.trim());
-      // Stored under GitHub's spelling of the name, so it matches the board row.
-      saveProject(`${summary.owner}/${summary.name}`, body.token.trim());
+      const host = hostOf(body.host);
+      const summary = await connectRepository(body.token.trim(), body.repo.trim(), host);
+      // Stored under the host's spelling of the name, so it matches the board row.
+      saveProject(`${summary.owner}/${summary.name}`, body.token.trim(), "key", host);
       invalidateAccessCache();
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRepoLinks } from "@/lib/client/links";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -110,6 +111,7 @@ export function ProjectStory({
   card?: boolean;
 }) {
   const data = useResource(api.story, [repo], { enabled: connected });
+  const links = useRepoLinks();
   const pulls = useResource(api.pulls, [repo], { enabled: connected });
   const box = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
@@ -655,7 +657,7 @@ export function ProjectStory({
             {(opened.cards.length > 0 || opened.pr) && (
               <div className="flex flex-wrap gap-1.5 px-4 pb-3">
                 {opened.pr && repo && (
-                  <a className="rb-chip" href={`https://github.com/${repo}/pull/${opened.pr}`} target="_blank" rel="noreferrer noopener">
+                  <a className="rb-chip" href={links.pull(opened.pr)} target="_blank" rel="noreferrer noopener">
                     <GitMerge className="size-3.5 text-faint" /> #{opened.pr}
                   </a>
                 )}
@@ -670,7 +672,7 @@ export function ProjectStory({
               {[...opened.commits].reverse().map((c) => (
                 <li key={c.sha}>
                   <a
-                    href={repo ? `https://github.com/${repo}/commit/${c.sha}` : undefined}
+                    href={links.commit(c.sha)}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="group flex items-start gap-2.5 rounded-lg px-2 py-2 hover:bg-hover"

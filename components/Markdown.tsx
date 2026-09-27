@@ -9,7 +9,7 @@ import { resolveLink, type DocItem, type DocSection } from "@/lib/markdown/docum
 import type { ItemState } from "@/lib/markdown/format";
 import { DueLabel, Menu, MenuItem, MenuSeparator, PriorityIcon, ProgressBar, StatusIcon } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { useShell } from "@/components/shell/ShellContext";
+import { useRepoLinks } from "@/lib/client/links";
 import { STATUS_LABEL } from "@/lib/status";
 
 /** [[docs/PRIVACY.md]] → a link to that document inside RepoBoard. */
@@ -48,11 +48,11 @@ function resolveHref(href: string | undefined, basePath?: string): string | unde
 const REPO_FILE = "repo-file:";
 
 function SmartLink({ href, children }: { href?: string; children?: ReactNode }) {
-  const { repo } = useShell();
+  const links = useRepoLinks();
   if (href?.startsWith(REPO_FILE)) {
     const path = href.slice(REPO_FILE.length);
-    if (!repo) return <span>{children}</span>;
-    const url = `https://github.com/${repo}/blob/HEAD/${path.split("/").map(encodeURIComponent).join("/")}`;
+    const url = links.blob("HEAD", path);
+    if (!url) return <span>{children}</span>;
     return (
       <a href={url} target="_blank" rel="noreferrer noopener">
         {children}
