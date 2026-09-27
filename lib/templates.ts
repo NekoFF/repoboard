@@ -55,7 +55,7 @@ shows as checklists, notes and progress.
 
 | Folder | What goes there |
 | ------ | --------------- |
-| \`checklists/\` | Things that must be done **and checked**: a release, the privacy policy, licences. |
+| \`checklists/\` | Standing lists a person **checks against**: a release, the privacy policy, licences, store requirements. Not a plan of work — that is cards on a board. |
 | \`notes/\` | Knowledge: how to run and test the project, where things live, commands. |
 | \`decisions/\` | What was decided and why, with sources, so nobody re-argues it later. |
 | \`evidence/\` | Screenshots that prove checklist items, added by RepoBoard when an item is ticked with proof. |
@@ -94,6 +94,11 @@ Details go underneath as plain bullets, review notes as a quote:
    editing someone else's text.
 4. **Cite sources** for anything legal, licensing or security related.
 5. **Keep one topic per file**, and link files with \`[[…]]\` instead of repeating them.
+6. **Work goes on a board, not in a checklist.** Building, fixing, setting up, a
+   plan by days or phases: cards on the board of their area, with the steps as
+   the card's items and a milestone per phase. A checklist here is a list that is
+   checked against — a release, the privacy policy, licences. If you would write
+   "Day 1" or "Step 3" in it, it belongs on a board.
 `;
 
 /* ------------------------------------------------------------ templates -- */

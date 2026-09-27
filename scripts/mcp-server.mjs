@@ -1471,6 +1471,7 @@ Organise the work:
   items — every step, one item each (create_card(items: [...]) or add_checklist_item), with sub-items for the parts of a step (1, 1.1, 1.2) and notes on each: how to do it, what to watch for, how to check it.
   A card with work to do and no items is not finished being written.
 - Put each card on the board of its area: create_card(board: "Security", …).
+- Work goes on boards, not into documents. Building, fixing, setting up, a plan by days or phases: cards, with the steps as items and a milestone per phase. A checklist document in .repoboard/checklists/ is only for a list a person checks against — a release, the privacy policy, licences, store requirements. If you would write "Day 1" or "Step 3" in it, it belongs on a board.
 
 Finishing work — close it when you can prove it is done, send it to check when you cannot:
 - Close it (move_card to Done, set_checklist_item done: true) with a reason and the proof in note:
