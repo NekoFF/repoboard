@@ -701,6 +701,8 @@ export function ConnectFlow({
     <div className="flex flex-col gap-5">
       {!replacing && (
         <Segmented
+          fill
+          size="lg"
           value={provider}
           onChange={setProvider}
           options={[

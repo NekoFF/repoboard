@@ -369,25 +369,32 @@ export function Segmented<T extends string>({
   value,
   onChange,
   size = "md",
+  fill = false,
 }: {
   options: { value: T; label: ReactNode; count?: number; title?: string }[];
   value: T;
   onChange: (value: T) => void;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
+  /** Take the whole width, the options sharing it equally. */
+  fill?: boolean;
 }) {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-md bg-pill p-0.5" role="tablist">
+    <div
+      className={`${fill ? "flex w-full" : "inline-flex w-fit"} items-center gap-0.5 ${size === "lg" ? "rounded-xl p-1" : "rounded-md p-0.5"} bg-pill`}
+      role="tablist"
+    >
       {options.map((option) => {
         const active = option.value === value;
         return (
           <button
             key={option.value}
+            type="button"
             role="tab"
             aria-selected={active}
             title={option.title}
             onClick={() => onChange(option.value)}
-            className={`inline-flex items-center gap-1.5 rounded-[5px] font-medium transition-colors duration-100 ${
-              size === "sm" ? "h-6 px-2 text-xs" : "h-7 px-2.5 text-sm"
+            className={`inline-flex items-center gap-1.5 font-medium transition-colors duration-100 ${fill ? "flex-1 justify-center" : ""} ${
+              size === "sm" ? "h-6 rounded-[5px] px-2 text-xs" : size === "lg" ? "h-9 rounded-lg px-3 text-sm" : "h-7 rounded-[5px] px-2.5 text-sm"
             } ${active ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink"}`}
           >
             {option.label}
