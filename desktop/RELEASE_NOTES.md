@@ -1,5 +1,15 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.4.0
+
+- **Sign in with GitHub.** One button and a short code to confirm on github.com. After that, every repository you allowed RepoBoard shows up, including the ones where you are only a collaborator. A key still works as the other way.
+- **Boards sync on their own.** Turn it on once per project (board menu → *Sync the boards automatically*). Your other computers and your teammates then see the same boards without pressing Save or Sync. RepoBoard keeps the board file on a branch of its own, `repoboard`; your code is never touched.
+- **Roles from GitHub.** Admins manage every board and make boards for people. Members work on cards and their own boards. Read-only people look. There is nothing to set up.
+- **Boards kept to their owner.** A person's board can be shown to everyone, or only to its owner and the admins.
+- **AI agents as participants.** Agents work under their own name, marked AI. You can assign them cards, and they find their work with `my_work`.
+- **The tool rail on the right.** Pin boards, cards and checklists there. It also shows what waits for you: items to check, and board changes not yet saved to GitHub.
+- **Safer.** RepoBoard answers only its own window and pages. The app's windows never show a page from outside it. Updates check the download and ask before installing.
+
 ## What's new in 0.3.0
 
 - **A start screen and a clear way to connect.** Press *Get a key from GitHub*: GitHub opens with the key already filled in, and you tick your repository. Paste the key, and pick one or more repositories from the ones it opens. You don't type names or look up permissions.
