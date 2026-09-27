@@ -138,7 +138,44 @@ function CheckForUpdates() {
   );
 }
 
+/** Whether agents may close cards and items themselves, when they say why. */
+function AgentPolicy({ initial, canChange }: { initial: "propose" | "reason"; canChange: boolean }) {
+  const toast = useToast();
+  const [policy, setPolicy] = useState(initial);
+  const change = async (next: "propose" | "reason") => {
+    const before = policy;
+    setPolicy(next);
+    try {
+      await api.setAgentPolicy(next);
+    } catch (error) {
+      setPolicy(before);
+      toast.push({ kind: "error", message: "Could not change it", detail: (error as Error).message });
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium text-ink">When an agent finishes work</p>
+      <Segmented
+        size="sm"
+        value={policy}
+        onChange={(v) => canChange && void change(v)}
+        options={[
+          { value: "reason", label: "Close with a reason" },
+          { value: "propose", label: "Only send to check" },
+        ]}
+      />
+      <p className="text-sm text-muted">
+        {policy === "reason"
+          ? "Agents send finished work to Review for you to check. They close it themselves only when it was already done or no person can check it, and say why; you confirm or reopen it."
+          : "Agents never close anything: finished work always waits in Review for you."}
+        {!canChange && " Only a project admin can change this."}
+      </p>
+    </div>
+  );
+}
+
 export function SettingsScreen({
+  agentPolicy,
   version,
   authLabel,
   tokenSource,
@@ -146,6 +183,7 @@ export function SettingsScreen({
   paths,
   mcp,
 }: {
+  agentPolicy: "propose" | "reason";
   version: { number: string; desktop: boolean };
   authLabel: string;
   tokenSource: string | null;
@@ -360,10 +398,11 @@ export function SettingsScreen({
             }
           >
             <AgentSetup server={paths.mcpServer} node={mcp.node} env={mcp.env} />
+            {connected && <AgentPolicy initial={agentPolicy} canChange={role === "manager"} />}
             <p className="text-sm text-muted">
-              The rules agents follow — never tick an item themselves, mark it <code className="font-mono text-xs">[?]</code> and
-              say how to verify it — are in <code className="font-mono text-xs">.repoboard/README.md</code>, which RepoBoard
-              creates with the workspace.
+              In documents agents never tick an item themselves: they mark it <code className="font-mono text-xs">[?]</code> and
+              say how to verify it. The rules are in <code className="font-mono text-xs">.repoboard/README.md</code>, which
+              RepoBoard creates with the workspace.
             </p>
           </Card>
 

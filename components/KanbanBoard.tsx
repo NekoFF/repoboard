@@ -389,6 +389,7 @@ export function KanbanBoard({
         milestoneId: null,
         updatedAt: Date.now(),
         checklist: [],
+        doneBy: null,
         markdownTaskId: null,
         labels: [],
         branches: [],

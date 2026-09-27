@@ -51,7 +51,7 @@ import {
 import { PRIORITY_LABEL, statusOfColumn } from "@/lib/status";
 import { PageHeader } from "@/components/PageHeader";
 import { ChecklistTree } from "@/components/card/ChecklistTree";
-import { progress } from "@/lib/checklist";
+import { progress, type DoneBy } from "@/lib/checklist";
 import { orderAfterMove, useCommitMove } from "@/lib/client/moves";
 import { setCurrentBoard } from "@/lib/client/current-board";
 import { useHotkeys } from "@/lib/client/hotkeys";
@@ -85,6 +85,43 @@ export interface CardMention {
   title: string;
   line: number;
   state: string;
+}
+
+const REASONS: Record<DoneBy["reason"], string> = {
+  already_done: "It was already done",
+  cannot_be_checked: "A person cannot check this",
+};
+
+/** An agent closed this card with a reason: a person confirms it or sends it back. */
+function AgentClosed({ doneBy, onConfirm, onReopen }: { doneBy: DoneBy; onConfirm: () => Promise<void>; onReopen: () => Promise<void> }) {
+  const [busy, setBusy] = useState<"confirm" | "reopen" | null>(null);
+  const run = (which: "confirm" | "reopen", action: () => Promise<void>) => async () => {
+    setBusy(which);
+    try {
+      await action();
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="flex items-start gap-3 rounded-xl bg-state-review/10 px-4 py-3 ring-1 ring-state-review/25">
+      <StatusIcon status="review" size={16} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-ink">
+          <span className="font-medium">{doneBy.name}</span> (AI) closed this card. {REASONS[doneBy.reason]}.
+        </p>
+        {doneBy.note && <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{doneBy.note}</p>}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button className="rb-btn rb-btn-sm" disabled={busy !== null} onClick={run("reopen", onReopen)}>
+          Reopen
+        </button>
+        <button className="rb-btn-primary rb-btn-sm" disabled={busy !== null} onClick={run("confirm", onConfirm)}>
+          {busy === "confirm" ? "Confirming…" : "Confirm done"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function CardPage({
@@ -632,6 +669,22 @@ export function CardPage({
         {/* ------------------------------------------------------- main -- */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-9">
+            {task.doneBy && (
+              <AgentClosed
+                doneBy={task.doneBy}
+                onConfirm={async () => {
+                  await api.boardAction({ boardId: data.boardId, action: "confirm-done", taskId: task.id });
+                  router.refresh();
+                }}
+                onReopen={async () => {
+                  const back =
+                    data.columns.find((c) => statusOfColumn(c.name) === "doing") ??
+                    data.columns.find((c) => statusOfColumn(c.name) !== "done");
+                  if (back) await onMove(task, back.id);
+                  router.refresh();
+                }}
+              />
+            )}
             <div className="flex flex-col gap-2">
               <textarea
                 ref={titleRef}

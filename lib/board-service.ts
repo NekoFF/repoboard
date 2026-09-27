@@ -19,6 +19,7 @@ import {
   workspaces,
 } from "@/db/schema";
 import { canSeeBoard, type Who } from "@/lib/roles";
+import type { DoneBy } from "@/lib/checklist";
 import { GITHUB, type RepoHost } from "@/lib/github/auth-provider";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
 import { currentActor, type Actor } from "@/lib/actor";
@@ -41,6 +42,7 @@ import {
   type BoardStateCard,
   type BoardStateMeta,
   type BoardStateMilestone,
+  doneByField,
 } from "@/lib/board-state";
 import {
   buildDiff,
@@ -98,6 +100,8 @@ export interface BoardTask {
   milestoneId: string | null;
   updatedAt: number;
   checklist: ChecklistItem[];
+  /** An AI agent closed it (moved it to done) with a reason; cleared when a person confirms or moves it. */
+  doneBy: DoneBy | null;
   markdownTaskId: string | null;
   labels: string[];
   branches: string[];
@@ -430,6 +434,7 @@ export function getBoardData(boardId?: string | null): BoardData {
       milestoneId: t.milestoneId ?? null,
       updatedAt: t.updatedAt.getTime(),
       checklist: normalise(t.checklist),
+      doneBy: t.doneBy ?? null,
       markdownTaskId: t.markdownTaskId,
       labels: links.labels.get(t.id) ?? [],
       branches: links.branches.get(t.id) ?? [],
@@ -502,6 +507,30 @@ function nextCardNumber(boardId: string): number {
     .where(inArray(tasks.boardId, ids))
     .get();
   return (row?.max ?? 0) + 1;
+}
+
+/** A person settles what an agent closed: confirming keeps it done and makes it theirs. */
+export function confirmAgentDone(taskId: string): void {
+  db.update(tasks).set({ doneBy: null, updatedAt: now() }).where(eq(tasks.id, taskId)).run();
+}
+
+/** What AI agents may do in the open project (Settings → AI agents). */
+export function agentPolicy(): "propose" | "reason" {
+  const repository = activeRepository();
+  if (!repository) return "reason";
+  const row = db.select({ p: repositories.agentPolicy }).from(repositories).where(eq(repositories.id, repository.id)).get();
+  return row?.p === "propose" ? "propose" : "reason";
+}
+
+export function setAgentPolicy(policy: "propose" | "reason"): void {
+  const repository = activeRepository();
+  if (!repository) throw new Error("Not connected");
+  db.update(repositories).set({ agentPolicy: policy }).where(eq(repositories.id, repository.id)).run();
+  logActivity({
+    repositoryId: repository.id,
+    type: "sync_settings",
+    message: policy === "propose" ? "let AI agents only propose: people mark work done" : "let AI agents close work when they give a reason",
+  });
 }
 
 /* ---------------------------------------------------------------- boards -- */
@@ -1432,6 +1461,7 @@ function cardsOf(boardId: string): BoardStateCard[] {
     priority: t.priority ?? 0,
     milestone: t.milestoneId ? (milestoneName.get(t.milestoneId) ?? null) : null,
     markdownTaskId: t.markdownTaskId,
+    ...doneByField(t.doneBy),
     updatedAt: t.updatedAt.getTime(),
     deletedAt: t.deletedAt?.getTime() ?? null,
   }));
@@ -1507,6 +1537,7 @@ function writeCards(boardId: string, cards: BoardStateCard[]): void {
       cardNumber: card.number,
       priority: card.priority ?? 0,
       milestoneId: card.milestone ? (milestoneByName.get(card.milestone) ?? null) : null,
+      doneBy: card.doneBy ?? null,
       updatedAt: new Date(card.updatedAt),
       deletedAt: card.deletedAt ? new Date(card.deletedAt) : null,
     };

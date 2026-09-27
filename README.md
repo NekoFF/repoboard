@@ -45,7 +45,9 @@ what is left, and what still needs your own eyes before it counts.
 - **For AI agents** — an MCP server lets Claude, Codex or any other agent read
   and work the same board and checklists, under its own name (marked AI).
   Assign it a card; it finds its work with `my_work`. Agents propose; they
-  cannot commit, tick items or put a card in Done.
+  cannot commit, and send finished work to Review for you. They close a card
+  themselves only when it was already done or no person can check it, say
+  why, and you confirm or reopen it (Settings → AI agents can turn that off).
 
 Everything RepoBoard writes to your repository goes through a diff you review
 first, and it refuses to overwrite a file that changed on GitHub meanwhile.

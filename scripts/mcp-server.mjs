@@ -362,6 +362,39 @@ function ancestorsOf(list, target, trail = []) {
   return null;
 }
 const DONE_COLUMN = /^(done|complete|completed|shipped|closed)$/i;
+const REVIEW_COLUMN = /review|qa|verify|check/i;
+
+/**
+ * Whether agents may close work in this project (Settings → AI agents):
+ * "reason" — with a reason, when it was done before or a person cannot
+ * check it; "propose" — never, a person always does.
+ */
+function agentPolicy(repoId) {
+  try {
+    return db.prepare("SELECT agent_policy AS p FROM repositories WHERE id = ?").get(repoId)?.p === "propose" ? "propose" : "reason";
+  } catch {
+    return "reason"; // A database from before the setting existed.
+  }
+}
+
+const FINISH_REASONS = ["already_done", "cannot_be_checked"];
+
+/**
+ * Closing needs a reason and a note. Without them, the work goes to a
+ * person's check instead: that is the normal way; closing is the exception.
+ * Returns the record to keep, or null (send it to check), or throws when the
+ * project lets only people close.
+ */
+function closing(repoId, reason, note) {
+  if (!reason) return null;
+  if (!note || String(note).trim().length < 8) {
+    throw new Error(`Closing with reason "${reason}" needs a note: ${reason === "already_done" ? "where it was done (commit, pull request, file)" : "why no person can check it"}.`);
+  }
+  if (agentPolicy(repoId) === "propose") {
+    throw new Error("In this project only people mark work done (Settings → AI agents). Leave out reason to send it for a person's check.");
+  }
+  return { name: agentLabel(), kind: "agent", reason, note: String(note).trim(), at: now() };
+}
 /** The card's items as the app numbers them, for "no such item" answers. */
 function allTexts(list) {
   return numbered(list).map(({ number, item }) => `${number} ${item.text}`);
@@ -369,6 +402,15 @@ function allTexts(list) {
 function noItem(given, list) {
   return new Error(`No checklist item "${given}" on this card. Items (by number or text): ${allTexts(list).join("; ") || "none"}`);
 }
+/** The record of an agent closing a card (tasks.done_by), or null to clear it. */
+function setDoneBy(taskId, doneBy) {
+  try {
+    db.prepare("UPDATE tasks SET done_by = ? WHERE id = ?").run(doneBy ? JSON.stringify(doneBy) : null, taskId);
+  } catch {
+    // A database from before closing with a reason existed.
+  }
+}
+
 function saveChecklist(taskId, list) {
   db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), taskId);
 }
@@ -448,6 +490,20 @@ const tools = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "create_board",
+    description:
+      "Make a board for a large, lasting area of the work — Design, Security, Release, Legal — once it has several cards of its own (or clearly will). Look at list_boards first and use a board that fits; never one board per card. Cards and their steps go on it with create_card(board: …).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", minLength: 1, description: "Short, by area: Design, Security, Release" },
+        description: { type: "string", description: "What belongs on it" },
+        owner: { type: "string", description: "A person's login, for a board of one person's work (optional)" },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "get_board",
     description:
       "Every card on a board by column, with labels, priority, milestone, links and checklist. Without `board`, the main board.",
@@ -473,6 +529,8 @@ const tools = [
         milestone: { type: "string", description: "Existing milestone name" },
         dueDate: { type: "string", description: "YYYY-MM-DD" },
         board: { type: "string", description: "Board name, owner or id (default: the main board)" },
+        reason: { type: "string", enum: FINISH_REASONS, description: "Only to create it already done — see move_card" },
+        note: { type: "string", description: "With reason: where it was done, or why no person can check it" },
       },
       required: ["title", "column"],
     },
@@ -480,10 +538,15 @@ const tools = [
   {
     name: "move_card",
     description:
-      "Move a card to another column — but not to Done: when you think it is finished, move it to Review and say how to check it with comment_on_card; the person moves it to Done. A card that comes from the markdown file changes on the board only; the commit waits for the person's review in the app.",
+      "Move a card to another column. Finished work goes to Review (moving to Done without a reason lands it there): say how to check it with comment_on_card and a person moves it on. Close it yourself (column Done with a reason and a note) only when it was already done before — note where (commit, pull request, file) — or when it is nothing a person could check — note why; the card then shows it was closed by you, and a person can confirm or reopen it. A card from the markdown file changes on the board only; the commit waits for the person's review in the app.",
     inputSchema: {
       type: "object",
-      properties: { card: { type: "string", description: "RB-12, 12 or the card id" }, column: text },
+      properties: {
+        card: { type: "string", description: "RB-12, 12 or the card id" },
+        column: text,
+        reason: { type: "string", enum: FINISH_REASONS, description: "Only for Done: already_done or cannot_be_checked" },
+        note: { type: "string", description: "With reason: where it was done, or why no person can check it" },
+      },
       required: ["card", "column"],
     },
   },
@@ -524,10 +587,16 @@ const tools = [
   {
     name: "set_checklist_item",
     description:
-      "Reopen a checklist item (done: false), found by its number like 1.2 or its text. Agents do not tick items done: when one is finished, say so and how to check it with update_checklist_item's comment, and the person ticks it.",
+      "Finish or reopen a checklist item, found by its number like 1.2 or its text. done: true marks it 'needs a person's check' — the normal way when you finish something; add a comment (update_checklist_item) on how to check it. Close it outright only with a reason and a note: already_done (note where: commit, pull request, file) or cannot_be_checked (note why no person could). done: false reopens it.",
     inputSchema: {
       type: "object",
-      properties: { card: text, text, done: { type: "boolean" } },
+      properties: {
+        card: text,
+        text,
+        done: { type: "boolean" },
+        reason: { type: "string", enum: FINISH_REASONS, description: "Only to close outright: already_done or cannot_be_checked" },
+        note: { type: "string", description: "With reason: where it was done, or why no person can check it" },
+      },
       required: ["card", "text", "done"],
     },
   },
@@ -708,12 +777,20 @@ const handlers = {
       );
   },
 
-  create_card({ title, column, description, labels, assignee, priority, milestone, dueDate, board: boardName }) {
+  create_card({ title, column, description, labels, assignee, priority, milestone, dueDate, board: boardName, reason, note }) {
     const { repo, board } = requireBoard(boardName);
-    const col = resolveColumn(board.id, column);
-    // Agents propose, people verify: nothing an agent makes starts out as done.
+    let col = resolveColumn(board.id, column);
+    // Agents propose, people verify: a card made done needs a reason; without one it waits in review.
+    let doneBy = null;
+    let sentToCheck = false;
     if (DONE_COLUMN.test(col.name.trim())) {
-      throw new Error(`An agent cannot put a card straight into ${col.name}. Create it in review and let a person check it.`);
+      doneBy = closing(repo.id, reason, note);
+      if (!doneBy) {
+        const review = columns(board.id).find((c) => REVIEW_COLUMN.test(c.name));
+        if (!review) throw new Error(`Give a reason and a note to create it in ${col.name}, or create it in another column.`);
+        col = review;
+        sentToCheck = true;
+      }
     }
     const id = randomUUID();
     const siblings = db
@@ -741,21 +818,36 @@ const handlers = {
     for (const label of cleanLabels(labels)) {
       db.prepare("INSERT INTO task_labels (id, task_id, label) VALUES (?,?,?)").run(randomUUID(), id, label);
     }
-    logActivity(repo.id, id, "card_created", `created ${serialiseCard(cardOf(id)).ref} ${title} in ${col.name}`);
-    return serialiseCard(cardOf(id));
+    if (doneBy) setDoneBy(id, doneBy);
+    logActivity(
+      repo.id,
+      id,
+      "card_created",
+      `created ${serialiseCard(cardOf(id)).ref} ${title} in ${col.name}${doneBy ? ` (${doneBy.reason === "already_done" ? "done before" : "no one can check it"}: ${doneBy.note})` : ""}`,
+    );
+    return {
+      ...serialiseCard(cardOf(id)),
+      note: sentToCheck ? `Created in ${col.name} for a person's check: give a reason and a note to create it done.` : undefined,
+    };
   },
 
-  move_card({ card, column }) {
+  move_card({ card, column, reason, note }) {
     const { repo } = requireBoard();
     const task = cardOf(card);
-    const target = resolveColumn(task.board_id, column);
+    let target = resolveColumn(task.board_id, column);
+    let doneBy = null;
+    let sentToCheck = false;
     if (DONE_COLUMN.test(target.name.trim())) {
-      const review = columns(task.board_id).find((c) => /review|qa|verify|check/i.test(c.name));
-      throw new Error(
-        `Agents do not move cards to ${target.name}: a person does, after checking.${
-          review ? ` Move it to ${review.name} and say how to check it (comment_on_card).` : " Say it is ready and how to check it (comment_on_card)."
-        }`,
-      );
+      doneBy = closing(repo.id, reason, note);
+      if (!doneBy) {
+        // The normal way: finished work waits for a person's check.
+        const review = columns(task.board_id).find((c) => REVIEW_COLUMN.test(c.name));
+        if (!review) {
+          throw new Error(`To close it, give a reason and a note. Otherwise say it is ready and how to check it (comment_on_card).`);
+        }
+        target = review;
+        sentToCheck = true;
+      }
     }
     const from = db.prepare("SELECT name FROM columns WHERE id = ?").get(task.column_id);
     const position = db
@@ -767,12 +859,24 @@ const handlers = {
       now(),
       task.id,
     );
-    logActivity(repo.id, task.id, "card_moved", `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}`);
+    // Closed by the agent: say who and why; moved anywhere else, that record goes.
+    setDoneBy(task.id, doneBy);
+    logActivity(
+      repo.id,
+      task.id,
+      "card_moved",
+      `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}${doneBy ? ` (${doneBy.reason === "already_done" ? "done before" : "no one can check it"}: ${doneBy.note})` : ""}`,
+    );
     return {
       ...serialiseCard(cardOf(task.id)),
-      note: task.markdown_task_id
-        ? "Moved on the board. This card comes from the markdown file, so the matching commit is not made here — the person reviews and commits it in RepoBoard."
-        : undefined,
+      note: [
+        sentToCheck ? `Moved to ${target.name} for a person's check. Say how to check it with comment_on_card.` : null,
+        task.markdown_task_id
+          ? "Moved on the board. This card comes from the markdown file, so the matching commit is not made here — the person reviews and commits it in RepoBoard."
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
     };
   },
 
@@ -833,23 +937,65 @@ const handlers = {
     return { card: serialiseCard(cardOf(task.id)).ref, checklist: list };
   },
 
-  set_checklist_item({ card, text: itemText, done }) {
+  set_checklist_item({ card, text: itemText, done, reason, note }) {
     const task = cardOf(card);
     const list = task.checklist ? JSON.parse(task.checklist) : [];
     const item = findItem(list, itemText);
     if (!item) throw noItem(itemText, list);
+    const { repo } = requireBoard();
     if (done) {
-      throw new Error(
-        "Agents do not tick items done — the person does, after checking. Use update_checklist_item with a comment that says it is done and how to check it.",
+      const doneBy = closing(repo.id, reason, note);
+      if (!doneBy) {
+        // Finished, waiting for a person: the item shows "needs your check".
+        item.review = true;
+        saveChecklist(task.id, list);
+        logActivity(repo.id, task.id, "card_updated", `marked “${item.text}” on ${task.title} for a check`);
+        return { checklist: list, note: "Marked for a person's check. Say how to check it with update_checklist_item's comment." };
+      }
+      const closeAll = (i) => {
+        i.done = true;
+        i.review = false;
+        i.doneBy = doneBy;
+        for (const child of i.children ?? []) closeAll(child);
+      };
+      closeAll(item);
+      saveChecklist(task.id, list);
+      logActivity(
+        repo.id,
+        task.id,
+        "card_updated",
+        `closed “${item.text}” on ${task.title} (${doneBy.reason === "already_done" ? "done before" : "no one can check it"}: ${doneBy.note})`,
       );
+      return { checklist: list };
     }
     // Reopening an item reopens what contains it, as in the app.
     item.done = false;
-    for (const parent of ancestorsOf(list, item) ?? []) parent.done = false;
+    item.review = false;
+    item.doneBy = null;
+    for (const parent of ancestorsOf(list, item) ?? []) {
+      parent.done = false;
+      parent.doneBy = null;
+    }
     saveChecklist(task.id, list);
-    const { repo } = requireBoard();
-    logActivity(repo.id, task.id, "card_updated", `${done ? "ticked" : "unticked"} “${item.text}” on ${task.title}`);
+    logActivity(repo.id, task.id, "card_updated", `reopened “${item.text}” on ${task.title}`);
     return { checklist: list };
+  },
+
+  create_board({ name, description, owner }) {
+    const { repo, boards } = requireBoard();
+    const wanted = String(name).trim();
+    const same = boards.find((b) => b.name.toLowerCase() === wanted.toLowerCase());
+    if (same) throw new Error(`There is already a board called ${same.name}. Boards: ${boards.map((b) => b.name).join(", ")}.`);
+    const id = `board_${randomUUID()}`;
+    const position = db.prepare("SELECT COUNT(*) AS n FROM boards WHERE repository_id = ?").get(repo.id).n;
+    db.prepare(
+      "INSERT INTO boards (id, repository_id, name, description, color, art, owner, position, created_at, updated_at) VALUES (?,?,?,?,NULL,NULL,?,?,?,?)",
+    ).run(id, repo.id, wanted, description ?? null, owner ? String(owner).replace(/^@/, "") : null, position, now(), now());
+    ["Todo", "In Progress", "Review", "Done"].forEach((column, index) => {
+      db.prepare("INSERT INTO columns (id, board_id, name, position) VALUES (?,?,?,?)").run(`col_${id}_${index}`, id, column, index);
+    });
+    logActivity(repo.id, null, "board_created", `created the board ${wanted}`);
+    return { board: wanted, id, columns: ["Todo", "In Progress", "Review", "Done"], next: `Put its cards there with create_card(board: "${wanted}").` };
   },
 
   update_checklist_item({ card, item: current, text: newText, notes, assignee, comment }) {
@@ -1163,7 +1309,22 @@ function internalReason(error) {
 
 /* --------------------------------------------------------------- server -- */
 
-server = new Server({ name: "repoboard", version: "0.5.0" }, { capabilities: { tools: {} } });
+const INSTRUCTIONS = `RepoBoard: the project's boards, cards and checklists, kept next to the code.
+
+Start with whoami and get_overview (or list_boards) to see what exists before adding anything.
+
+Organise the work:
+- A board is a large, lasting area: the main board for the project's overall flow, and one each for areas like Design, Security, Release or Legal once they have several cards of their own. Use a board that fits; make one with create_board only when an area really needs it — never a board per card, and not two boards for one area.
+- A card is one topic on a board (RB-n). Its steps are checklist items, nested 1, 1.1, 1.2 — with notes on what to do and how to check it.
+- Put each card on the board of its area: create_card(board: "Security", …).
+
+Finishing work:
+- Normal: mark it for a person's check — move the card to Review, or set_checklist_item(done: true) without a reason — and say how to check it in a comment.
+- Close it yourself only with a reason and a note: already_done (it was done before — note the commit, pull request or file) or cannot_be_checked (no person could verify it — note why). It then shows as closed by you, and a person can confirm or reopen it.
+- Checklists in documents (privacy policy, release, licences) are ticked [x] by people only; you mark items [?] with proof.
+You cannot commit to GitHub from here; edit .repoboard/ files in your own checkout.`;
+
+server = new Server({ name: "repoboard", version: "0.6.0" }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 

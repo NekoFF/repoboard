@@ -17,10 +17,27 @@ export interface ChecklistComment {
   at: number;
 }
 
+/**
+ * Who closed an item, when it was not the person who looked: an AI agent,
+ * allowed to by the project (lib/roles.ts agentsMayFinish), and why — it was
+ * done before (with where), or it is nothing a person could check.
+ */
+export interface DoneBy {
+  name: string;
+  kind: "agent";
+  reason: "already_done" | "cannot_be_checked";
+  note: string;
+  at: number;
+}
+
 export interface ChecklistItem {
   id: string;
   text: string;
   done: boolean;
+  /** An agent says it is finished; waiting for a person to check (like [?] in documents). */
+  review?: boolean;
+  /** Set when an agent closed it; cleared when a person ticks it or confirms. */
+  doneBy?: DoneBy | null;
   /** Markdown: what to do, how to verify it, anything worth knowing. */
   notes?: string | null;
   assignee?: string | null;
@@ -85,16 +102,19 @@ export function addItem(items: Checklist, parentId: string | null, item: Checkli
  * ancestors, since they cannot be done while part of them is not.
  */
 export function setDone(items: Checklist, id: string, done: boolean): Checklist {
+  // A person ticking or reopening settles it: no longer waiting, no longer an agent's.
   const setAll = (item: ChecklistItem): ChecklistItem => ({
     ...item,
     done,
+    review: false,
+    doneBy: null,
     children: item.children?.map(setAll),
   });
-  let next = updateItem(items, id, (item) => (done ? setAll(item) : { ...item, done: false }));
+  let next = updateItem(items, id, (item) => (done ? setAll(item) : { ...item, done: false, review: false, doneBy: null }));
   if (!done) {
     const found = locate(next, id);
     for (const ancestor of found?.path ?? []) {
-      next = updateItem(next, ancestor.id, (a) => ({ ...a, done: false }));
+      next = updateItem(next, ancestor.id, (a) => ({ ...a, done: false, doneBy: null }));
     }
   }
   return next;
@@ -117,6 +137,22 @@ export function findByText(items: Checklist, text: string): ChecklistItem | null
 }
 
 /** Accepts anything that was ever stored as a checklist and returns a clean tree. */
+/** Items at any depth an agent left for a person: sent to check, or closed with a reason. */
+export function waitingForCheck(items: Checklist): number {
+  return items.reduce(
+    (sum, item) => sum + ((item.review && !item.done) || item.doneBy ? 1 : 0) + waitingForCheck(item.children ?? []),
+    0,
+  );
+}
+
+/** An agent's closing record as it came from a file or the database, or null if it is not one. */
+export function cleanDoneBy(value: unknown): DoneBy | null {
+  const by = value as Partial<DoneBy> | null | undefined;
+  return by && typeof by === "object" && typeof by.name === "string" && (by.reason === "already_done" || by.reason === "cannot_be_checked")
+    ? { name: by.name, kind: "agent", reason: by.reason, note: typeof by.note === "string" ? by.note : "", at: typeof by.at === "number" ? by.at : 0 }
+    : null;
+}
+
 export function normalise(value: unknown): Checklist {
   if (!Array.isArray(value)) return [];
   return value
@@ -125,10 +161,13 @@ export function normalise(value: unknown): Checklist {
       const item = v as ChecklistItem;
       // Items can come from a teammate's board.json: keep only fields of the right kind.
       const str = (x: unknown) => (typeof x === "string" ? x : null);
+      const doneBy = cleanDoneBy(item.doneBy);
       return {
         id: String(item.id ?? Math.random().toString(36).slice(2)),
         text: item.text,
         done: Boolean(item.done),
+        ...(item.review === true ? { review: true } : {}),
+        ...(doneBy ? { doneBy } : {}),
         notes: str(item.notes),
         assignee: str(item.assignee),
         due: typeof item.due === "number" ? item.due : null,

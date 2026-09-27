@@ -8,6 +8,7 @@ import {
   getBoardData,
   getRepoIdentity,
   projectSummaries,
+  setAgentPolicy,
   setProjectLook,
 } from "@/lib/board-service";
 import {
@@ -107,6 +108,7 @@ const bodySchema = z.union([
     art: z.string().max(40).nullable(),
     hue: z.number().int().min(0).max(360).nullable(),
   }),
+  z.object({ action: z.literal("agent-policy"), policy: z.enum(["propose", "reason"]) }),
   z.object({ action: z.literal("switch"), repo: slug }),
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
@@ -149,6 +151,14 @@ async function handlePost(request: Request) {
       saveProject(`${summary.owner}/${summary.name}`, body.token.trim(), "key", host);
       invalidateAccessCache();
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
+    }
+    if (body.action === "agent-policy") {
+      const who = await currentWho();
+      if (who && who.role !== "manager") {
+        return NextResponse.json({ error: "Only a project admin can decide what agents may do.", forbidden: true }, { status: 403 });
+      }
+      setAgentPolicy(body.policy);
+      return NextResponse.json({ ok: true, policy: body.policy });
     }
     if (body.action === "look") {
       const who = await currentWho();

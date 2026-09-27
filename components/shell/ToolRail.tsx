@@ -12,6 +12,7 @@ import { MAX_PINS, usePins, type Pin } from "@/lib/client/pins";
 import { requestSync, useSyncStatus } from "@/lib/client/sync";
 import { statusOfColumn } from "@/lib/status";
 import { boardColor, boardHref } from "@/components/labelColor";
+import { waitingForCheck } from "@/lib/checklist";
 
 function RailButton({
   label,
@@ -86,7 +87,10 @@ export function ToolRail() {
   const toCheck = useMemo(() => {
     const data = cards.data;
     const status = new Map((data?.columns ?? []).map((c) => [c.id, statusOfColumn(c.name)]));
-    const inReview = (data?.tasks ?? []).filter((t) => status.get(t.columnId) === "review").length;
+    // Cards in review or closed by an agent, and card items an agent left for a person.
+    const inReview = (data?.tasks ?? []).filter(
+      (t) => status.get(t.columnId) === "review" || t.doneBy || waitingForCheck(t.checklist) > 0,
+    ).length;
     const items = (tracked.data?.docs ?? []).reduce((sum, d) => sum + (d.review ?? 0), 0);
     return inReview + items;
   }, [cards.data, tracked.data]);

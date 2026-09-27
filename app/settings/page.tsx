@@ -1,5 +1,6 @@
 import path from "node:path";
 import { SettingsScreen } from "@/components/SettingsScreen";
+import { agentPolicy } from "@/lib/board-service";
 import { getAuthProvider, isEnvironmentConfigured } from "@/lib/github/auth-provider";
 import { credentialsPath, databasePath } from "@/lib/paths";
 
@@ -12,6 +13,7 @@ export default async function SettingsPage() {
   const token = await provider.getToken();
   return (
     <SettingsScreen
+      agentPolicy={agentPolicy()}
       version={{ number: process.env.REPOBOARD_APP_VERSION || process.env.REPOBOARD_VERSION || "dev", desktop }}
       authLabel={provider.label}
       tokenSource={process.env.GITHUB_PAT ? "environment" : token ? "local file" : null}

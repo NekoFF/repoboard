@@ -38,6 +38,7 @@ import {
   percent,
 } from "@/components/ui";
 import { statusOfColumn, type Status } from "@/lib/status";
+import { waitingForCheck } from "@/lib/checklist";
 
 interface MapCell {
   key: string;
@@ -192,9 +193,11 @@ export function OverviewScreen({
         .filter((i) => i.state === "review")
         .map((i) => ({ kind: "doc" as const, doc, item: i })),
     );
+    // Cards in review, closed by an agent, or with items an agent left for a person.
     const inReview = cards
-      .filter((c) => c.status === "review")
-      .map((c) => ({ kind: "card" as const, task: c.task, board: c.board }));
+      .map((c) => ({ ...c, waiting: waitingForCheck(c.task.checklist) }))
+      .filter((c) => c.status === "review" || c.task.doneBy || c.waiting > 0)
+      .map((c) => ({ kind: "card" as const, task: c.task, board: c.board, waiting: c.waiting }));
     return [...items, ...inReview];
   }, [checklists, cards]);
 
@@ -336,6 +339,11 @@ export function OverviewScreen({
                       <p className="text-xs text-faint">
                         {entry.board.name}
                         {entry.task.number != null ? `, RB-${entry.task.number}` : ""}
+                        {entry.task.doneBy
+                          ? `. Closed by ${entry.task.doneBy.name}`
+                          : entry.waiting > 0
+                            ? `. ${entry.waiting} ${entry.waiting === 1 ? "item" : "items"} to check`
+                            : ""}
                       </p>
                     </div>
                     <ArrowUpRight className="size-4 text-faint" />

@@ -193,6 +193,10 @@
   .rb-pill-ok {
     @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-success-bg px-1.5 text-2xs font-medium text-success-fg;
   }
+  /* Waiting for a person's check, or closed by an agent: the review state's colour. */
+  .rb-pill-review {
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-state-review/15 px-1.5 text-2xs font-medium text-state-review;
+  }
   .rb-pill-warn {
     @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-warn-bg px-1.5 text-2xs font-medium text-warn-fg;
   }

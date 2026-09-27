@@ -96,8 +96,15 @@ Project (a GitHub repository)
 8. **One nav entry per destination.** The Code screen owns its tabs (graph,
    branches, commits, pull requests, issues); the sidebar does not repeat them.
 9. **Agents propose, people verify.** Nothing an agent does may set a
-   document item to `[x]`, tick a card item, move a card to a done column or
-   write `Checked:`; the MCP server has no GitHub write tool.
+   document item to `[x]` or write `Checked:`; the MCP server has no GitHub
+   write tool. On boards, finished work goes to a person's check: a card to
+   the review column, a card item marked `review`. An agent closes a card or
+   item itself only with a `reason` (`already_done`, `cannot_be_checked`)
+   and a note, and only if the project allows it
+   (`repositories.agent_policy`, Settings → AI agents, managers only). That
+   leaves `doneBy` on the card or item — shown, counted in "Needs your
+   check", carried in `board.json` — until a person confirms it
+   (`confirm-done`), ticks, reopens or moves it.
 10. **The server answers only RepoBoard.** `middleware.ts` refuses other
    hosts on every path, pages too (DNS rebinding), and API writes that are
    not same-origin JSON with `x-repoboard: 1`, which `lib/client/api.ts`
@@ -239,7 +246,10 @@ name) with `actor_kind = agent`; Settings shows per-client setup. Every call
 is checked against its tool's `inputSchema` before the handler runs
 (`checkArguments`: required, types, enums, unknown fields), runs in one
 transaction, and database errors never reach the agent raw — so a tool's
-schema is its contract; keep it exact (`tests/mcp-arguments.test.ts`).
+schema is its contract; keep it exact (`tests/mcp-arguments.test.ts`). The
+server's `instructions` (sent on connect) tell agents how to organise work —
+a board per large area with `create_board`, not everything on one — and how
+to finish it (rule 9).
 
 People: events written through the app are attributed to the GitHub login of
 the active token (route handlers wrap their work in `runAs` from

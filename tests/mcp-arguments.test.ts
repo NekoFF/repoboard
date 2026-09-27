@@ -167,10 +167,27 @@ describe("MCP server arguments", () => {
     const updated = await client.call("update_card", { card: "RB-1", title: null, assignee: "Claude" });
     expect(JSON.parse(updated.text)).toMatchObject({ title: "Ship it", assignee: "Claude" });
 
-    await refused("move_card", { card: "RB-1", column: "Done" }, "Agents do not move cards to Done", "Move it to Review");
-    await refused("create_card", { title: "x", column: "Done" }, "An agent cannot put a card straight into Done");
+    // Finished work without a reason goes to a person's check, not to Done.
+    const toCheck = JSON.parse((await client.call("move_card", { card: "RB-1", column: "Done" })).text);
+    expect(toCheck).toMatchObject({ column: "Review" });
+    // Closing needs a reason with a real note, and the project has to allow it.
+    await refused("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "yes" }, "needs a note", "commit");
+    const closed = await client.call("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "Landed in commit abc123 last week" });
+    expect(JSON.parse(closed.text)).toMatchObject({ column: "Done" });
+    const doneBy = sqlite.prepare("SELECT done_by FROM tasks WHERE card_number = 1").get() as { done_by: string };
+    expect(JSON.parse(doneBy.done_by)).toMatchObject({ name: "Claude", kind: "agent", reason: "already_done" });
+    sqlite.prepare("UPDATE repositories SET agent_policy = 'propose'").run();
+    await refused("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "Landed in commit abc123" }, "only people mark work done");
+    await refused("create_card", { title: "x", column: "Done", reason: "cannot_be_checked", note: "Nobody can see it" }, "only people mark work done");
+    sqlite.prepare("UPDATE repositories SET agent_policy = 'reason'").run();
+    await client.call("move_card", { card: "RB-1", column: "Todo" });
+    expect((sqlite.prepare("SELECT done_by FROM tasks WHERE card_number = 1").get() as { done_by: string | null }).done_by).toBeNull();
+
     await client.call("add_checklist_item", { card: "RB-1", text: "Write notes" });
-    await refused("set_checklist_item", { card: "RB-1", text: "1", done: true }, "Agents do not tick items done");
+    const ticked = await client.call("set_checklist_item", { card: "RB-1", text: "1", done: true });
+    expect(ticked.isError, ticked.text).toBe(false);
+    const list = JSON.parse((sqlite.prepare("SELECT checklist FROM tasks WHERE card_number = 1").get() as { checklist: string }).checklist);
+    expect(list[0]).toMatchObject({ done: false, review: true });
     await refused("set_checklist_item", { card: "RB-1", text: "7", done: false }, 'No checklist item "7"', "1 Write notes");
     await refused("get_card", { card: "RB-2" }, "cards here run RB-1 to RB-1");
 

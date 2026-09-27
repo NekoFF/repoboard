@@ -26,6 +26,9 @@ export const repositories = sqliteTable("repositories", {
   // Boards kept in step with GitHub on their own, through the repoboard branch.
   autoSync: integer("auto_sync", { mode: "boolean" }).notNull().default(false),
   syncedAt: integer("synced_at", { mode: "timestamp_ms" }),
+  // What AI agents may do here: only propose (a person marks done), or also
+  // close work with a reason (it was done before, or a person cannot check it).
+  agentPolicy: text("agent_policy", { enum: ["propose", "reason"] }).notNull().default("reason"),
 });
 
 // A project (repository) has several boards: one per person ("Dima",
@@ -87,6 +90,8 @@ export const tasks = sqliteTable("tasks", {
   // Deleting is reversible: the row stays so the undo toast has something to
   // bring back, and the board filters these out.
   deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  /** When an AI agent closed the card (moved it to a done column): who, why (lib/checklist.ts DoneBy). */
+  doneBy: text("done_by", { mode: "json" }).$type<import("@/lib/checklist").DoneBy | null>(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
