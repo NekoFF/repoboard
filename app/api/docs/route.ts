@@ -95,7 +95,13 @@ export async function GET(request: Request) {
       const gh = await GitHubClient.create();
       const { bytes, sha } = await gh.getFileBytes(raw);
       return new NextResponse(new Uint8Array(bytes), {
-        headers: { "content-type": type, "cache-control": "private, max-age=300", etag: `"${sha}"` },
+        headers: {
+          "content-type": type,
+          "cache-control": "private, max-age=300",
+          etag: `"${sha}"`,
+          // A file from the repository is shown as what it says it is, never sniffed into HTML.
+          "x-content-type-options": "nosniff",
+        },
       });
     }
     return NextResponse.json({ docs: listDocs() });

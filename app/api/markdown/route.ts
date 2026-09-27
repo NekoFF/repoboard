@@ -14,7 +14,8 @@ import {
   syncFromMarkdown,
 } from "@/lib/board-service";
 import { GitHubClient } from "@/lib/github/client";
-import { getVerifiedRepository } from "@/lib/github/access";
+import { canWrite } from "@/lib/roles";
+import { currentWho, getVerifiedRepository } from "@/lib/github/access";
 import { parseMarkdown } from "@/lib/markdown/parser";
 
 export const dynamic = "force-dynamic";
@@ -71,8 +72,17 @@ export async function GET() {
   });
 }
 
+/** A board source is a markdown file of the repository — never a workflow, never outside it. */
+const sourcePath = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((p) => /\.md$/i.test(p) && !p.split("/").some((seg) => seg === ".." || seg === ".") && !/^\/|^\.github\//i.test(p), {
+    message: "The board can only follow a markdown file of the repository",
+  });
+
 const bodySchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("set-source"), path: z.string().min(1) }),
+  z.object({ action: z.literal("set-source"), path: sourcePath }),
   z.object({ action: z.literal("sync") }),
   z.object({ action: z.literal("pending") }),
   z.object({ action: z.literal("preview-all") }),
@@ -104,6 +114,14 @@ export async function POST(request: Request) {
 async function handlePost(request: Request) {
   if (!await getVerifiedRepository()) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
+  }
+  // Read-only people on GitHub (lib/roles.ts) change nothing here either.
+  const who = await currentWho();
+  if (who && !canWrite(who)) {
+    return NextResponse.json(
+      { error: "You can view this project but not change it. An admin can give you Write access on GitHub.", forbidden: true },
+      { status: 403 },
+    );
   }
   const raw = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(raw);

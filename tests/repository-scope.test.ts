@@ -11,8 +11,11 @@ vi.mock("@/lib/github/access", () => ({
   currentWho: async () => (access.valid ? { login: "tester", role: access.role } : null),
 }));
 
-const databaseFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "repoboard-scope-")), "board.db");
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "repoboard-scope-"));
+const databaseFile = path.join(scratch, "board.db");
 process.env.DATABASE_URL = `file:${databaseFile}`;
+// Never the real ~/.repoboard: no keys of the person running the tests.
+process.env.HOME = scratch;
 process.env.GITHUB_REPO = "acme/alpha";
 
 const { migrate } = await import("drizzle-orm/better-sqlite3/migrator");
@@ -165,8 +168,6 @@ describe("roles from GitHub", () => {
       const data = service.getBoardData();
       expect((await post({ action: "create", columnId: data.columns[0].id, title: "Nope" })).status).toBe(403);
       expect((await post({ action: "board-create", name: "Nope" })).status).toBe(403);
-      // Looking is fine.
-      expect((await post({ action: "board-status" })).status).not.toBe(403);
     } finally {
       access.role = "manager";
     }

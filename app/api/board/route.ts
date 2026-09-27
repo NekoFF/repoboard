@@ -177,7 +177,7 @@ const commentSchema = z.object({
 // Literal per option: a discriminated union needs a literal discriminator.
 const boardStatusSchema = z.object({ action: z.literal("board-status") });
 const boardPullSchema = z.object({ action: z.literal("board-pull") });
-const boardPushSchema = z.object({ action: z.literal("board-push") });
+const boardPushSchema = z.object({ action: z.literal("board-push"), expectedSha: z.string().nullable().optional() });
 const syncNowSchema = z.object({ action: z.literal("sync-now") });
 const syncSettingsSchema = z.object({ action: z.literal("sync-settings"), autoSync: z.boolean() });
 
@@ -417,7 +417,7 @@ async function handlePost(request: Request) {
     case "board-pull":
       return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
     case "board-push":
-      return NextResponse.json(await pushBoardState());
+      return NextResponse.json(await pushBoardState(undefined, body.expectedSha));
     case "sync-now":
       return NextResponse.json(await syncBoards());
     case "sync-settings":

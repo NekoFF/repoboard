@@ -230,6 +230,9 @@ export function ensureBootstrap(repo: {
     .from(boards)
     .where(eq(boards.id, boardId))
     .get();
+  if (existingBoard && existingBoard.repositoryId !== repositoryId) {
+    throw new Error(`The board ${boardId} belongs to another project on this computer. Remove it there first.`);
+  }
 
   if (!existingBoard) {
     db.insert(boards)
@@ -626,8 +629,8 @@ export function restoreBoard(boardId: string): void {
   logActivity({ repositoryId: repository.id, type: "board_restored", message: `brought back the board ${board.name}` });
 }
 
-/** Archived boards of the active repository, newest first. */
-export function listArchivedBoards(): { id: string; name: string; owner: string | null; archivedAt: number; cards: number }[] {
+/** Archived boards of the active repository, newest first — the ones `who` may see, when given. */
+export function listArchivedBoards(who?: Who | null): { id: string; name: string; owner: string | null; archivedAt: number; cards: number }[] {
   const repository = activeRepository();
   if (!repository) return [];
   return db
@@ -636,6 +639,7 @@ export function listArchivedBoards(): { id: string; name: string; owner: string 
     .where(eq(boards.repositoryId, repository.id))
     .all()
     .filter((b) => b.archivedAt)
+    .filter((b) => who === undefined || canSeeBoard(who, b))
     .sort((a, b) => b.archivedAt!.getTime() - a.archivedAt!.getTime())
     .map((b) => ({
       id: b.id,
@@ -1810,12 +1814,19 @@ export async function pullBoardState(
 /** This machine → repository, merging first so a colleague's newer edit survives. */
 export async function pushBoardState(
   clientFactory: ClientFactory = defaultClientFactory,
+  /** The file's SHA when the person reviewed the changes; a newer file means a new review. */
+  expectedSha?: string | null,
 ): Promise<{ commitSha: string; changes: string[] }> {
   const repository = activeRepository();
   if (!repository) throw new Error("Not connected");
 
   const gh = await clientFactory();
   const { state: remote, sha } = await readBoardFile(gh);
+  if (expectedSha !== undefined && (expectedSha ?? null) !== sha) {
+    const error = new Error("board.json changed on GitHub since you looked. Look at the changes again before saving.");
+    (error as Error & { code?: string }).code = "CONFLICT";
+    throw error;
+  }
   const local = localBoardState();
   const changes = describeFileChanges(local, remote);
   if (changes.length === 0) return { commitSha: "", changes: [] };
@@ -1893,9 +1904,24 @@ export function deleteMilestone(id: string): void {
 }
 
 /** The project's history, newest first; `taskId` narrows it to one card. */
-export function getActivity(limit = 50, taskId?: string | null) {
+/** Recent events — without the cards of boards `who` may not see, when given. */
+export function getActivity(limit = 50, taskId?: string | null, who?: Who | null) {
   const repositoryId = configuredRepositoryId();
   if (!repositoryId) return [];
+  const hidden = new Set<string>();
+  if (who !== undefined) {
+    const hiddenBoards = db
+      .select({ id: boards.id, owner: boards.owner, visibility: boards.visibility })
+      .from(boards)
+      .where(eq(boards.repositoryId, repositoryId))
+      .all()
+      .filter((b) => !canSeeBoard(who, b))
+      .map((b) => b.id);
+    if (hiddenBoards.length) {
+      for (const t of db.select({ id: tasks.id }).from(tasks).where(inArray(tasks.boardId, hiddenBoards)).all()) hidden.add(t.id);
+    }
+  }
+  if (taskId && hidden.has(taskId)) return [];
   return db
     .select()
     .from(activityEvents)
@@ -1907,6 +1933,7 @@ export function getActivity(limit = 50, taskId?: string | null) {
     .orderBy(desc(activityEvents.createdAt))
     .limit(limit)
     .all()
+    .filter((e) => !e.taskId || !hidden.has(e.taskId))
     .map((e) => ({
       id: e.id,
       type: e.type,

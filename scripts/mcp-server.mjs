@@ -640,6 +640,10 @@ const handlers = {
   create_card({ title, column, description, labels = [], assignee, priority, milestone, dueDate, board: boardName }) {
     const { repo, board } = requireBoard(boardName);
     const col = resolveColumn(board.id, column);
+    // Agents propose, people verify: nothing an agent makes starts out as done.
+    if (DONE_COLUMN.test(col.name.trim())) {
+      throw new Error(`An agent cannot put a card straight into ${col.name}. Create it in review and let a person check it.`);
+    }
     const id = randomUUID();
     const siblings = db
       .prepare("SELECT COUNT(*) AS n FROM tasks WHERE column_id = ? AND deleted_at IS NULL")
@@ -824,6 +828,10 @@ const handlers = {
       ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks})`).get(Number(number), ...ids)
       : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks})`).get(card, ...ids);
     if (!task) throw new Error(`No card ${card} on this board`);
+    const inColumn = db.prepare("SELECT name FROM columns WHERE id = ?").get(task.column_id);
+    if (inColumn && DONE_COLUMN.test(inColumn.name.trim())) {
+      throw new Error(`${task.title} was deleted while done; bringing it back would count as finished work. Ask a person to restore it.`);
+    }
     db.prepare("UPDATE tasks SET deleted_at = NULL, updated_at = ? WHERE id = ?").run(now(), task.id);
     logActivity(repo.id, task.id, "card_restored", `restored ${task.title}`);
     return serialiseCard(cardOf(task.id));

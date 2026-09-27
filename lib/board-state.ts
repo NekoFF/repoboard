@@ -1,4 +1,4 @@
-import type { ChecklistItem } from "@/lib/checklist";
+import { normalise, type ChecklistItem } from "@/lib/checklist";
 
 /**
  * The board as a file in the repository.
@@ -114,7 +114,7 @@ function cleanCard(raw: unknown): BoardStateCard | null {
     description: text(c.description),
     assignee: text(c.assignee),
     dueDate: typeof c.dueDate === "number" ? c.dueDate : null,
-    checklist: Array.isArray(c.checklist) ? (c.checklist as BoardStateCard["checklist"]) : [],
+    checklist: normalise(c.checklist),
     labels: strings(c.labels),
     branches: strings(c.branches),
     pullRequests: numbers(c.pullRequests),
@@ -167,7 +167,9 @@ export function parseBoardState(content: string): BoardState | null {
         .map((raw): BoardStateBoard | null => {
           const b = raw as Record<string, unknown>;
           const meta = cleanMeta(b);
-          if (!meta || typeof b.id !== "string") return null;
+          // Boards other than the main one are made by RepoBoard as board_<uuid>. Any
+          // other id (another project's main board, say) is not a board of this file.
+          if (!meta || typeof b.id !== "string" || !/^board_[0-9a-f-]{36}$/i.test(b.id)) return null;
           return {
             ...meta,
             id: b.id,

@@ -311,10 +311,11 @@ export const api = {
   setAutoSync: (autoSync: boolean) =>
     post<{ pulled: number; pushed: number; syncedAt: number | null }>("/api/board", { action: "sync-settings", autoSync }),
 
-  boardPush: () =>
+  /** `expectedSha`: the board.json the person reviewed (from boardStatus). */
+  boardPush: (expectedSha: string | null) =>
     request<{ commitSha: string; changes: string[] }>("/api/board", {
       method: "POST",
-      body: JSON.stringify({ action: "board-push" }),
+      body: JSON.stringify({ action: "board-push", expectedSha }),
     }),
 
   boardPull: () =>

@@ -9,12 +9,18 @@
  * Windows 11 the acrylic material, and the page (html.rb-desktop, see
  * app/globals.css) lets it show through the desk behind the panels.
  */
-const { app, BrowserWindow, Menu, nativeTheme, shell, utilityProcess, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, nativeTheme, shell, utilityProcess, dialog, ipcMain, session } = require("electron");
 const path = require("node:path");
 const net = require("node:net");
 const http = require("node:http");
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const updates = require("./updates.cjs");
+
+// A secret shared by this app and its own server, sent on every request the
+// window makes (middleware.ts): another program on this computer that finds
+// the port cannot use the API.
+const apiToken = crypto.randomBytes(24).toString("hex");
 
 const isMac = process.platform === "darwin";
 const isWindows = process.platform === "win32";
@@ -88,6 +94,7 @@ async function startServer() {
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
       REPOBOARD_DESKTOP: "1",
+      REPOBOARD_API_TOKEN: apiToken,
       // For Settings: agents run the bundled MCP server with this binary in Node mode.
       REPOBOARD_NODE: process.execPath,
     },
@@ -206,17 +213,8 @@ function createWindow() {
     },
   });
 
-  // Links to GitHub and elsewhere open in the browser, never inside the app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isInternal(url)) return { action: "allow" };
-    if (/^https?:/i.test(url)) shell.openExternal(url);
-    return { action: "deny" };
-  });
-  win.webContents.on("will-navigate", (event, url) => {
-    if (isInternal(url)) return;
-    event.preventDefault();
-    if (/^https?:/i.test(url)) shell.openExternal(url);
-  });
+  // Links to GitHub and elsewhere open in the browser, never inside the app
+  // (see guardContents: every window, not only this one).
 
   // Back and forward: the mouse's side buttons on Windows, a three-finger
   // swipe on macOS (two fingers are handled by the page).
@@ -260,6 +258,28 @@ function goBack() {
 function goForward() {
   const history = win?.webContents.navigationHistory;
   if (history?.canGoForward()) history.goForward();
+}
+
+/**
+ * One window, and nothing outside RepoBoard inside it. Internal links that
+ * ask for a new window open in the main one; everything else goes to the
+ * system browser — so no page without an address bar can pose as GitHub.
+ */
+function guardContents(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isInternal(url)) {
+      win?.loadURL(url);
+      return { action: "deny" };
+    }
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  contents.on("will-navigate", (event, url) => {
+    if (isInternal(url)) return;
+    event.preventDefault();
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+  });
+  contents.on("will-attach-webview", (event) => event.preventDefault());
 }
 
 function buildMenu() {
@@ -322,8 +342,17 @@ if (!app.requestSingleInstanceLock()) {
     win.focus();
   });
 
+  app.on("web-contents-created", (_event, contents) => guardContents(contents));
+
   app.whenReady().then(async () => {
     buildMenu();
+    // The page asks for nothing (camera, notifications, …): refuse by default.
+    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    // The shared secret goes with every request to RepoBoard's own server.
+    session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+      if (isInternal(details.url)) details.requestHeaders["x-repoboard-token"] = apiToken;
+      callback({ requestHeaders: details.requestHeaders });
+    });
     updates.listen(ipcMain, () => win);
     try {
       await startServer();

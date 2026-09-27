@@ -137,7 +137,7 @@ export function ProjectBanner({
   branch: string | null;
   syncedAt: number | null;
 }) {
-  const { projects } = useShell();
+  const { projects, role } = useShell();
   const [editing, setEditing] = useState(false);
   const stored = repo ? projects.find((p) => p.repo.toLowerCase() === repo.toLowerCase()) : undefined;
   const look: Look = { art: stored?.art ?? null, hue: stored?.hue ?? null };
@@ -147,7 +147,7 @@ export function ProjectBanner({
     <header className="rb-project-banner relative h-[176px] overflow-hidden rounded-[22px]" style={{ ["--ph" as string]: hue }}>
       <ProjectArt repo={repo} look={look} />
       <div className="absolute right-3 top-3 flex gap-2">
-        {repo && (
+        {repo && role === "manager" && (
           <button type="button" className="rb-btn rb-glass" onClick={() => setEditing(true)}>
             <Palette className="size-3.5" /> Cover
           </button>

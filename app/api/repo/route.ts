@@ -18,7 +18,7 @@ import {
   saveProject,
   setActiveProject,
 } from "@/lib/github/auth-provider";
-import { getAccessState, invalidateAccessCache, projectHealth, type ProjectHealth } from "@/lib/github/access";
+import { currentWho, getAccessState, invalidateAccessCache, projectHealth, type ProjectHealth } from "@/lib/github/access";
 import { GitHubAccessError, GitHubClient } from "@/lib/github/client";
 import { repoSlug } from "@/lib/github/slug";
 
@@ -132,6 +132,10 @@ async function handlePost(request: Request) {
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
     }
     if (body.action === "look") {
+      const who = await currentWho();
+      if (who && who.role !== "manager") {
+        return NextResponse.json({ error: "Only a project admin can change the project's cover.", forbidden: true }, { status: 403 });
+      }
       setProjectLook(body.repo, { art: body.art, hue: body.hue });
       return NextResponse.json({ ok: true });
     }

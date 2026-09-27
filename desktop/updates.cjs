@@ -79,7 +79,7 @@ async function download(win) {
   const { asset } = state;
   const dir = path.join(app.getPath("temp"), "RepoBoard update");
   fs.mkdirSync(dir, { recursive: true });
-  const target = path.join(dir, asset.name);
+  const target = path.join(dir, path.basename(asset.name));
   state = { ...state, state: "downloading", progress: 0 };
   send(win);
   try {
@@ -102,6 +102,12 @@ async function download(win) {
       }
     }
     await new Promise((resolve, reject) => out.end((error) => (error ? reject(error) : resolve())));
+    // Not a signature (the builds are not signed yet), but a download cut
+    // short or swapped for something else of another size is refused.
+    if (asset.size && fs.statSync(target).size !== asset.size) {
+      fs.rmSync(target, { force: true });
+      throw new Error("The download did not match the release. Try again.");
+    }
     file = target;
     state = { ...state, state: "ready", progress: 1 };
     send(win);
@@ -113,6 +119,19 @@ async function download(win) {
 
 async function install() {
   if (state.state !== "ready" || !file) return;
+  // A person decides, in the app's own dialog — not a script in the page.
+  const { response } = await dialog.showMessageBox({
+    type: "question",
+    message: `Install RepoBoard ${state.version}?`,
+    detail:
+      process.platform === "win32"
+        ? "RepoBoard closes, installs the new version and opens again. Your boards and keys stay where they are."
+        : "The new version opens in a window: drag RepoBoard to Applications. Your boards and keys stay where they are.",
+    buttons: [process.platform === "win32" ? "Install and restart" : "Open", "Not now"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response !== 0) return;
   if (process.platform === "win32") {
     // The installer replaces the app in place and starts it again.
     spawn(file, ["/S", "--force-run"], { detached: true, stdio: "ignore" }).unref();

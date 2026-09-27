@@ -192,12 +192,14 @@ export function BoardScreen({
   const saveBoard = async () => {
     setSaving(true);
     try {
-      const result = await api.boardPush();
+      const result = await api.boardPush(boardState.data?.sha ?? null);
       toast.push({ kind: "success", message: "Boards saved to the repository", detail: `${result.changes.length} changes in .repoboard/board.json` });
       boardState.reload();
       setDialog(null);
     } catch (error) {
       toast.push({ kind: "error", message: "Could not save the board", detail: (error as Error).message });
+      // Changed on GitHub meanwhile: show what saving would do now.
+      boardState.reload();
     } finally {
       setSaving(false);
     }

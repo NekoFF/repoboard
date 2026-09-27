@@ -98,10 +98,14 @@ Project (a GitHub repository)
 9. **Agents propose, people verify.** Nothing an agent does may set a
    document item to `[x]`, tick a card item, move a card to a done column or
    write `Checked:`; the MCP server has no GitHub write tool.
-10. **The API answers only RepoBoard.** `middleware.ts` refuses other hosts
-   (DNS rebinding) and writes that are not same-origin JSON with
-   `x-repoboard: 1`, which `lib/client/api.ts` sends. Anything that posts to
-   the API (scripts/demo.mjs) must send it too.
+10. **The server answers only RepoBoard.** `middleware.ts` refuses other
+   hosts on every path, pages too (DNS rebinding), and API writes that are
+   not same-origin JSON with `x-repoboard: 1`, which `lib/client/api.ts`
+   sends. Anything that posts to the API (scripts/demo.mjs) must send it
+   too. The desktop app also shares a per-launch secret with its server
+   (`REPOBOARD_API_TOKEN`, sent as `x-repoboard-token` on every request), so
+   other programs on the computer cannot use it; its windows never show a
+   page outside RepoBoard (`guardContents` in `desktop/main.cjs`).
 11. **Roles come from GitHub** (`lib/roles.ts`): Admin/Maintain → manager,
    Write → member, Triage/Read → viewer, from the repository's
    `permissions` for the token (`RepoSummary.role`, `currentWho()`). The
@@ -110,8 +114,12 @@ Project (a GitHub repository)
    only managers turn automatic sync on — and screens hide what the role
    cannot do (`useShell().role`). A board with `visibility: "owner"` is
    listed only for its owner and managers (`listBoards(who)`,
-   `getProjectData(who)`, `getPageContext`); say plainly that its file on
-   GitHub is still readable by anyone with access to the repository.
+   `getProjectData(who)`, `getPageContext`, `getActivity(…, who)`,
+   `listArchivedBoards(who)`); say plainly that its file on GitHub is still
+   readable by anyone with access to the repository. Be honest about the
+   limit: roles shape RepoBoard's own screens and routes on each computer;
+   anyone with Write on GitHub can still edit `board.json` directly, and the
+   MCP server acts with the local person's rights without asking GitHub.
 
 ## Where things live
 
