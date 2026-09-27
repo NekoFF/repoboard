@@ -216,6 +216,52 @@ describe("MCP server arguments", () => {
     expect(JSON.parse(board.text).columns[0].cards[0].ref).toBe("RB-1");
   });
 
+  it("keeps steps in items, not in the description", async () => {
+    await refused(
+      "create_card",
+      { title: "Launch", column: "Todo", description: "Add the repo; pick a domain; rent a server; write the Impressum" },
+      "The description lists steps",
+      "items",
+    );
+    await refused("create_card", { title: "Launch", column: "Todo", description: "Plan:\n- one\n- two\n- three" }, "The description lists steps");
+    await refused("create_card", { title: "Launch", column: "Todo", items: [{ notes: "no text" }] }, "items[1].text is required");
+    const made = await client.call("create_card", {
+      title: "Launch",
+      column: "Todo",
+      description: "What has to happen before the site goes live.",
+      items: [
+        { text: "Domain", notes: "Pick and buy it", items: [{ text: "Pick a name" }, { text: "Point DNS at the server", notes: "Check with dig" }] },
+        { text: "Impressum" },
+      ],
+    });
+    expect(made.isError, made.text).toBe(false);
+    const { ref } = JSON.parse(made.text);
+    const list = JSON.parse((sqlite.prepare("SELECT checklist FROM tasks WHERE card_number = ?").get(Number(ref.slice(3))) as { checklist: string }).checklist);
+    expect(list.map((i: { text: string }) => i.text)).toEqual(["Domain", "Impressum"]);
+    expect(list[0].children[1]).toMatchObject({ text: "Point DNS at the server", notes: "Check with dig", done: false });
+    // Without items, the answer says to add them.
+    const bare = JSON.parse((await client.call("create_card", { title: "Bare", column: "Todo" })).text);
+    expect(bare.note).toContain("No items yet");
+  });
+
+  it("moves a card to another board, and gives the rules with whoami", async () => {
+    const moved = await client.call("move_card", { card: "RB-1", board: "Design", column: "Ideas" });
+    expect(moved.isError, moved.text).toBe(false);
+    expect(JSON.parse(moved.text)).toMatchObject({ board: "Design", column: "Ideas" });
+    expect(sqlite.prepare("SELECT board_id, milestone_id FROM tasks WHERE card_number = 1").get()).toEqual({ board_id: "board_design", milestone_id: null });
+    await refused("move_card", { card: "RB-1", board: "Design", column: "Todo" }, 'No column "Todo". Available: Ideas');
+    // A pile of one area on the main board: the answer suggests a board for it.
+    let answer = "";
+    for (const n of [1, 2, 3, 4]) {
+      answer = JSON.parse((await client.call("create_card", { title: `Audit ${n}`, column: "Todo", labels: ["security"], items: [{ text: "Look" }] })).text).note ?? "";
+    }
+    expect(answer).toContain("4 open cards labelled security");
+    expect(answer).toContain("Other boards: Design");
+    const me = JSON.parse((await client.call("whoami", {})).text);
+    expect(me.boards).toEqual(["Alpha", "Design"]);
+    expect(me.rules).toContain("A board is a large, lasting area");
+  });
+
   it("turns a database error into a plain answer and writes nothing half-way", async () => {
     sqlite.exec("DROP TABLE task_labels");
     const text = await refused(

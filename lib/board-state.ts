@@ -322,6 +322,32 @@ export interface FileMergeResult {
  * description by `updatedAt`, its cards one by one as `mergeBoardState` does.
  * A board only one side knows is kept.
  */
+/**
+ * A card moved to another board is still on the old one in the other copy of
+ * the file. Each card lives on one board: the one whose copy is newest (a
+ * move sets updatedAt), and on a tie the one it is on here.
+ */
+function onOneBoard(
+  local: BoardState,
+  main: BoardStateCard[],
+  boards: BoardStateBoard[],
+): { main: BoardStateCard[]; boards: BoardStateBoard[] } {
+  const here = new Map<string, string>();
+  for (const card of local.cards) here.set(card.id, "");
+  for (const b of local.boards ?? []) for (const card of b.cards) here.set(card.id, b.id);
+  const home = new Map<string, { board: string; at: number }>();
+  const consider = (boardId: string, card: BoardStateCard) => {
+    const best = home.get(card.id);
+    if (!best || card.updatedAt > best.at || (card.updatedAt === best.at && here.get(card.id) === boardId)) {
+      home.set(card.id, { board: boardId, at: card.updatedAt });
+    }
+  };
+  for (const card of main) consider("", card);
+  for (const b of boards) for (const card of b.cards) consider(b.id, card);
+  const keep = (boardId: string) => (card: BoardStateCard) => home.get(card.id)?.board === boardId;
+  return { main: main.filter(keep("")), boards: boards.map((b) => ({ ...b, cards: b.cards.filter(keep(b.id)) })) };
+}
+
 export function mergeBoardFile(local: BoardState, remote: BoardState | null): FileMergeResult {
   if (!remote) return { state: local, added: 0, updated: 0, newBoards: [] };
   const main = mergeBoardState(local.cards, remote.cards);
@@ -353,13 +379,14 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
 
   const board = local.board && remote.board ? newerMeta(local.board, remote.board) : (local.board ?? remote.board);
   if (local.board && remote.board && remote.board.updatedAt > local.board.updatedAt) updated += 1;
+  const placed = onOneBoard(local, main.cards, [...byId.values()]);
   return {
     state: {
       ...local,
       milestones: unionMilestones(local.milestones, remote.milestones),
-      cards: main.cards,
+      cards: placed.main,
       ...(board ? { board } : {}),
-      boards: [...byId.values()],
+      boards: placed.boards,
     },
     added,
     updated,

@@ -150,6 +150,19 @@ describe("several boards in one file", () => {
     expect(mergeBoardFile(theirs, mine).state.boards?.[0]).toMatchObject({ name: "Max (intern)" });
   });
 
+  it("keeps a card moved to another board on that board only", () => {
+    // Here RB-3 moved from the main board to Max's; GitHub still has it on the main board.
+    const mine = file({ boards: [board({ cards: [card({ id: "c3", updatedAt: 5000 })] })] });
+    const theirs = file({ cards: [card({ id: "c3", updatedAt: 1000 })], boards: [board()] });
+    const merged = mergeBoardFile(mine, theirs).state;
+    expect(merged.cards.map((c) => c.id)).toEqual([]);
+    expect(merged.boards?.[0].cards.map((c) => c.id)).toEqual(["c3"]);
+    // And the other way round: a teammate moved it, and theirs is newer.
+    const back = mergeBoardFile(theirs, mine).state;
+    expect(back.cards.map((c) => c.id)).toEqual([]);
+    expect(back.boards?.[0].cards.map((c) => c.id)).toEqual(["c3"]);
+  });
+
   it("merges each board's cards one by one", () => {
     const mine = file({ boards: [board({ cards: [card({ id: "x", title: "Mine", updatedAt: 3000 })] })] });
     const theirs = file({ boards: [board({ cards: [card({ id: "x", title: "Theirs", updatedAt: 2000 }), card({ id: "y" })] })] });

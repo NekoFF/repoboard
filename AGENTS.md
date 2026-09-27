@@ -249,9 +249,15 @@ is checked against its tool's `inputSchema` before the handler runs
 (`checkArguments`: required, types, enums, unknown fields), runs in one
 transaction, and database errors never reach the agent raw — so a tool's
 schema is its contract; keep it exact (`tests/mcp-arguments.test.ts`). The
-server's `instructions` (sent on connect) tell agents how to organise work —
-a board per large area with `create_board`, not everything on one — and how
-to finish it (rule 9).
+server's `instructions` (sent on connect, and again as `rules` in `whoami`,
+because some clients never show them) tell agents how to organise work and
+how to finish it (rule 9). The answers enforce it where instructions are not
+enough: a card's steps go in `items` (a tree, `create_card(items)`), and a
+description that lists steps is refused (`stepsInDescription`); a card made
+on the main board comes back with `boardAdvice` — other boards, and an area
+board to make when several open cards share a label; `move_card(board)`
+moves a card to another board. `mergeBoardFile` keeps each card on one board
+(the newest copy), so a move survives sync.
 
 People: events written through the app are attributed to the GitHub login of
 the active token (route handlers wrap their work in `runAs` from

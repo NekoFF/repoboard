@@ -421,6 +421,79 @@ function setDoneBy(taskId, doneBy) {
   }
 }
 
+/**
+ * How the project's work is spread over its boards, in a line for the agent:
+ * which boards exist, and when the main board has grown a pile that an area
+ * board would hold better (many open cards, or a label shared by several).
+ */
+function boardAdvice(repoId, board) {
+  const all = boardsOf(repoId);
+  const main = all[0];
+  if (!main || board.id !== main.id) return undefined;
+  const done = columns(main.id).filter((c) => DONE_COLUMN.test(c.name.trim())).map((c) => c.id);
+  const open = db.prepare("SELECT id, column_id FROM tasks WHERE board_id = ? AND deleted_at IS NULL").all(main.id).filter((t) => !done.includes(t.column_id));
+  const names = new Set(all.map((b) => b.name.toLowerCase()));
+  const byLabel = new Map();
+  for (const t of open) {
+    for (const label of labelsOf(t.id)) {
+      const area = label.replace(/^area:/i, "").trim();
+      if (!area || /^(worker|blocks|owner|bug|p\d)/i.test(label)) continue;
+      byLabel.set(area, (byLabel.get(area) ?? 0) + 1);
+    }
+  }
+  const areas = [...byLabel].filter(([area, n]) => n >= 4 && !names.has(area.toLowerCase())).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const others = all.slice(1).map((b) => b.name);
+  const parts = [];
+  if (others.length) parts.push(`This went on the main board. Other boards: ${others.join(", ")} — pass board to put a card on one.`);
+  if (areas.length) {
+    parts.push(
+      `The main board holds ${areas.map(([area, n]) => `${n} open cards labelled ${area}`).join(", ")}: a board per area would keep them together (create_board, then move_card with board).`,
+    );
+  } else if (open.length >= 15 && !others.length) {
+    parts.push(`The main board has ${open.length} open cards and no other board. If they fall into large areas (Design, Security, Release…), give each area a board (create_board) and move its cards there (move_card with board).`);
+  }
+  return parts.join(" ") || undefined;
+}
+
+/** Items as the agent sent them, checked field by field; the app's own shape out. */
+function buildItems(raw, where = "items", depth = 0) {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new Error(`"${where}" must be a list of items like { text, notes, items } — got ${kindOf(raw)}`);
+  if (depth > 5) throw new Error(`"${where}" nests too deep: keep items to five levels`);
+  return raw.map((entry, i) => {
+    const at = `${where}[${i + 1}]`;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`${at} must be an item like { text, notes } — got ${kindOf(entry)}`);
+    const unknown = Object.keys(entry).filter((k) => !["text", "notes", "assignee", "items"].includes(k));
+    if (unknown.length) throw new Error(`${at}: unknown field "${unknown[0]}" — allowed: text, notes, assignee, items`);
+    if (typeof entry.text !== "string" || !entry.text.trim()) throw new Error(`${at}.text is required — the step, as a short line`);
+    for (const field of ["notes", "assignee"]) {
+      if (entry[field] != null && typeof entry[field] !== "string") throw new Error(`${at}.${field} must be a string — got ${kindOf(entry[field])}`);
+    }
+    return {
+      id: randomUUID(),
+      text: entry.text.trim(),
+      done: false,
+      notes: entry.notes?.trim() || null,
+      assignee: entry.assignee?.trim() || null,
+      children: buildItems(entry.items, `${at}.items`, depth + 1),
+      comments: [],
+    };
+  });
+}
+
+/**
+ * Steps written into a description instead of items: a list of three or more
+ * lines, or a sentence of three or more parts split by semicolons.
+ */
+function stepsInDescription(description) {
+  if (typeof description !== "string") return false;
+  const listLines = description.split("\n").filter((l) => /^\s*([-*•]|\d+[.)]|\[[ xX?]\])\s+\S/.test(l)).length;
+  const clauses = description.split(";").filter((part) => part.trim().length > 3).length;
+  return listLines >= 3 || clauses >= 4;
+}
+const STEPS_BELONG_IN_ITEMS =
+  "The description lists steps. Put each step in items instead — create_card(items: [{ text, notes, items: [...] }]) or add_checklist_item — with sub-items for the parts of a step and notes on how to do and how to check it. Keep the description to a sentence or two: what the card is for and why.";
+
 function saveChecklist(taskId, list) {
   db.prepare("UPDATE tasks SET checklist = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(list), now(), taskId);
 }
@@ -485,6 +558,19 @@ const FORMAT_HINT =
 /* ---------------------------------------------------------------- tools -- */
 
 const text = { type: "string" };
+const itemFields = {
+  text: { type: "string", description: "The step, short: what gets done" },
+  notes: { type: "string", description: "Markdown: how to do it, how to check it, what to keep in mind" },
+  assignee: { type: "string" },
+};
+const leaf = { type: "object", properties: itemFields, required: ["text"] };
+const nested = (inner) => ({
+  type: "array",
+  description: "Sub-items, the same shape",
+  items: { type: "object", properties: { ...itemFields, items: inner }, required: ["text"] },
+});
+/** A checklist as a tree: the card's steps, their sub-steps, notes on how to do and check each. */
+const ITEMS = { ...nested(nested({ type: "array", items: leaf })), description: "The card's steps as items, nested with sub-items: [{ text, notes, items: [...] }]" };
 
 const tools = [
   {
@@ -526,19 +612,21 @@ const tools = [
   },
   {
     name: "create_card",
-    description: "Add a card. Returns its reference (RB-n) — mention it in commit messages to link them.",
+    description:
+      "Add a card: a title, a short description (a sentence or two: what it is for and why), and its steps as items — nested sub-items for the parts of a step, each with notes on how to do and check it. Steps never go in the description. Put it on the board of its area (board); list_boards shows them. Returns its reference (RB-n) — mention it in commit messages to link them.",
     inputSchema: {
       type: "object",
       properties: {
         title: text,
         column: { type: "string", description: "Column name, e.g. Todo" },
-        description: text,
+        description: { type: "string", description: "A sentence or two: what the card is for and why. Steps go in items." },
         labels: { type: "array", items: text },
         assignee: text,
         priority: { type: "string", enum: PRIORITY },
         milestone: { type: "string", description: "Existing milestone name" },
         dueDate: { type: "string", description: "YYYY-MM-DD" },
         board: { type: "string", description: "Board name, owner or id (default: the main board)" },
+        items: ITEMS,
         reason: { type: "string", enum: FINISH_REASONS, description: "Only to create it already done — see move_card" },
         note: { type: "string", description: "With reason: the proof — how you know it is done" },
       },
@@ -548,12 +636,13 @@ const tools = [
   {
     name: "move_card",
     description:
-      "Move a card to another column. To close it (a done column) give proof: reason and a note that says how you know — verified (you checked it yourself: what you ran and saw), person_confirmed (a person told you they checked it: who, where), already_done (where it was done) or cannot_be_checked (why). Without a reason, moving to Done sends it to Review for a person's check instead; say how to check it with comment_on_card. Writing the code is not proof that it works. The card shows your proof, and a person can reopen it. A card from the markdown file changes on the board only; the commit waits for the person's review in the app.",
+      "Move a card to another column, or with board to another board (to sort a crowded main board into area boards). To close it (a done column) give proof: reason and a note that says how you know — verified (you checked it yourself: what you ran and saw), person_confirmed (a person told you they checked it: who, where), already_done (where it was done) or cannot_be_checked (why). Without a reason, moving to Done sends it to Review for a person's check instead; say how to check it with comment_on_card. Writing the code is not proof that it works. The card shows your proof, and a person can reopen it. A card from the markdown file changes on the board only; the commit waits for the person's review in the app.",
     inputSchema: {
       type: "object",
       properties: {
         card: { type: "string", description: "RB-12, 12 or the card id" },
         column: text,
+        board: { type: "string", description: "Move it to another board (name, owner or id); column is then that board's" },
         reason: { type: "string", enum: FINISH_REASONS, description: "Only for Done: why you may close it" },
         note: { type: "string", description: "With reason: the proof — how you know it is done" },
       },
@@ -590,6 +679,7 @@ const tools = [
         parent: { type: "string", description: "Text of the item to nest under (optional)" },
         notes: { type: "string", description: "Markdown: what to do, how to check it, what matters" },
         assignee: text,
+        items: ITEMS,
       },
       required: ["card", "text"],
     },
@@ -787,8 +877,10 @@ const handlers = {
       );
   },
 
-  create_card({ title, column, description, labels, assignee, priority, milestone, dueDate, board: boardName, reason, note }) {
+  create_card({ title, column, description, labels, assignee, priority, milestone, dueDate, board: boardName, reason, note, items }) {
     const { repo, board } = requireBoard(boardName);
+    const checklist = buildItems(items);
+    if (!checklist.length && stepsInDescription(description)) throw new Error(STEPS_BELONG_IN_ITEMS);
     let col = resolveColumn(board.id, column);
     // Agents propose, people verify: a card made done needs a reason; without one it waits in review.
     let doneBy = null;
@@ -809,7 +901,7 @@ const handlers = {
     db.prepare(
       `INSERT INTO tasks (id, board_id, column_id, position, title, description, assignee, due_date, checklist,
         markdown_task_id, card_number, priority, milestone_id, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,'[]',NULL,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?,?,?,?)`,
     ).run(
       id,
       board.id,
@@ -819,6 +911,7 @@ const handlers = {
       description ?? null,
       assignee ?? null,
       dueValue(dueDate) ?? null,
+      JSON.stringify(checklist),
       nextCardNumber(board.id),
       priorityValue(priority) ?? 0,
       resolveMilestone(board.id, milestone),
@@ -837,21 +930,37 @@ const handlers = {
     );
     return {
       ...serialiseCard(cardOf(id)),
-      note: sentToCheck ? `Created in ${col.name} for a person's check: give a reason and a note to create it done.` : undefined,
+      note:
+        [
+          sentToCheck ? `Created in ${col.name} for a person's check: give a reason and a note to create it done.` : null,
+          checklist.length
+            ? null
+            : "No items yet: add the card's steps with add_checklist_item — nest the parts of a step under it (parent) and give each notes on how to do and check it.",
+          boardName ? null : boardAdvice(repo.id, board),
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined,
     };
   },
 
-  move_card({ card, column, reason, note }) {
+  move_card({ card, column, reason, note, board: boardName }) {
     const { repo } = requireBoard();
     const task = cardOf(card);
-    let target = resolveColumn(task.board_id, column);
+    // To another board: the column is that board's; card number and links stay.
+    const toBoard = boardName ? requireBoard(boardName).board : null;
+    const crossing = toBoard && toBoard.id !== task.board_id;
+    if (crossing && task.markdown_task_id) {
+      throw new Error(`${serialiseCard(task).ref} comes from the markdown board file, so it stays on the main board.`);
+    }
+    const boardId = crossing ? toBoard.id : task.board_id;
+    let target = resolveColumn(boardId, column);
     let doneBy = null;
     let sentToCheck = false;
     if (DONE_COLUMN.test(target.name.trim())) {
       doneBy = closing(repo.id, reason, note);
       if (!doneBy) {
         // The normal way: finished work waits for a person's check.
-        const review = columns(task.board_id).find((c) => REVIEW_COLUMN.test(c.name));
+        const review = columns(boardId).find((c) => REVIEW_COLUMN.test(c.name));
         if (!review) {
           throw new Error(`To close it, give a reason and a note. Otherwise say it is ready and how to check it (comment_on_card).`);
         }
@@ -863,19 +972,30 @@ const handlers = {
     const position = db
       .prepare("SELECT COUNT(*) AS n FROM tasks WHERE column_id = ? AND deleted_at IS NULL")
       .get(target.id).n;
-    db.prepare("UPDATE tasks SET column_id = ?, position = ?, updated_at = ? WHERE id = ?").run(
-      target.id,
-      position,
-      now(),
-      task.id,
-    );
+    if (crossing) {
+      // Milestones belong to a board: keep one of the same name there, else none.
+      const milestone = task.milestone_id ? db.prepare("SELECT name FROM milestones WHERE id = ?").get(task.milestone_id) : null;
+      const there = milestone ? db.prepare("SELECT id FROM milestones WHERE board_id = ? AND name = ?").get(boardId, milestone.name) : null;
+      db.prepare("UPDATE tasks SET board_id = ?, column_id = ?, position = ?, milestone_id = ?, updated_at = ? WHERE id = ?").run(
+        boardId,
+        target.id,
+        position,
+        there?.id ?? null,
+        now(),
+        task.id,
+      );
+    } else {
+      db.prepare("UPDATE tasks SET column_id = ?, position = ?, updated_at = ? WHERE id = ?").run(target.id, position, now(), task.id);
+    }
     // Closed by the agent: say who and why; moved anywhere else, that record goes.
     setDoneBy(task.id, doneBy);
     logActivity(
       repo.id,
       task.id,
       "card_moved",
-      `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}${doneBy ? ` (${WHY[doneBy.reason]}: ${doneBy.note})` : ""}`,
+      crossing
+        ? `moved ${task.title} to the board ${toBoard.name}, ${target.name}`
+        : `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}${doneBy ? ` (${WHY[doneBy.reason]}: ${doneBy.note})` : ""}`,
     );
     return {
       ...serialiseCard(cardOf(task.id)),
@@ -893,6 +1013,8 @@ const handlers = {
   update_card({ card, title, description, assignee, labels, priority, milestone, dueDate }) {
     const { repo } = requireBoard();
     const task = cardOf(card);
+    const hasItems = (task.checklist ? JSON.parse(task.checklist) : []).length > 0;
+    if (description !== undefined && !hasItems && stepsInDescription(description)) throw new Error(STEPS_BELONG_IN_ITEMS);
     const board = { id: task.board_id };
     db.prepare(
       `UPDATE tasks SET title = ?, description = ?, assignee = ?, priority = ?, milestone_id = ?, due_date = ?, updated_at = ?
@@ -930,10 +1052,10 @@ const handlers = {
     return serialiseCard(cardOf(task.id));
   },
 
-  add_checklist_item({ card, text: itemText, parent, notes, assignee }) {
+  add_checklist_item({ card, text: itemText, parent, notes, assignee, items }) {
     const task = cardOf(card);
     const list = task.checklist ? JSON.parse(task.checklist) : [];
-    const item = { id: randomUUID(), text: itemText, done: false, notes: notes ?? null, assignee: assignee ?? null, children: [], comments: [] };
+    const item = { id: randomUUID(), text: itemText, done: false, notes: notes ?? null, assignee: assignee ?? null, children: buildItems(items), comments: [] };
     if (parent) {
       const host = findItem(list, parent);
       if (!host) throw noItem(parent, list);
@@ -1129,7 +1251,10 @@ const handlers = {
       name: agentLabel(),
       reportedAs: agentName(),
       project: project.repo ?? `${repo.owner}/${repo.name}`,
-      note: `People assign work to you as "${agentLabel()}". Everything you change is shown under that name, marked AI. You cannot tick items or move cards to done: a person verifies.`,
+      boards: boardsOf(repo.id).map((b) => b.name),
+      note: `People assign work to you as "${agentLabel()}". Everything you change is shown under that name, marked AI.`,
+      // Some clients never show the server's instructions: they come with the first answer too.
+      rules: INSTRUCTIONS,
     };
   },
 
@@ -1341,7 +1466,10 @@ Start with whoami and get_overview (or list_boards) to see what exists before ad
 
 Organise the work:
 - A board is a large, lasting area: the main board for the project's overall flow, and one each for areas like Design, Security, Release or Legal once they have several cards of their own. Use a board that fits; make one with create_board only when an area really needs it — never a board per card, and not two boards for one area.
-- A card is one topic on a board (RB-n). Its steps are checklist items, nested 1, 1.1, 1.2 — with notes on what to do and how to check it.
+- A card is one topic on a board (RB-n). Fill it like this:
+  description — a sentence or two: what the card is for and why. Never the steps.
+  items — every step, one item each (create_card(items: [...]) or add_checklist_item), with sub-items for the parts of a step (1, 1.1, 1.2) and notes on each: how to do it, what to watch for, how to check it.
+  A card with work to do and no items is not finished being written.
 - Put each card on the board of its area: create_card(board: "Security", …).
 
 Finishing work — close it when you can prove it is done, send it to check when you cannot:
