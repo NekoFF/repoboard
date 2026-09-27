@@ -46,6 +46,12 @@ Project (a GitHub repository)
   `SyncChip` instead of "Save to repo". Cards compare by content
   (`sameCard`), never by `JSON.stringify` of objects built in different
   places — field order differs between the database and the parser.
+- Open pages stay current on their own: `components/shell/LiveRefresh.tsx`
+  asks `/api/board?live=1` (`liveVersion`, a fingerprint of cards, boards
+  and activity) every 3 s while the page is visible, and on a change calls
+  `router.refresh()` and fires `rb-live` (resources with `live: true`
+  reload) — not while the person drags or types. Agents' MCP writes reach
+  the screen this way.
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.

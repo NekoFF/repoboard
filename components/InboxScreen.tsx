@@ -96,7 +96,7 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
   const { repo, viewer, connected } = useShell();
   const refs = useResource(api.refs, [], { enabled: connected });
   const issues = useResource(api.issues, [], { enabled: connected });
-  const activity = useResource(() => api.activity(200), []);
+  const activity = useResource(() => api.activity(200), [], { live: true });
   const [seenAt, setSeenAt] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState<number | null>(null);
@@ -350,7 +350,7 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
 /** How many things others did since the Inbox was last opened — for the sidebar. */
 export function useInboxCount(): number {
   const { repo, viewer, connected } = useShell();
-  const activity = useResource(() => api.activity(100), [repo], { enabled: connected, pollMs: 60_000 });
+  const activity = useResource(() => api.activity(100), [repo], { enabled: connected, pollMs: 60_000, live: true });
   const [seenAt, setSeenAt] = useState<number | null>(null);
   useEffect(() => {
     const read = () => setSeenAt(readNumber(seenKey(repo)));

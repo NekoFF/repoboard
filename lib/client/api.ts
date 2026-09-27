@@ -247,6 +247,7 @@ export const api = {
 
   /** Every card of the project, on any board, with every board's columns. */
   projectCards: () => request<BoardData>("/api/board?all=1"),
+  liveVersion: () => request<{ version: string }>("/api/board?live=1"),
 
   boardAction: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/api/board", {
@@ -379,9 +380,10 @@ export interface Resource<T> {
 export function useResource<T>(
   loader: () => Promise<T>,
   deps: unknown[] = [],
-  options: { enabled?: boolean; pollMs?: number } = {},
+  /** live: load again when the project's boards change (components/shell/LiveRefresh.tsx). */
+  options: { enabled?: boolean; pollMs?: number; live?: boolean } = {},
 ): Resource<T> {
-  const { enabled = true, pollMs } = options;
+  const { enabled = true, pollMs, live = false } = options;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
@@ -432,6 +434,13 @@ export function useResource<T>(
     const id = setInterval(() => setNonce((n) => n + 1), pollMs);
     return () => clearInterval(id);
   }, [pollMs, enabled]);
+
+  useEffect(() => {
+    if (!live || !enabled) return;
+    const again = () => setNonce((n) => n + 1);
+    window.addEventListener("rb-live", again);
+    return () => window.removeEventListener("rb-live", again);
+  }, [live, enabled]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 

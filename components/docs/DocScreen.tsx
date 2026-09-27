@@ -70,7 +70,7 @@ export function DocScreen({ path }: { path: string }) {
   const links = useRepoLinks();
   const doc = useResource(() => api.doc(path), [path]);
   // Cards on every board, so an item that names RB-12 shows how that work stands.
-  const project = useResource(api.projectCards, []);
+  const project = useResource(api.projectCards, [], { live: true });
   const linkedCards = useMemo(() => {
     const status = new Map((project.data?.columns ?? []).map((c) => [c.id, statusOfColumn(c.name)]));
     return new Map(

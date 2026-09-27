@@ -37,6 +37,7 @@ import {
   syncBoards,
   listArchivedBoards,
   confirmAgentDone,
+  liveVersion,
   moveTaskToBoard,
 } from "@/lib/board-service";
 import { DONE_REASONS } from "@/lib/checklist";
@@ -49,6 +50,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "GitHub access required" }, { status: 401 });
   }
   const url = new URL(request.url);
+  // Cheap, asked every few seconds by open pages: has anything changed?
+  if (url.searchParams.get("live")) return NextResponse.json({ version: liveVersion() });
   const who = await currentWho();
   if (url.searchParams.get("list")) return NextResponse.json({ boards: listBoards(who) });
   if (url.searchParams.get("all")) return NextResponse.json(getProjectData(who));

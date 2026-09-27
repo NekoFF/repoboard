@@ -61,7 +61,7 @@ function splitAuthor(message: string): { author: string | null; text: string } {
 export function ActivityScreen({ data }: { data: BoardData; header: RepoHeader; connected: boolean }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [limit, setLimit] = useState(50);
-  const events = useResource(() => api.activity(limit), [limit], { pollMs: 30_000 });
+  const events = useResource(() => api.activity(limit), [limit], { pollMs: 30_000, live: true });
   const all = useMemo(() => events.data?.events ?? [], [events.data]);
   const cards = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 

@@ -55,7 +55,7 @@ shows as checklists, notes and progress.
 
 | Folder | What goes there |
 | ------ | --------------- |
-| \`checklists/\` | **Checks** — what must be true and be verified, often again: the privacy policy, a release gate, licences, store rules. Written as statements, with how to verify and why. The work they need is cards on a board, named on the item's line (\`RB-12\`). |
+| \`checklists/\` | **Checks** — what must be true and be verified, often again: the privacy policy, each release (\`release-1.0.md\`: everything that must hold before it ships), licences, store rules. Written as statements, with how to verify and why. The work they need is cards on a board, named on the item's line (\`RB-12\`). |
 | \`notes/\` | Knowledge: how to run and test the project, where things live, commands. |
 | \`decisions/\` | What was decided and why, with sources, so nobody re-argues it later. |
 | \`evidence/\` | Screenshots that prove checklist items, added by RepoBoard when an item is ticked with proof. |

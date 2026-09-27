@@ -1547,6 +1547,7 @@ Two kinds of things — choose by what it is, not by habit:
 - A check, something that must be true and be verified — often again, before every release → an item in a document under .repoboard/checklists/: privacy and legal requirements, a release gate, store rules, licences. Write it as a statement ("Impressum reachable in two taps"), with Verify: (how to check) and Source: (why it is required). It stays after the work is done: that is its point. Knowledge goes in .repoboard/notes/, decisions and their reasons in .repoboard/decisions/.
 - Join them. When a check needs work, make the card and write its RB-n on the check's line in the document. The card page then shows which check it serves, the document shows the card and its state, and when the card is done the check appears in needs_check as "work done — check it".
   If you would write "Day 1" or "Step 3" into a document, it is work: cards, a milestone per phase.
+- A release is a document too: .repoboard/checklists/release-<version>.md — everything that must be true before that version ships (tests pass, store listing, privacy policy current, licences, what changed). When you learn of something important for a release — a requirement, a risk, a thing not to forget — add it there as a check, not only in a card or a chat.
 
 Finishing work — close it when you can prove it is done, send it to a person when you cannot:
 - Close it (move_card to Done, set_checklist_item done: true) with a reason and the proof in note:
