@@ -237,7 +237,16 @@ Rules while more than one entry is in this table:
 
 ## MCP server
 
-`scripts/mcp-server.mjs` exposes the boards and documents to any MCP client
+`scripts/mcp-server.mjs` is only the process; the tools, their rules and
+`INSTRUCTIONS` live in `scripts/mcp-core.mjs`. Before every request the process
+looks whether that file changed (an app update, a pull) and loads it again:
+the client is told the tools changed, and when `RULES_VERSION` moved the next
+answer starts with the new rules — so an agent connected for hours follows
+the current version without a restart. Keep everything that can change in
+the core, and the process small. `whoami` and `get_overview` carry `tidyUp`:
+what is already in the wrong place (a plan kept as a checklist document,
+steps in a card's description, a pile on the main board) for the agent to
+put right. The server exposes the boards and documents to any MCP client
 over stdio (Claude Code, Codex, Cursor, Claude Desktop…): overview, boards
 (`list_boards`; `get_board` and `create_card` take an optional `board` — name,
 owner or id — and default to the main board), cards (create, move, update,
@@ -249,9 +258,15 @@ is checked against its tool's `inputSchema` before the handler runs
 (`checkArguments`: required, types, enums, unknown fields), runs in one
 transaction, and database errors never reach the agent raw — so a tool's
 schema is its contract; keep it exact (`tests/mcp-arguments.test.ts`). The
-server's `instructions` (sent on connect) tell agents how to organise work —
-a board per large area with `create_board`, not everything on one — and how
-to finish it (rule 9).
+server's `instructions` (sent on connect, and again as `rules` in `whoami`,
+because some clients never show them) tell agents how to organise work and
+how to finish it (rule 9). The answers enforce it where instructions are not
+enough: a card's steps go in `items` (a tree, `create_card(items)`), and a
+description that lists steps is refused (`stepsInDescription`); a card made
+on the main board comes back with `boardAdvice` — other boards, and an area
+board to make when several open cards share a label; `move_card(board)`
+moves a card to another board. `mergeBoardFile` keeps each card on one board
+(the newest copy), so a move survives sync.
 
 People: events written through the app are attributed to the GitHub login of
 the active token (route handlers wrap their work in `runAs` from

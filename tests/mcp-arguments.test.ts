@@ -216,6 +216,74 @@ describe("MCP server arguments", () => {
     expect(JSON.parse(board.text).columns[0].cards[0].ref).toBe("RB-1");
   });
 
+  it("keeps steps in items, not in the description", async () => {
+    await refused(
+      "create_card",
+      { title: "Launch", column: "Todo", description: "Add the repo; pick a domain; rent a server; write the Impressum" },
+      "The description lists steps",
+      "items",
+    );
+    await refused("create_card", { title: "Launch", column: "Todo", description: "Plan:\n- one\n- two\n- three" }, "The description lists steps");
+    await refused("create_card", { title: "Launch", column: "Todo", items: [{ notes: "no text" }] }, "items[1].text is required");
+    const made = await client.call("create_card", {
+      title: "Launch",
+      column: "Todo",
+      description: "What has to happen before the site goes live.",
+      items: [
+        { text: "Domain", notes: "Pick and buy it", items: [{ text: "Pick a name" }, { text: "Point DNS at the server", notes: "Check with dig" }] },
+        { text: "Impressum" },
+      ],
+    });
+    expect(made.isError, made.text).toBe(false);
+    const { ref } = JSON.parse(made.text);
+    const list = JSON.parse((sqlite.prepare("SELECT checklist FROM tasks WHERE card_number = ?").get(Number(ref.slice(3))) as { checklist: string }).checklist);
+    expect(list.map((i: { text: string }) => i.text)).toEqual(["Domain", "Impressum"]);
+    expect(list[0].children[1]).toMatchObject({ text: "Point DNS at the server", notes: "Check with dig", done: false });
+    // Without items, the answer says to add them.
+    const bare = JSON.parse((await client.call("create_card", { title: "Bare", column: "Todo" })).text);
+    expect(bare.note).toContain("No items yet");
+  });
+
+  it("moves a card to another board, and gives the rules with whoami", async () => {
+    const moved = await client.call("move_card", { card: "RB-1", board: "Design", column: "Ideas" });
+    expect(moved.isError, moved.text).toBe(false);
+    expect(JSON.parse(moved.text)).toMatchObject({ board: "Design", column: "Ideas" });
+    expect(sqlite.prepare("SELECT board_id, milestone_id FROM tasks WHERE card_number = 1").get()).toEqual({ board_id: "board_design", milestone_id: null });
+    await refused("move_card", { card: "RB-1", board: "Design", column: "Todo" }, 'No column "Todo". Available: Ideas');
+    // A pile of one area on the main board: the answer suggests a board for it.
+    let answer = "";
+    for (const n of [1, 2, 3, 4]) {
+      answer = JSON.parse((await client.call("create_card", { title: `Audit ${n}`, column: "Todo", labels: ["security"], items: [{ text: "Look" }] })).text).note ?? "";
+    }
+    expect(answer).toContain("4 open cards labelled security");
+    expect(answer).toContain("Other boards: Design");
+    const me = JSON.parse((await client.call("whoami", {})).text);
+    expect(me.boards).toEqual(["Alpha", "Design"]);
+    expect(me.rules).toContain("A board is a large, lasting area");
+  });
+
+  it("points out what is already in the wrong place", async () => {
+    const snapshot = {
+      version: 1,
+      title: "План сборки",
+      total: 6,
+      done: 0,
+      review: 5,
+      sections: [{ heading: "День 1 — скелет", depth: 2, total: 6, done: 0, doing: 0, review: 5 }],
+      items: [],
+      links: [],
+    };
+    sqlite
+      .prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_plan', ?, '.repoboard/checklists/build-plan.md', 'checklist', ?)")
+      .run(REPO, JSON.stringify(snapshot));
+    sqlite.prepare("UPDATE tasks SET description = 'Add the repo; pick a domain; rent a server; write the Impressum', checklist = '[]' WHERE card_number = 1").run();
+    const me = JSON.parse((await client.call("whoami", {})).text);
+    expect(me.tidyUp.join("\n")).toContain(".repoboard/checklists/build-plan.md");
+    expect(me.tidyUp.join("\n")).toContain("День 1 — скелет");
+    expect(me.tidyUp.join("\n")).toContain("RB-1 keep their steps in the description");
+    sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_plan'").run();
+  });
+
   it("turns a database error into a plain answer and writes nothing half-way", async () => {
     sqlite.exec("DROP TABLE task_labels");
     const text = await refused(
@@ -228,5 +296,60 @@ describe("MCP server arguments", () => {
     expect(client.stderr).toContain("no such table: task_labels");
     expect(sqlite.prepare("SELECT COUNT(*) AS n FROM tasks WHERE title = 'Half a card'").get()).toEqual({ n: 0 });
     expect(client.child.exitCode).toBeNull();
+  });
+});
+
+describe("MCP server updates", () => {
+  it("follows a new version without a restart, and tells the agent the rules changed", async () => {
+    // A copy inside the project, so it finds node_modules; the original stays untouched.
+    const dir = fs.mkdtempSync(path.join(process.cwd(), ".mcp-reload-"));
+    try {
+      fs.mkdirSync(path.join(dir, "scripts"));
+      for (const f of ["mcp-server.mjs", "mcp-core.mjs"]) fs.copyFileSync(path.join("scripts", f), path.join(dir, "scripts", f));
+      const agent = new McpClient(
+        spawn(process.execPath, [path.join(dir, "scripts", "mcp-server.mjs")], {
+          env: {
+            PATH: process.env.PATH,
+            HOME: scratch,
+            DATABASE_URL: `file:${databaseFile}`,
+            REPOBOARD_REPO: "acme/alpha",
+            GITHUB_PAT: "test-token",
+            GITHUB_API_URL: "http://127.0.0.1:9",
+            REPOBOARD_AGENT: "claude-test",
+          } as unknown as NodeJS.ProcessEnv,
+          stdio: ["pipe", "pipe", "pipe"],
+        }),
+      );
+      try {
+        await agent.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "vitest", version: "1" } });
+        agent.notify("notifications/initialized");
+        const before = await agent.request("tools/call", { name: "list_boards", arguments: {} });
+        expect(before.result?.content).toHaveLength(1);
+
+        // RepoBoard is updated under the running server: new rules, a new tool.
+        const core = path.join(dir, "scripts", "mcp-core.mjs");
+        const source = fs
+          .readFileSync(core, "utf8")
+          .replace("Start with whoami", "Always greet the owner first.\n\nStart with whoami")
+          .replace("const tools = [", 'const tools = [\n  { name: "hello_update", description: "New in this version", inputSchema: { type: "object", properties: {} } },');
+        fs.writeFileSync(core, source.replace("const handlers = {", 'const handlers = {\n  hello_update() { return { fresh: true }; },'));
+        fs.utimesSync(core, new Date(), new Date(Date.now() + 5000));
+
+        const listed = await agent.request("tools/list", {});
+        expect((listed.result as unknown as { tools: { name: string }[] }).tools.map((t) => t.name)).toContain("hello_update");
+        const after = await agent.request("tools/call", { name: "hello_update", arguments: {} });
+        const texts = after.result!.content.map((c) => c.text);
+        expect(texts[0]).toContain("RepoBoard was updated while you were connected");
+        expect(texts[0]).toContain("Always greet the owner first.");
+        expect(JSON.parse(texts[1])).toEqual({ fresh: true });
+        // Said once.
+        const again = await agent.request("tools/call", { name: "list_boards", arguments: {} });
+        expect(again.result?.content).toHaveLength(1);
+      } finally {
+        agent.child.kill();
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
