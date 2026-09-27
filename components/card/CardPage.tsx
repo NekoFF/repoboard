@@ -104,15 +104,15 @@ function AgentClosed({ doneBy, onConfirm, onReopen }: { doneBy: DoneBy; onConfir
     }
   };
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-state-review/10 px-4 py-3 ring-1 ring-state-review/25">
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-2.5 rounded-xl bg-state-review/10 px-4 py-3 ring-1 ring-state-review/25">
       <StatusIcon status="review" size={16} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[16rem] flex-1">
         <p className="text-sm text-ink">
           <span className="font-medium">{doneBy.name}</span> (AI) closed this card. {REASONS[doneBy.reason]}.
         </p>
         {doneBy.note && <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{doneBy.note}</p>}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="ml-7 flex shrink-0 items-center gap-1.5 sm:ml-0">
         <button className="rb-btn rb-btn-sm" disabled={busy !== null} onClick={run("reopen", onReopen)}>
           Reopen
         </button>

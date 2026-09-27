@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleDot, GitMerge, GitPullRequest, Inbox, Sparkles, X } from "lucide-react";
+import { ChevronRight, CircleDot, GitMerge, GitPullRequest, Inbox, Sparkles, X } from "lucide-react";
 import type { BoardData, BoardSummary, BoardTask } from "@/lib/board-service";
 import { api, useResource } from "@/lib/client/api";
 import { orderAfterMove, useCommitMove } from "@/lib/client/moves";
+import { groupEvents, summarise, type InboxEntry } from "@/lib/client/inbox";
 import { statusOfColumn } from "@/lib/status";
 import { PageHeader } from "@/components/PageHeader";
 import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
@@ -25,6 +26,9 @@ function readNumber(key: string): number {
     return Date.now() - 3 * 86_400_000;
   }
 }
+
+/** How many changes an opened group lists before "Show more". */
+const GROUP_PREVIEW = 12;
 
 interface Move {
   key: string;
@@ -165,8 +169,18 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
   );
 
   const events = (activity.data?.events ?? []).filter((e) => !viewer || e.actor?.toLowerCase() !== viewer.toLowerCase());
-  const fresh = seenAt == null ? [] : events.filter((e) => e.createdAt > seenAt);
-  const earlier = seenAt == null ? events.slice(0, 20) : events.filter((e) => e.createdAt <= seenAt).slice(0, 20);
+  const fresh = seenAt == null ? [] : groupEvents(events.filter((e) => e.createdAt > seenAt));
+  const earlier = groupEvents(seenAt == null ? events : events.filter((e) => e.createdAt <= seenAt)).slice(0, 20);
+  const freshCount = fresh.length;
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [all, setAll] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const nothing = moves.length === 0 && newIssues.length === 0 && fresh.length === 0;
 
   const importIssue = async (number: number) => {
@@ -185,15 +199,15 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
     }
   };
 
-  const eventRow = (e: (typeof events)[number], isNew: boolean) => {
+  const eventRow = (e: (typeof events)[number], isNew: boolean, inGroup = false) => {
     const card = boards.flatMap((b) => b.data.tasks).find((t) => t.id === e.taskId);
     return (
-      <li key={e.id} className={`flex items-start gap-3 px-4 py-2.5 ${isNew ? "bg-accent/[0.04]" : ""}`}>
+      <li key={e.id} className={`flex items-start gap-3 py-2.5 ${inGroup ? "pl-12 pr-4" : "px-4"} ${isNew ? "bg-accent/[0.04]" : ""}`}>
         {/* Events without a person are RepoBoard's own (setting up a board, a sync). */}
-        {e.actor ? <ActorAvatar name={e.actor} kind={e.actorKind} size={20} /> : <Logo size={20} />}
+        {inGroup ? null : e.actor ? <ActorAvatar name={e.actor} kind={e.actorKind} size={20} /> : <Logo size={20} />}
         <div className="min-w-0 flex-1 text-sm">
           <p className="text-muted">
-            {e.actor && (
+            {e.actor && !inGroup && (
               <span className="mr-1.5">
                 <ActorName name={e.actor} kind={e.actorKind} />
               </span>
@@ -207,7 +221,59 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
           )}
         </div>
         <RelativeTime value={e.createdAt} className="shrink-0 text-xs text-faint" />
-        {isNew && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" aria-label="New" />}
+        {isNew && !inGroup && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" aria-label="New" />}
+      </li>
+    );
+  };
+
+  // A burst of work is one row that opens to its changes.
+  const entryRow = (entry: InboxEntry<(typeof events)[number]>, isNew: boolean) => {
+    if (entry.kind === "event") return eventRow(entry.event, isNew);
+    const expanded = open.has(entry.key);
+    const { did, cards } = summarise(entry.events);
+    return (
+      <li key={entry.key} className={isNew ? "bg-accent/[0.04]" : ""}>
+        <button
+          type="button"
+          className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hover"
+          aria-expanded={expanded}
+          onClick={() => toggle(entry.key)}
+        >
+          {entry.actor ? <ActorAvatar name={entry.actor} kind={entry.actorKind} size={20} /> : <Logo size={20} />}
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="text-muted">
+              {entry.actor && (
+                <span className="mr-1.5">
+                  <ActorName name={entry.actor} kind={entry.actorKind} />
+                </span>
+              )}
+              made {entry.events.length} changes
+            </p>
+            <p className="mt-0.5 text-xs text-faint">
+              {did}
+              {cards > 1 ? `, across ${cards} cards` : ""}
+            </p>
+          </div>
+          <RelativeTime value={entry.newest} className="shrink-0 text-xs text-faint" />
+          <ChevronRight className={`mt-0.5 size-4 shrink-0 text-faint transition-transform ${expanded ? "rotate-90" : ""}`} />
+          {isNew && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" aria-label="New" />}
+        </button>
+        {expanded && (
+          <ol className="flex flex-col divide-y divide-border border-t border-border">
+            {(all.has(entry.key) ? entry.events : entry.events.slice(0, GROUP_PREVIEW)).map((e) => eventRow(e, false, true))}
+            {!all.has(entry.key) && entry.events.length > GROUP_PREVIEW && (
+              <li>
+                <button
+                  type="button"
+                  className="w-full py-2.5 pl-12 pr-4 text-left text-sm text-muted transition-colors hover:bg-hover hover:text-ink"
+                  onClick={() => setAll((prev) => new Set(prev).add(entry.key))}
+                >
+                  Show {entry.events.length - GROUP_PREVIEW} more
+                </button>
+              </li>
+            )}
+          </ol>
+        )}
       </li>
     );
   };
@@ -250,7 +316,7 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
           <section className="flex flex-col gap-2">
             <h2 className="flex items-baseline gap-2 text-sm font-semibold text-ink">
               Since you last looked
-              {fresh.length > 0 && <span className="text-xs font-normal tabular-nums text-accent">{fresh.length} new</span>}
+              {freshCount > 0 && <span className="text-xs font-normal tabular-nums text-accent">{freshCount} new</span>}
             </h2>
             {activity.loading ? (
               <RowSkeleton rows={4} />
@@ -258,7 +324,7 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
               <p className="text-sm text-muted">Nothing new from agents or teammates.</p>
             ) : (
               <ol className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-                {fresh.map((e) => eventRow(e, true))}
+                {fresh.map((entry) => entryRow(entry, true))}
               </ol>
             )}
           </section>
@@ -267,7 +333,7 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
             <section className="flex flex-col gap-2">
               <h2 className="text-sm font-semibold text-muted">Earlier</h2>
               <ol className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-                {earlier.map((e) => eventRow(e, false))}
+                {earlier.map((entry) => entryRow(entry, false))}
               </ol>
             </section>
           )}
@@ -293,7 +359,10 @@ export function useInboxCount(): number {
     return () => window.removeEventListener("rb:inbox-seen", read);
   }, [repo]);
   if (seenAt == null) return 0;
-  return (activity.data?.events ?? []).filter(
-    (e) => e.createdAt > seenAt && (!viewer || e.actor?.toLowerCase() !== viewer.toLowerCase()),
+  // Entries, not events: sixty changes in one sitting are one thing to look at.
+  return groupEvents(
+    (activity.data?.events ?? []).filter(
+      (e) => e.createdAt > seenAt && (!viewer || e.actor?.toLowerCase() !== viewer.toLowerCase()),
+    ),
   ).length;
 }

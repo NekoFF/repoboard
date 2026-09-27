@@ -120,7 +120,14 @@ export async function POST(request: Request) {
 }
 
 async function handlePost(request: Request) {
-  if (isEnvironmentConfigured()) {
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+  }
+  const body = parsed.data;
+  // The environment fixes which repository and token; the project's own settings stay the person's.
+  const projectSetting = "action" in body && (body.action === "agent-policy" || body.action === "look");
+  if (isEnvironmentConfigured() && !projectSetting) {
     return NextResponse.json(
       {
         error:
@@ -129,11 +136,6 @@ async function handlePost(request: Request) {
       { status: 409 },
     );
   }
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
-  }
-  const body = parsed.data;
 
   try {
     if (body.action === "repos") {
