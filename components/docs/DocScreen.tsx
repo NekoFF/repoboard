@@ -49,6 +49,7 @@ import {
 } from "@/components/ui";
 import { kindOfPath } from "@/lib/templates";
 import { copyText } from "@/lib/client/clipboard";
+import { statusOfColumn } from "@/lib/status";
 
 type Mode = "checklist" | "read" | "edit";
 
@@ -68,6 +69,16 @@ export function DocScreen({ path }: { path: string }) {
   const { repo, viewer } = useShell();
   const links = useRepoLinks();
   const doc = useResource(() => api.doc(path), [path]);
+  // Cards on every board, so an item that names RB-12 shows how that work stands.
+  const project = useResource(api.projectCards, []);
+  const linkedCards = useMemo(() => {
+    const status = new Map((project.data?.columns ?? []).map((c) => [c.id, statusOfColumn(c.name)]));
+    return new Map(
+      (project.data?.tasks ?? [])
+        .filter((t) => t.number != null)
+        .map((t) => [t.number!, { number: t.number!, title: t.title, status: status.get(t.columnId) ?? "todo" }]),
+    );
+  }, [project.data]);
   const [mode, setMode] = useState<Mode>("checklist");
   const [filter, setFilter] = useState<ChecklistFilter>("all");
   const [edits, setEdits] = useState<DocEdit[]>([]);
@@ -184,15 +195,19 @@ export function DocScreen({ path }: { path: string }) {
         action: "create",
         columnId: column.id,
         title: item.title,
-        description: `From [[${path}]]${section ? ` — ${section}` : ""}.`,
+        // The work that makes this item true; the item says which card does it.
+        description: `The work that makes this check hold in [[${path}]]${section ? ` — ${section}` : ""}.`,
         labels: item.tags,
         priority: item.priority,
         dueDate: item.due ? Date.parse(`${item.due}T00:00:00Z`) : null,
       })) as { id: string };
+      // Write the card's number on the item, with the document's other changes (reviewed).
+      const number = (await api.board()).tasks.find((t) => t.id === result.id)?.number;
+      if (number != null) setEdits((prev) => [...prev, { type: "card", line: item.line, title: item.text, id: item.id, card: number }]);
       toast.push({
         kind: "success",
-        message: "Card created",
-        detail: item.title,
+        message: number != null ? `RB-${number} created` : "Card created",
+        detail: number != null ? "Commit the document to link the item to it." : item.title,
         action: { label: "Open", run: () => router.push(`/board/card/${result.id}`) },
       });
     } catch (error) {
@@ -469,6 +484,7 @@ export function DocScreen({ path }: { path: string }) {
                 onNote={addNote}
                 onAdd={addItem}
                 onCreateCard={createCard}
+                cards={linkedCards}
                 onProof={setProving}
                 docPath={path}
                 pendingProofs={pendingProofs}

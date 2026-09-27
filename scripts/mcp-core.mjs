@@ -1352,6 +1352,27 @@ const handlers = {
             .map((t) => ({ source: `board ${board.name}`, card: t.card_number != null ? `RB-${t.card_number}` : t.id, item: t.title }))
         : [];
     });
+    // Checks whose cards are all done while the check is still open: mark them [?] with proof.
+    const doneCards = new Set();
+    for (const board of boards) {
+      const done = columns(board.id).filter((c) => DONE_COLUMN.test(c.name.trim())).map((c) => c.id);
+      for (const t of db.prepare("SELECT card_number, column_id FROM tasks WHERE board_id = ? AND deleted_at IS NULL").all(board.id)) {
+        if (t.card_number != null && done.includes(t.column_id)) doneCards.add(t.card_number);
+      }
+    }
+    const workDone = documents(repo.id)
+      .filter(({ row }) => row.role !== "board")
+      .flatMap(({ row, snap }) =>
+        (snap?.items ?? [])
+          .filter((i) => (i.state === "todo" || i.state === "doing") && (i.cards ?? []).length > 0 && i.cards.every((n) => doneCards.has(n)))
+          .map((i) => ({
+            source: row.path,
+            line: i.line + 1,
+            item: i.title,
+            workDone: i.cards.map((n) => `RB-${n}`).join(", "),
+            next: "The work is done: check the item against its Verify: line, then set it to [?] with Proof: lines in your checkout.",
+          })),
+      );
     // Card items an agent marked for a check: close them with person_confirmed once a person says they work.
     const fromItems = boards.flatMap((board) =>
       db
@@ -1368,7 +1389,7 @@ const handlers = {
             })),
         ),
     );
-    return [...fromDocs, ...fromBoard, ...fromItems];
+    return [...fromDocs, ...workDone, ...fromBoard, ...fromItems];
   },
 
   get_activity({ limit = 30 } = {}) {
@@ -1515,30 +1536,30 @@ function internalReason(error) {
 
 /* --------------------------------------------------------------- server -- */
 
-const INSTRUCTIONS = `RepoBoard: the project's boards, cards and checklists, kept next to the code.
+const INSTRUCTIONS = `RepoBoard: this project's work and the checks it has to pass, kept next to the code, shared by the people and every agent on it.
 
-Start with whoami and get_overview (or list_boards) to see what exists before adding anything. If they list tidyUp, those are things already in the wrong place: put them right as part of your work, and tell the person what you moved.
+Start with whoami, then get_overview. If they list tidyUp, those are things already in the wrong place: put them right as part of your work and tell the person what you moved.
 
-Organise the work:
-- A board is a large, lasting area: the main board for the project's overall flow, and one each for areas like Design, Security, Release or Legal once they have several cards of their own. Use a board that fits; make one with create_board only when an area really needs it — never a board per card, and not two boards for one area.
-- A card is one topic on a board (RB-n). Fill it like this:
-  description — a sentence or two: what the card is for and why. Never the steps.
-  items — every step, one item each (create_card(items: [...]) or add_checklist_item), with sub-items for the parts of a step (1, 1.1, 1.2) and notes on each: how to do it, what to watch for, how to check it.
-  A card with work to do and no items is not finished being written.
-- Put each card on the board of its area: create_card(board: "Security", …).
-- Work goes on boards, not into documents. Building, fixing, setting up, a plan by days or phases: cards, with the steps as items and a milestone per phase. A checklist document in .repoboard/checklists/ is only for a list a person checks against — a release, the privacy policy, licences, store requirements. If you would write "Day 1" or "Step 3" in it, it belongs on a board.
+Two kinds of things — choose by what it is, not by habit:
+- Work, something to do → a card on a board. It has an owner, a column and an end; the person watches the boards to see what is happening.
+  Title; a sentence or two on what it is for; every step as an item (create_card items, add_checklist_item), sub-items for the parts of a step, and notes on how to do and how to check each. Never the steps in the description.
+  A board per large area (Design, Security, Release…) once it has several cards: create_board, and move_card(board) to sort a crowded main board. Not a board per card.
+- A check, something that must be true and be verified — often again, before every release → an item in a document under .repoboard/checklists/: privacy and legal requirements, a release gate, store rules, licences. Write it as a statement ("Impressum reachable in two taps"), with Verify: (how to check) and Source: (why it is required). It stays after the work is done: that is its point. Knowledge goes in .repoboard/notes/, decisions and their reasons in .repoboard/decisions/.
+- Join them. When a check needs work, make the card and write its RB-n on the check's line in the document. The card page then shows which check it serves, the document shows the card and its state, and when the card is done the check appears in needs_check as "work done — check it".
+  If you would write "Day 1" or "Step 3" into a document, it is work: cards, a milestone per phase.
 
-Finishing work — close it when you can prove it is done, send it to check when you cannot:
+Finishing work — close it when you can prove it is done, send it to a person when you cannot:
 - Close it (move_card to Done, set_checklist_item done: true) with a reason and the proof in note:
   verified — you checked it yourself: ran the tests or the app and saw it work (say what you ran and what you saw);
-  person_confirmed — a person told you they checked it, now or earlier in the conversation, and it is not marked yet (say who and where);
+  person_confirmed — a person told you they checked it, now or earlier in the conversation (say who and where);
   already_done — it was done before (the commit, pull request or file);
   cannot_be_checked — there is nothing to look at (say why).
-- Writing the code is not proof. If you could not check it, leave out reason: the card goes to Review (the item is marked for a check) — then say in a comment how to check it.
-- Look at needs_check now and then: if a person has since said an item works, close it with person_confirmed.
+- Writing the code is not proof. Without proof, leave out reason: the card goes to Review (the item is marked for a check) — say in a comment how to check it.
+- A check in a document is never ticked [x] by you: when its work is done, check it against Verify:, then set it to [?] with Proof: lines (where, what you saw). A person ticks it.
+- Look at needs_check now and then: close with person_confirmed what a person has since said works, and take up checks whose work is done.
 - Your proof shows on the card; a person can reopen it.
-- Checklists in documents (privacy policy, release, licences) are ticked [x] by people only; you mark items [?] with proof.
-You cannot commit to GitHub from here; edit .repoboard/ files in your own checkout.`;
+
+You cannot commit to GitHub from here: edit .repoboard/ files in your own checkout and commit them with the work, mentioning RB-n.`;
 
 /** Changes whenever the rules change: the process around this tells connected agents. */
 export const RULES_VERSION = createHash("sha1").update(INSTRUCTIONS).digest("hex").slice(0, 12);

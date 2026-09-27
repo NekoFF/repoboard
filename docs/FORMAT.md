@@ -12,7 +12,7 @@ Everything that is not code lives in one folder at the root of the repository:
 .repoboard/
   README.md        the rules below, for people and agents
   board.json       written by RepoBoard: every board with its cards, order, checklists, links
-  checklists/      standing lists a person checks against (release, privacy, licences) — not a plan of work
+  checklists/      checks: what must be true and be verified (privacy, release gate, licences) — work is cards
   notes/           how to run things, where they live
   decisions/       what was decided and why, with sources
 ```
@@ -129,10 +129,10 @@ into one paragraph. RepoBoard does this when it adds a note.
 5. One topic per file; link with `[[…]]` instead of repeating.
 6. Write `RB-n` in commit messages and pull requests for the card they
    belong to; RepoBoard links them to the card.
-7. Work goes on a board, not in a checklist: building, fixing, setting up,
-   a plan by days or phases are cards (steps as their items, a milestone
-   per phase). A checklist is a list that is checked against — a release,
-   the privacy policy, licences.
+7. Work is cards, checks are checklist items. A check is a statement that
+   must hold, with `Verify:` and `Source:`; the card doing its work is named
+   on the item's line (`RB-12`). When that card is done, check the item and
+   set it to `[?]` with `Proof:` lines. A plan by days or phases is cards.
 
 ## The board file
 

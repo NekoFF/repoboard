@@ -55,6 +55,12 @@ Project (a GitHub repository)
   agent's `move_card(board)`; `mergeBoardFile` keeps it on one board.
 - Every board action carries `boardId`; the route rejects an unknown one.
   `getBoardData(boardId?)` without an id is the main board.
+- **Work is cards, checks are document items.** A document checklist item
+  is a statement that must hold (privacy, release gate, store rules); the
+  card doing its work is named on the item's line (`RB-n`). *Make a card* on
+  an item creates it and queues that `RB-n` as a document edit (`type:
+  "card"`, reviewed with the rest). Items show their cards and "Work done —
+  check it" once every card is done; MCP `needs_check` lists those too.
 - Items are a tree (`lib/checklist.ts`), stored as JSON on the card. Ticking an
   item ticks its children and reopens its ancestors (`setDone`).
 
