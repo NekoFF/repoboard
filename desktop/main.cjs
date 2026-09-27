@@ -16,6 +16,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const crypto = require("node:crypto");
 const updates = require("./updates.cjs");
+const { prepareMcpHome } = require("./mcp-home.cjs");
 
 // A secret shared by this app and its own server, sent on every request the
 // window makes (middleware.ts): another program on this computer that finds
@@ -27,6 +28,19 @@ const isWindows = process.platform === "win32";
 let server = null;
 let origin = null;
 let win = null;
+
+/**
+ * Windows: where agents' MCP server runs from — a copy outside the install
+ * folder, which the installer would otherwise close on every update
+ * (desktop/mcp-home.cjs). Null elsewhere: macOS replaces the app while a
+ * running server keeps going.
+ */
+function mcpHome() {
+  if (process.platform !== "win32" || !app.isPackaged) return null;
+  // Not under a folder named RepoBoard…: the installer closes whatever runs from a
+  // path that starts with its own (…\Local\RepoBoard would catch …\Local\RepoBoard\mcp).
+  return path.join(process.env.LOCALAPPDATA || app.getPath("userData"), "NekoFF", "RepoBoard", "mcp");
+}
 
 function serverDir() {
   return app.isPackaged ? path.join(process.resourcesPath, "server") : path.join(__dirname, "app", "server");
@@ -96,8 +110,10 @@ async function startServer() {
       REPOBOARD_DESKTOP: "1",
       REPOBOARD_API_TOKEN: apiToken,
       REPOBOARD_APP_VERSION: app.getVersion(),
-      // For Settings: agents run the bundled MCP server with this binary in Node mode.
+      // For Settings: agents run the bundled MCP server with this binary in Node mode
+      // (on Windows from the copy in REPOBOARD_MCP_HOME, once it is ready).
       REPOBOARD_NODE: process.execPath,
+      ...(mcpHome() ? { REPOBOARD_MCP_HOME: mcpHome() } : {}),
     },
   });
   server.stdout?.on("data", (d) => {
@@ -374,6 +390,13 @@ if (!app.requestSingleInstanceLock()) {
       if (!ok) return;
     }
     if (!win) createWindow();
+    // Windows: bring the agents' copy of the MCP server up to date, in the background.
+    const home = mcpHome();
+    if (home) {
+      prepareMcpHome({ installDir: path.dirname(process.execPath), exeName: path.basename(process.execPath), serverDir: serverDir(), home })
+        .then(({ changed }) => changed && writeLog(`\n[${new Date().toISOString()}] MCP copy updated (${changed} files)\n`))
+        .catch((error) => writeLog(`\n[${new Date().toISOString()}] MCP copy failed: ${error?.message ?? error}\n`));
+    }
     // Is there a newer version? Once now, then every few hours.
     setTimeout(() => updates.check(win), 8_000);
     setInterval(() => updates.check(win), 4 * 60 * 60 * 1000);

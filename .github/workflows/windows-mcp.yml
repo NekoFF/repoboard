@@ -1,0 +1,47 @@
+# The agents' MCP server on Windows, end to end: a built app makes its copy
+# of the server outside the install folder, an agent connects, an update
+# replaces the files (the running executable too), the installer closes
+# what runs from the install folder — and the agent stays connected, on the
+# new tools (desktop/test/mcp-copy.mjs). Runs when that path changes, and by hand.
+name: Windows MCP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [product]
+    paths:
+      - desktop/mcp-home.cjs
+      - desktop/main.cjs
+      - desktop/prepare.mjs
+      - desktop/test/mcp-copy.mjs
+      - scripts/mcp-server.mjs
+      - scripts/mcp-core.mjs
+      - .github/workflows/windows-mcp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-copy:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: desktop
+      - run: node desktop/prepare.mjs --arch x64
+      - run: npx electron-builder --win --x64 --dir --publish never
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - run: node desktop/test/mcp-copy.mjs desktop/dist/win-unpacked
