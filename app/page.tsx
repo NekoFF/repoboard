@@ -6,8 +6,8 @@ import { getPageContext } from "@/lib/page-context";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const { data, header, connected } = await getPageContext();
-  const boards = connected ? listBoards().map((info) => ({ info, data: getBoardData(info.id) })) : [];
+  const { data, header, connected, who } = await getPageContext();
+  const boards = connected ? listBoards(who).map((info) => ({ info, data: getBoardData(info.id) })) : [];
   return (
     <OverviewScreen data={data} header={header} docs={connected ? listDocs() : []} boards={boards} connected={connected} />
   );

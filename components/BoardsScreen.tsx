@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState, type CSSProperties } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, LayoutGrid, MoreHorizontal, Pencil, Plus, Tag, User } from "lucide-react";
+import { Archive, LayoutGrid, Lock, MoreHorizontal, Pencil, Plus, Tag, User, Users } from "lucide-react";
+import { canManageBoard, canWrite } from "@/lib/roles";
 import type { BoardSummary } from "@/lib/board-service";
 import { api, useResource } from "@/lib/client/api";
 import { PageHeader } from "@/components/PageHeader";
@@ -86,11 +87,14 @@ function TileFace({
 export function BoardDialog({ board, onClose }: { board?: BoardSummary; onClose: () => void }) {
   const router = useRouter();
   const toast = useToast();
-  const { connected } = useShell();
+  const { connected, role, viewer } = useShell();
   const people = useResource(api.people, [], { enabled: connected });
-  const [kind, setKind] = useState<"topic" | "person">(board?.owner ? "person" : "topic");
+  // A member makes and keeps boards for themselves; admins for anyone (lib/roles.ts).
+  const selfOnly = role !== "manager";
+  const [kind, setKind] = useState<"topic" | "person">(board?.owner || selfOnly ? "person" : "topic");
   const [name, setName] = useState(board?.name ?? "");
-  const [owner, setOwner] = useState(board?.owner ?? "");
+  const [owner, setOwner] = useState(board?.owner ?? (selfOnly ? (viewer ?? "") : ""));
+  const [visibility, setVisibility] = useState<"everyone" | "owner">(board?.visibility ?? "everyone");
   const [description, setDescription] = useState(board?.description ?? "");
   const [color, setColor] = useState(board?.color ?? BOARD_COLORS[0].key);
   // A new board starts with a picture chosen at random; an existing one with the one it shows.
@@ -114,6 +118,7 @@ export function BoardDialog({ board, onClose }: { board?: BoardSummary; onClose:
         color,
         art,
         owner: kind === "person" ? owner.trim().replace(/^@/, "") || null : null,
+        visibility: kind === "person" ? visibility : ("everyone" as const),
       };
       if (board) {
         await api.updateBoard(board.id, fields);
@@ -165,15 +170,17 @@ export function BoardDialog({ board, onClose }: { board?: BoardSummary; onClose:
               <TileFace name={shownName} owner={shownOwner} art={art} seed={seed} />
             </div>
           </div>
-          <Segmented
-            value={kind}
-            onChange={setKind}
-            options={[
-              { value: "topic", label: <><Tag className="size-3.5" /> An area of work</> },
-              { value: "person", label: <><User className="size-3.5" /> A person</> },
-            ]}
-          />
-          {kind === "person" && (
+          {!selfOnly && (
+            <Segmented
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: "topic", label: <><Tag className="size-3.5" /> An area of work</> },
+                { value: "person", label: <><User className="size-3.5" /> A person</> },
+              ]}
+            />
+          )}
+          {kind === "person" && !selfOnly && (
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted" htmlFor="board-owner">
                 Whose board
@@ -192,6 +199,25 @@ export function BoardDialog({ board, onClose }: { board?: BoardSummary; onClose:
                   <option key={p.login} value={p.login} />
                 ))}
               </datalist>
+            </div>
+          )}
+          {kind === "person" && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted">Who sees it</span>
+              <Segmented
+                value={visibility}
+                onChange={setVisibility}
+                options={[
+                  { value: "everyone", label: <><Users className="size-3.5" /> Everyone</> },
+                  { value: "owner", label: <><Lock className="size-3.5" /> {shownOwner ? `${shownOwner} and admins` : "Owner and admins"}</> },
+                ]}
+              />
+              {visibility === "owner" && (
+                <p className="text-xs leading-relaxed text-faint">
+                  Hidden from the others in RepoBoard. The board file on GitHub can still be read by anyone with access to the
+                  repository.
+                </p>
+              )}
             </div>
           )}
           <div className="flex flex-col gap-1.5">
@@ -274,13 +300,23 @@ export function BoardDialog({ board, onClose }: { board?: BoardSummary; onClose:
 function BoardTile({ board, onEdit }: { board: BoardSummary; onEdit: () => void }) {
   const router = useRouter();
   const toast = useToast();
+  const { role, viewer } = useShell();
   const seed = boardSeed(board.id);
+  const manage = canManageBoard({ role, login: viewer }, board);
   return (
     <div className="rb-tile group" style={toneStyle(board.color, board.name)}>
       <Link href={boardHref(board)} className="rb-tile-window outline-none" aria-label={`Open ${board.name}`}>
         <TileFace name={board.name} owner={board.owner} art={resolveArt(board.art, seed)} seed={seed} />
       </Link>
-      <span className="absolute right-2.5 top-2.5 z-[2]">
+      {board.visibility === "owner" && (
+        <span
+          className="absolute left-2.5 top-2.5 z-[2] grid size-7 place-items-center rounded-full bg-[rgb(var(--glass)/0.7)] text-ink backdrop-blur-md"
+          title={`Only ${board.owner ?? "its owner"} and admins see this board`}
+        >
+          <Lock className="size-3.5" />
+        </span>
+      )}
+      {manage && <span className="absolute right-2.5 top-2.5 z-[2]">
         <Menu
           align="end"
           trigger={
@@ -324,7 +360,7 @@ function BoardTile({ board, onEdit }: { board: BoardSummary; onEdit: () => void 
             </>
           )}
         </Menu>
-      </span>
+      </span>}
     </div>
   );
 }
@@ -343,6 +379,7 @@ export function BoardsScreen({
   const toast = useToast();
   const [dialog, setDialog] = useState<null | "new" | BoardSummary>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const { role } = useShell();
   // ?new=1 opens the dialog whenever it appears — also from the sidebar or ⌘K
   // while already here — and is then taken out of the address.
   useEffect(() => {
@@ -359,9 +396,13 @@ export function BoardsScreen({
         title="Boards"
         icon={<LayoutGrid className="size-4" />}
         actions={
-          <button className="rb-btn-primary rb-btn-sm" onClick={() => setDialog("new")}>
-            <Plus className="size-3.5" /> New board
-          </button>
+          canWrite({ role, login: null }) ? (
+            <button className="rb-btn-primary rb-btn-sm" onClick={() => setDialog("new")}>
+              <Plus className="size-3.5" /> New board
+            </button>
+          ) : (
+            <span className="rb-pill">View only</span>
+          )
         }
       />
       <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">

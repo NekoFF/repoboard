@@ -9,6 +9,7 @@ import { resolveLink, type DocItem, type DocSection } from "@/lib/markdown/docum
 import type { ItemState } from "@/lib/markdown/format";
 import { DueLabel, Menu, MenuItem, MenuSeparator, PriorityIcon, ProgressBar, StatusIcon } from "@/components/ui";
 import { api } from "@/lib/client/api";
+import { useShell } from "@/components/shell/ShellContext";
 import { STATUS_LABEL } from "@/lib/status";
 
 /** [[docs/PRIVACY.md]] → a link to that document inside RepoBoard. */
@@ -35,16 +36,32 @@ function linkifyProse(text: string): string {
  * anchor stays on the page, anything else is left as it is.
  */
 function resolveHref(href: string | undefined, basePath?: string): string | undefined {
-  if (!href || /^(https?:|mailto:|\/|#)/i.test(href) || !basePath) return href;
+  if (!href || /^([a-z][a-z0-9+.-]*:|\/|#)/i.test(href) || !basePath) return href;
   const [target, hash] = href.split("#");
-  if (!/\.md$/i.test(target)) return href;
   const path = resolveRelative(basePath, decodeURIComponent(target));
+  // Another file of the repository that is not a document: it opens on
+  // GitHub, never as a page of RepoBoard's own origin.
+  if (!/\.md$/i.test(target)) return `${REPO_FILE}${path}`;
   return `/docs?path=${encodeURIComponent(path)}${hash ? `#${hash}` : ""}`;
 }
 
+const REPO_FILE = "repo-file:";
+
 function SmartLink({ href, children }: { href?: string; children?: ReactNode }) {
+  const { repo } = useShell();
+  if (href?.startsWith(REPO_FILE)) {
+    const path = href.slice(REPO_FILE.length);
+    if (!repo) return <span>{children}</span>;
+    const url = `https://github.com/${repo}/blob/HEAD/${path.split("/").map(encodeURIComponent).join("/")}`;
+    return (
+      <a href={url} target="_blank" rel="noreferrer noopener">
+        {children}
+      </a>
+    );
+  }
   if (href?.startsWith("#")) return <a href={href}>{children}</a>;
-  if (href?.startsWith("/")) {
+  // "//host/…" is another site, not a page here.
+  if (href?.startsWith("/") && !href.startsWith("//")) {
     return (
       <Link href={href} className="font-medium">
         {children}

@@ -1139,10 +1139,178 @@ html.rb-desktop .rb-desktop-titlebar {
   z-index: 60;
   -webkit-app-region: drag;
 }
-/* Windows draws its caption buttons at the top right, 36px high. */
+/* Back / forward and the update pill, in the strip (components/shell/DesktopBar).
+   The strip drags the window; the buttons in it must not. */
+.rb-desktop-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 34px;
+  z-index: 80;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+html.rb-desktop-win .rb-desktop-bar {
+  height: 38px;
+}
+.rb-desktop-nav,
+.rb-desktop-update {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* macOS: just right of the traffic lights. Windows: at the left edge. */
+.rb-desktop-nav {
+  margin-left: 84px;
+}
+html.rb-desktop-win .rb-desktop-nav {
+  margin-left: 10px;
+}
+.rb-desktop-update {
+  margin-left: auto;
+  margin-right: 12px;
+}
+/* Windows' caption buttons take the top right corner. */
+html.rb-desktop-win .rb-desktop-update {
+  margin-right: 150px;
+}
+.rb-desktop-navbtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border-radius: 6px;
+  color: rgb(var(--muted));
+  transition: background-color 100ms, color 100ms;
+}
+.rb-desktop-navbtn:hover:not(:disabled) {
+  background-color: rgb(var(--ink) / 0.07);
+  color: rgb(var(--ink));
+}
+.rb-desktop-navbtn:disabled {
+  opacity: 0.35;
+}
+.rb-desktop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgb(var(--ink));
+  background-color: rgb(var(--glass) / 0.8);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.08);
+}
+.rb-desktop-pill-ready {
+  color: white;
+  background-color: rgb(var(--accent));
+}
+/* Windows draws its caption buttons at the top right, 38px high. */
 html.rb-desktop-win .rb-desk {
   padding-top: 38px;
 }
 html.rb-desktop-win .rb-desktop-titlebar {
   height: 38px;
+}
+
+/* ------------------------------------------ screens before the app opens --
+   First start, adding a project, a project that no longer opens
+   (components/connect). The app sits blurred behind; two cards float over
+   it — a banner with a pixel sky and the card that does the work — each
+   lifted by a soft glow rather than a hard shadow. */
+.rb-start-veil {
+  background-color: rgb(var(--desk) / 0.18);
+  -webkit-backdrop-filter: blur(9px) saturate(1.2);
+  backdrop-filter: blur(9px) saturate(1.2);
+}
+.dark .rb-start-veil {
+  background-color: rgb(var(--desk) / 0.34);
+}
+.rb-start-banner {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 22px 60px -18px hsl(212 88% 56% / 0.55);
+}
+.dark .rb-start-banner {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 0 0 1px rgb(var(--ink) / 0.08),
+    0 22px 60px -18px hsl(222 70% 45% / 0.5);
+}
+.rb-start-card {
+  background-color: rgb(var(--raised) / 0.9);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 30px 80px -30px rgb(var(--shadow) / 0.38);
+}
+.dark .rb-start-card {
+  background-color: rgb(var(--raised) / 0.82);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--glass-edge) / var(--glass-edge-alpha)),
+    0 0 0 1px rgb(var(--ink) / 0.08),
+    0 30px 80px -30px rgb(0 0 0 / 0.8);
+}
+/* Repositories to pick: glass rows that light up when chosen. */
+.rb-pick {
+  @apply flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-100;
+  background-color: rgb(var(--ink) / 0.03);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06);
+}
+.rb-pick:hover {
+  background-color: rgb(var(--ink) / 0.055);
+}
+.rb-pick[data-picked="true"] {
+  background-color: rgb(var(--accent) / 0.1);
+  box-shadow: inset 0 0 0 1.5px rgb(var(--accent) / 0.55);
+}
+/* A project's small cover: a lit edge so it sits like a tile, not a sticker. */
+.rb-project-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 0 0 1px rgb(var(--ink) / 0.1);
+  pointer-events: none;
+}
+.rb-project-mark > canvas {
+  image-rendering: pixelated;
+}
+/* The project's banner on Overview: its pixel scene, lifted by a glow in its own colour. */
+.rb-project-banner {
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 0 0 1px rgb(var(--ink) / 0.06),
+    0 22px 50px -24px hsl(var(--ph, 212) 70% 50% / 0.55);
+}
+.rb-project-banner > canvas {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  image-rendering: pixelated;
+}
+/* The board's columns scroll sideways; a soft fade at an edge says more are there. */
+.rb-board-scroll[data-more="right"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.rb-board-scroll[data-less="left"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px);
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+.rb-board-scroll[data-less="left"][data-more="right"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
 }

@@ -69,7 +69,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
-  const { docs, boards, openPalette, openShortcuts } = useShell();
+  const { docs, boards, openPalette, openShortcuts, role } = useShell();
+  const canAdd = role !== "viewer";
   const { resolved, toggle } = useTheme();
   const mod = useModKey();
   const unread = useInboxCount();
@@ -121,11 +122,13 @@ export function Sidebar() {
             <Link href="/boards" className="flex-1 text-xs font-medium text-faint hover:text-muted">
               Boards
             </Link>
-            <Tooltip content="New board">
-              <button className="rb-icon-btn size-6" aria-label="New board" onClick={() => router.push("/boards?new=1")}>
-                <Plus className="size-3.5" />
-              </button>
-            </Tooltip>
+            {canAdd && (
+              <Tooltip content="New board">
+                <button className="rb-icon-btn size-6" aria-label="New board" onClick={() => router.push("/boards?new=1")}>
+                  <Plus className="size-3.5" />
+                </button>
+              </Tooltip>
+            )}
           </div>
           <div className="flex flex-col gap-px px-2.5">
             {boards.map((b) => {
@@ -157,15 +160,17 @@ export function Sidebar() {
       <div className="mt-5 flex min-h-0 flex-1 flex-col">
         <div className="flex items-center px-4 pb-1">
           <span className="flex-1 text-xs font-medium text-faint">Tracked documents</span>
-          <Tooltip content="Track a document">
-            <button
-              className="rb-icon-btn size-6"
-              aria-label="Track a document"
-              onClick={() => router.push("/docs?add=1")}
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </Tooltip>
+          {canAdd && (
+            <Tooltip content="Track a document">
+              <button
+                className="rb-icon-btn size-6"
+                aria-label="Track a document"
+                onClick={() => router.push("/docs?add=1")}
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </Tooltip>
+          )}
         </div>
         <div className="rb-scroll-thin flex min-h-0 flex-col gap-px overflow-y-auto px-2.5 pb-2">
           {docs.length === 0 && (

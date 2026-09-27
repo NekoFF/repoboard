@@ -1,5 +1,6 @@
 "use client";
 
+import type { Role } from "@/lib/roles";
 import { createContext, useContext } from "react";
 import type { ProjectInfo } from "@/lib/client/api";
 
@@ -38,6 +39,10 @@ export interface ShellState {
   docs: SidebarDoc[];
   boards: SidebarBoard[];
   managedByEnvironment: boolean;
+  /** The viewer's role in the open project, from GitHub (lib/roles.ts). */
+  role: Role;
+  /** AI agents that have worked on the project, as they sign their work. */
+  agents: string[];
   openPalette: (query?: string) => void;
   openShortcuts: () => void;
 }
@@ -51,6 +56,8 @@ export const ShellContext = createContext<ShellState>({
   docs: [],
   boards: [],
   managedByEnvironment: false,
+  role: "manager",
+  agents: [],
   openPalette: () => {},
   openShortcuts: () => {},
 });

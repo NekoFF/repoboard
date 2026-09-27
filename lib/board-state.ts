@@ -1,4 +1,4 @@
-import type { ChecklistItem } from "@/lib/checklist";
+import { normalise, type ChecklistItem } from "@/lib/checklist";
 
 /**
  * The board as a file in the repository.
@@ -50,6 +50,8 @@ export interface BoardStateMeta {
   color: string | null;
   art: string | null;
   owner: string | null;
+  /** "owner": shown only to its owner and the project's admins. Absent means everyone. */
+  visibility?: "everyone" | "owner";
   updatedAt: number;
 }
 
@@ -112,7 +114,7 @@ function cleanCard(raw: unknown): BoardStateCard | null {
     description: text(c.description),
     assignee: text(c.assignee),
     dueDate: typeof c.dueDate === "number" ? c.dueDate : null,
-    checklist: Array.isArray(c.checklist) ? (c.checklist as BoardStateCard["checklist"]) : [],
+    checklist: normalise(c.checklist),
     labels: strings(c.labels),
     branches: strings(c.branches),
     pullRequests: numbers(c.pullRequests),
@@ -135,7 +137,15 @@ function cleanMilestones(v: unknown): BoardStateMilestone[] {
 function cleanMeta(raw: unknown): BoardStateMeta | null {
   const b = raw as Record<string, unknown>;
   if (!b || typeof b.name !== "string") return null;
-  return { name: b.name, description: text(b.description), color: text(b.color), art: text(b.art), owner: text(b.owner), updatedAt: latest(b.updatedAt) };
+  return {
+    name: b.name,
+    description: text(b.description),
+    color: text(b.color),
+    art: text(b.art),
+    owner: text(b.owner),
+    ...(b.visibility === "owner" ? { visibility: "owner" as const } : {}),
+    updatedAt: latest(b.updatedAt),
+  };
 }
 
 /**
@@ -157,7 +167,9 @@ export function parseBoardState(content: string): BoardState | null {
         .map((raw): BoardStateBoard | null => {
           const b = raw as Record<string, unknown>;
           const meta = cleanMeta(b);
-          if (!meta || typeof b.id !== "string") return null;
+          // Boards other than the main one are made by RepoBoard as board_<uuid>. Any
+          // other id (another project's main board, say) is not a board of this file.
+          if (!meta || typeof b.id !== "string" || !/^board_[0-9a-f-]{36}$/i.test(b.id)) return null;
           return {
             ...meta,
             id: b.id,
@@ -221,6 +233,25 @@ export function mergeBoardState(
 }
 
 /** A short, readable description of what pushing would change. */
+/**
+ * Two cards are the same card when every field is — whatever order the
+ * fields came in (a card read from the file lists them differently from one
+ * read from the database).
+ */
+export function sameCard(a: BoardStateCard, b: BoardStateCard): boolean {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value as Record<string, unknown>)
+              .sort()
+              .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+          )
+        : value;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
 export function describeChanges(
   local: BoardStateCard[],
   remote: BoardStateCard[],
@@ -241,7 +272,7 @@ export function describeChanges(
       lines.push(`${card.title}: ${there.column} → ${card.column}`);
     } else if (card.title !== there.title) {
       lines.push(`renamed: ${there.title} → ${card.title}`);
-    } else if (JSON.stringify(card) !== JSON.stringify(there)) {
+    } else if (!sameCard(card, there)) {
       lines.push(`edited: ${card.title}`);
     }
   }

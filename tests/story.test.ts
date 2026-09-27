@@ -91,3 +91,24 @@ describe("the life of a project", () => {
     expect(Math.max(...xs)).toBeLessThan(story.nodes.length * 200);
   });
 });
+
+describe("branches that came back by fast-forward", () => {
+  // p → q (tip of old/ff, fast-forwarded) → r → s (main)
+  const story = buildStory(
+    [
+      c("p", 0, [], "Initial commit"),
+      c("q", 5, ["p"], "q", ["old/ff", "old/ff2"]),
+      c("r", 6, ["q"]),
+      c("s", 7, ["r"], "s", ["main"]),
+    ],
+    "main",
+  );
+
+  it("marks where they landed on the main line", () => {
+    const landed = story.nodes.filter((n) => n.kind === "landed");
+    expect(landed).toHaveLength(1);
+    expect(landed[0].lane).toBe(0);
+    expect(landed[0].landed).toEqual(["old/ff", "old/ff2"]);
+    expect(story.branches).toHaveLength(0);
+  });
+});

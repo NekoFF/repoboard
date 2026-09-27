@@ -7,6 +7,8 @@ to your code — as plain markdown in your GitHub repository. It runs on your
 own computer, talks only to github.com, and shows at a glance what is done,
 what is left, and what still needs your own eyes before it counts.
 
+![Overview: the project's cover, its life as a timeline of branches, and every checklist at a glance](docs/screenshots/overview.png)
+
 - **Boards** — one per person (Dima, Max, the intern) or per area (Design,
   Core), all in one project. On a board, each card is a topic; inside a card,
   numbered items (1, 1.1, 1.2…) are the steps, each with notes, an assignee
@@ -33,15 +35,25 @@ what is left, and what still needs your own eyes before it counts.
   commits, pull requests and issues that mention `RB-12` show up on card 12.
 - **Shared through the repository** — every board travels in
   `.repoboard/board.json`, so whoever connects the same repository sees the
-  same boards, cards and checklists; GitHub's permissions decide who may
-  change them.
+  same boards, cards and checklists. Turn on automatic sync and it happens
+  on its own, through a `repoboard` branch that never touches your code.
+- **Roles from GitHub** — Admin and Maintain manage every board and make
+  boards for people, Write works on cards and their own boards, Read looks.
+  Nothing to set up: add people to the repository on GitHub.
 - **Several projects** — switch between repositories like in Linear; each has
   its own boards, checklists and token.
 - **For AI agents** — an MCP server lets Claude, Codex or any other agent read
-  and work the same board and checklists. They can propose; they cannot commit.
+  and work the same board and checklists, under its own name (marked AI).
+  Assign it a card; it finds its work with `my_work`. Agents propose; they
+  cannot commit, tick items or put a card in Done.
 
 Everything RepoBoard writes to your repository goes through a diff you review
 first, and it refuses to overwrite a file that changed on GitHub meanwhile.
+
+| | |
+|---|---|
+| ![A board: columns, cards with numbers, labels and progress](docs/screenshots/board.png) | ![Boards, each with a picture of its own](docs/screenshots/boards.png) |
+| ![A checklist: sections with progress, items waiting for a person's check](docs/screenshots/checklist.png) | ![Connecting: sign in with GitHub and pick your repositories](docs/screenshots/connect.png) |
 
 ---
 
@@ -78,8 +90,14 @@ repository are involved. `npm run demo -- --reset` starts it over.
 npm run dev
 ```
 
-Open <http://localhost:3000>, go to **Settings → Connect a repository**, and
-paste a fine-grained token:
+Open <http://localhost:3000> and press **Sign in with GitHub**: GitHub shows
+a short code, you approve RepoBoard there, and pick the repositories it may
+open (GitHub asks this once — *Only select repositories*, tick yours,
+*Install*). That also works for repositories where you are only a
+collaborator.
+
+Or use a key instead — a fine-grained token (the connect screen opens
+GitHub's page for it already filled in):
 
 1. <https://github.com/settings/personal-access-tokens/new>
 2. **Resource owner:** you, or the organisation that owns the repository
@@ -87,9 +105,8 @@ paste a fine-grained token:
 3. **Expiration:** as long as you are comfortable with — when it runs out,
    RepoBoard asks for a new one.
 4. **Repository access:** *Only select repositories* → the repository.
-5. **Permissions:** Contents *read and write*; Metadata, Pull requests,
-   Issues and Checks *read-only* (Checks shows whether a pull request's
-   tests pass).
+5. **Permissions** (*+ Add permissions*): Contents *read and write*;
+   Pull requests and Issues *read-only*. GitHub adds Metadata by itself.
 6. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
 
 Then open **Documents** and create the `.repoboard/` folder from the

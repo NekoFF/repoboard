@@ -1,55 +1,25 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { KeyRound, Menu as MenuIcon, RefreshCw, Search } from "lucide-react";
+import { Menu as MenuIcon, Search } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
+import { DesktopBar } from "@/components/shell/DesktopBar";
+import { SyncAgent } from "@/components/shell/SyncAgent";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
 import { Logo, ToastHost, TooltipProvider } from "@/components/ui";
-import { api, useResource, type ProjectInfo } from "@/lib/client/api";
+import { api, useResource, type AccessProblem, type ProjectInfo } from "@/lib/client/api";
+import { ConnectScreen } from "@/components/connect/ConnectScreen";
+import { ProjectUnavailable } from "@/components/connect/ProjectUnavailable";
+import { openProject } from "@/lib/client/project";
+import type { Role } from "@/lib/roles";
 import { useHotkeys } from "@/lib/client/hotkeys";
-
-function ConnectionGate({ status, retry }: { status: ConnectionStatus; retry: () => void }) {
-  const failed = status === "error";
-  return (
-    <div className="flex min-h-screen flex-1 flex-col bg-canvas">
-      <header className="flex h-14 items-center gap-2.5 px-5">
-        <Logo />
-        <span className="text-md font-semibold tracking-[-0.01em] text-ink">RepoBoard</span>
-      </header>
-      <div className="flex flex-1 items-center justify-center p-5">
-        <div className="rb-enter w-full max-w-[440px]">
-          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-ink">
-            {failed ? "GitHub stopped accepting the token" : "Plan your project inside its repository"}
-          </h1>
-          <p className="mt-3 text-md leading-relaxed text-muted">
-            {failed
-              ? "It may have expired or lost access to the repository. Your board is safe on this computer; connect again to open it."
-              : "Cards, checklists and roadmaps that live next to your code, in files GitHub already understands. Connect a repository to begin."}
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <Link href="/settings" className="rb-btn-primary h-9 px-4">
-              <KeyRound className="size-4" />
-              {failed ? "Update the token" : "Connect a repository"}
-            </Link>
-            {failed && (
-              <button className="rb-btn h-9" onClick={retry}>
-                <RefreshCw className="size-3.5" /> Try again
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** Phones and narrow windows: the sidebar becomes a drawer behind a menu button. */
 function MobileBar({ onSearch }: { onSearch: () => void }) {
@@ -91,6 +61,10 @@ export function AppShell({
   docs,
   boards,
   managedByEnvironment,
+  problem: serverProblem,
+  sync,
+  role,
+  agents,
   children,
 }: {
   repo: string | null;
@@ -100,12 +74,21 @@ export function AppShell({
   docs: SidebarDoc[];
   boards: SidebarBoard[];
   managedByEnvironment: boolean;
+  /** Why the open project did not open, when the server could not open it. */
+  problem: AccessProblem | null;
+  /** Automatic sync of the boards for the open project. */
+  sync: { autoSync: boolean; syncedAt: number | null };
+  role: Role;
+  /** AI agents that have worked on the project (their names as they write them). */
+  agents: string[];
   children: ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [status, setStatus] = useState<ConnectionStatus>(connected ? "connected" : "disconnected");
   const [check, setCheck] = useState(0);
+  const [problem, setProblem] = useState<AccessProblem | null>(serverProblem);
+  useEffect(() => setProblem(serverProblem), [serverProblem]);
   const lastCheckAt = useRef(Date.now());
   const retry = useCallback(() => setCheck((value) => value + 1), []);
   const [palette, setPalette] = useState<{ open: boolean; query: string }>({ open: false, query: "" });
@@ -129,7 +112,11 @@ export function AppShell({
     lastCheckAt.current = Date.now();
     api
       .connection()
-      .then((result) => !cancelled && setStatus(result.connected ? "connected" : "error"))
+      .then((result) => {
+        if (cancelled) return;
+        setProblem(result.access);
+        setStatus(result.connected ? "connected" : "error");
+      })
       .catch(() => !cancelled && setStatus("error"));
     return () => {
       cancelled = true;
@@ -150,6 +137,36 @@ export function AppShell({
       document.removeEventListener("visibilitychange", recheckIfStale);
     };
   }, [connected, retry]);
+
+  // Projects are shared by every window on this computer (the browser, the
+  // desktop app): when one of them connects or switches a project, the others
+  // pick it up the next time they are looked at, instead of showing one
+  // project's name over another's data.
+  const projectKey = projects.map((p) => `${p.repo.toLowerCase()}${p.active ? "*" : ""}`).join(",");
+  useEffect(() => {
+    if (managedByEnvironment) return;
+    let lastLook = 0;
+    const look = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastLook < 2_000) return;
+      lastLook = Date.now();
+      api
+        .connection()
+        .then((now) => {
+          const key = now.projects.map((p) => `${p.repo.toLowerCase()}${p.active ? "*" : ""}`).join(",");
+          if (key === projectKey) return;
+          const active = (list: { repo: string; active: boolean }[]) => list.find((p) => p.active)?.repo.toLowerCase() ?? null;
+          if (active(now.projects) !== active(projects)) openProject();
+          else router.refresh();
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener("focus", look);
+    document.addEventListener("visibilitychange", look);
+    return () => {
+      window.removeEventListener("focus", look);
+      document.removeEventListener("visibilitychange", look);
+    };
+  }, [projectKey, projects, managedByEnvironment, router]);
 
   const openPalette = useCallback((query = "") => setPalette({ open: true, query }), []);
   const openShortcuts = useCallback(() => setShortcuts(true), []);
@@ -191,13 +208,16 @@ export function AppShell({
       docs,
       boards,
       managedByEnvironment,
+      role,
+      agents,
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, openPalette, openShortcuts],
+    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, role, agents, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";
+  const showingConnect = pathname === "/connect";
 
   return (
     <ThemeProvider>
@@ -207,7 +227,12 @@ export function AppShell({
             <ConnectionContext.Provider value={{ status, retry }}>
               {/* In the desktop app: a strip to drag the window by, where its buttons sit. */}
               <div className="rb-desktop-titlebar" aria-hidden />
-              {unlocked ? (
+              <DesktopBar />
+              <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
+              {showingConnect ? (
+                // Connecting stands before the app, whether a project is open or not.
+                children
+              ) : unlocked ? (
                 // Panels on a desk: navigation recessed on the left, the work
                 // floating over it, tools in a pill on the right edge.
                 <div className="rb-desk flex h-[100dvh] w-full flex-col overflow-hidden md:flex-row md:p-3">
@@ -228,8 +253,10 @@ export function AppShell({
                 </div>
               ) : showingSettings ? (
                 <main className="flex h-screen min-w-0 flex-col overflow-auto bg-canvas">{children}</main>
+              ) : projects.length === 0 && !problem ? (
+                <ConnectScreen connectedRepos={[]} canClose={false} />
               ) : (
-                <ConnectionGate status={status} retry={retry} />
+                <ProjectUnavailable problem={problem} projects={projects} />
               )}
               {unlocked && (
                 <CommandPalette

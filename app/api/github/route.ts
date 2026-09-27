@@ -43,8 +43,8 @@ export async function GET(request: Request) {
       case "graph":
         return NextResponse.json({ commits: await gh.commitGraph() });
       case "story": {
-        // The life of the project: far back on the default branch, 40 on each other branch.
-        const [commits, repo] = await Promise.all([gh.commitGraph(40, 20, 300), gh.getRepo()]);
+        // The life of the project: far back on the default branch, each other branch back to where it left.
+        const [commits, repo] = await Promise.all([gh.storyGraph(), gh.getRepo()]);
         return NextResponse.json({ commits, defaultBranch: repo.defaultBranch });
       }
       case "refs":

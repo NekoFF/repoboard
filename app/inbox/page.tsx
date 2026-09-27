@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Inbox" };
 
 export default async function InboxPage() {
-  const { connected } = await getPageContext();
-  const boards = connected ? listBoards().map((info) => ({ info, data: getBoardData(info.id) })) : [];
+  const { connected, who } = await getPageContext();
+  const boards = connected ? listBoards(who).map((info) => ({ info, data: getBoardData(info.id) })) : [];
   return <InboxScreen boards={boards} />;
 }

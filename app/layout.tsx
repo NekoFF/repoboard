@@ -7,9 +7,9 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { THEME_SCRIPT } from "@/components/shell/ThemeProvider";
-import { getVerifiedRepository, getViewer } from "@/lib/github/access";
+import { currentWho, getAccessState, getViewer } from "@/lib/github/access";
 import { isEnvironmentConfigured, listProjects } from "@/lib/github/auth-provider";
-import { listBoards, projectSummaries } from "@/lib/board-service";
+import { listBoards, projectAgents, projectLooks, projectSummaries, syncSettings } from "@/lib/board-service";
 import { listDocs } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
@@ -28,14 +28,20 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const verified = await getVerifiedRepository();
+  const access = await getAccessState();
+  const verified = access.state === "ok" ? access.repo : null;
   const repo = verified ? `${verified.owner}/${verified.name}` : null;
 
   const list = listProjects();
   const stats = projectSummaries(list.map((p) => p.repo));
   // Without a verified token only the names are sent (so a broken project can
   // be switched away from or disconnected); counts are board data.
-  const projects = list.map((p) => (verified ? { ...p, ...stats.get(p.repo.toLowerCase()) } : p));
+  const looks = projectLooks(list.map((p) => p.repo));
+  const projects = list.map((p) => ({
+    ...p,
+    ...looks.get(p.repo.toLowerCase()),
+    ...(verified ? stats.get(p.repo.toLowerCase()) : undefined),
+  }));
 
   // Only once GitHub has accepted the token: nothing about a repository is
   // shown to someone who cannot currently open it.
@@ -54,8 +60,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         }))
     : [];
   const viewer = verified ? await getViewer() : null;
+  const who = verified ? await currentWho() : null;
   const boards = verified
-    ? listBoards().map((b) => ({ id: b.id, name: b.name, color: b.color, owner: b.owner, primary: b.primary, open: b.open }))
+    ? listBoards(who).map((b) => ({ id: b.id, name: b.name, color: b.color, owner: b.owner, primary: b.primary, open: b.open }))
     : [];
 
   return (
@@ -72,6 +79,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           docs={docs}
           boards={boards}
           managedByEnvironment={isEnvironmentConfigured()}
+          problem={access.state === "failed" ? { slug: access.slug, reason: access.reason, message: access.message } : null}
+          sync={verified ? syncSettings() : { autoSync: false, syncedAt: null }}
+          role={who?.role ?? "manager"}
+          agents={verified ? projectAgents() : []}
         >
           {children}
         </AppShell>

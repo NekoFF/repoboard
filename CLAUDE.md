@@ -39,7 +39,13 @@ Project (a GitHub repository)
   `boards.updated_at` (a never-edited board is 0, so the repository's name
   wins), cards one by one by their own `updatedAt`, milestones by name. Any
   change to a board's own fields must set `updatedAt`. Sync and "Save to
-  repo" are on every board.
+  repo" are on every board. With automatic sync on
+  (`repositories.auto_sync`), `components/shell/SyncAgent.tsx` syncs on
+  open, on focus, every minute and a few seconds after a local change
+  (`rb-boards-changed`, fired by `lib/client/api.ts`); the header shows
+  `SyncChip` instead of "Save to repo". Cards compare by content
+  (`sameCard`), never by `JSON.stringify` of objects built in different
+  places — field order differs between the database and the parser.
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.
@@ -58,7 +64,13 @@ Project (a GitHub repository)
    goes through `DocWriteDialog` too and lands as one commit
    (`GitHubClient.commitChanges`, which checks every edited file's SHA). If the remote SHA moved,
    the write is refused until the user decides. Do not add a code path that
-   calls the Contents or Git Data API from anywhere else.
+   calls the Contents or Git Data API from anywhere else. The one exception
+   the owner chose: with **automatic sync** turned on for a project (a
+   dialog that says what it writes), `syncBoards` in `lib/board-service.ts`
+   writes `.repoboard/board.json` — and only that — on the `repoboard`
+   branch (`SYNC_BRANCH`, cut from the default branch by `ensureBranch`),
+   merging first and with the SHA it read. Never the default branch, never
+   another file.
 2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),
    the list view and the card page all go through `useCommitMove` in
    `lib/client/moves.ts`, so a markdown-backed card always joins the queue of
@@ -86,10 +98,28 @@ Project (a GitHub repository)
 9. **Agents propose, people verify.** Nothing an agent does may set a
    document item to `[x]`, tick a card item, move a card to a done column or
    write `Checked:`; the MCP server has no GitHub write tool.
-10. **The API answers only RepoBoard.** `middleware.ts` refuses other hosts
-   (DNS rebinding) and writes that are not same-origin JSON with
-   `x-repoboard: 1`, which `lib/client/api.ts` sends. Anything that posts to
-   the API (scripts/demo.mjs) must send it too.
+10. **The server answers only RepoBoard.** `middleware.ts` refuses other
+   hosts on every path, pages too (DNS rebinding), and API writes that are
+   not same-origin JSON with `x-repoboard: 1`, which `lib/client/api.ts`
+   sends. Anything that posts to the API (scripts/demo.mjs) must send it
+   too. The desktop app also shares a per-launch secret with its server
+   (`REPOBOARD_API_TOKEN`, sent as `x-repoboard-token` on every request), so
+   other programs on the computer cannot use it; its windows never show a
+   page outside RepoBoard (`guardContents` in `desktop/main.cjs`).
+11. **Roles come from GitHub** (`lib/roles.ts`): Admin/Maintain → manager,
+   Write → member, Triage/Read → viewer, from the repository's
+   `permissions` for the token (`RepoSummary.role`, `currentWho()`). The
+   routes enforce them — viewers change nothing (board and docs POSTs answer
+   403), members make boards only for themselves and change only their own,
+   only managers turn automatic sync on — and screens hide what the role
+   cannot do (`useShell().role`). A board with `visibility: "owner"` is
+   listed only for its owner and managers (`listBoards(who)`,
+   `getProjectData(who)`, `getPageContext`, `getActivity(…, who)`,
+   `listArchivedBoards(who)`); say plainly that its file on GitHub is still
+   readable by anyone with access to the repository. Be honest about the
+   limit: roles shape RepoBoard's own screens and routes on each computer;
+   anyone with Write on GitHub can still edit `board.json` directly, and the
+   MCP server acts with the local person's rights without asking GitHub.
 
 ## Where things live
 
@@ -124,15 +154,34 @@ tests/                 parser, documents, filters, graph, conflicts, sync pipeli
 
 Inbox · Overview · My work · Boards → a board (board, list, calendar) → a
 card · Documents · Code (graph, branches, commits, pull requests, issues) ·
-Activity · Settings. The Inbox (`components/InboxScreen.tsx`) shows what
+Activity · Settings.
+
+Before the app opens (`components/connect/`, full screen over the blurred
+app): **Connect** (`/connect`, also first start and `?repo=` for a new key —
+get a key from GitHub through a prefilled link, `lib/github/token-link.ts`,
+paste it, pick repositories from the ones it opens) and **Project
+unavailable** (the open project's key ran out, lost access, or GitHub is out
+of reach — `getAccessState` in `lib/github/access.ts` says which; it always
+offers a new key, another project and trying again). Settings shows each
+project's health (`/api/repo?health=1`). **Sign in with GitHub** comes
+first when the app is registered (`lib/github/app.ts`: the RepoBoard GitHub
+App, `repoboard-by-nekoff`, device flow, no client secret, tokens that do
+not expire): the person enters a short code on github.com and picks from
+the repositories the app is installed on that they may open — including
+ones where they are only a collaborator, which fine-grained keys cannot
+reach. The token is kept like a key (`account` in credentials.json);
+projects added this way have `via: "github"`. `app/api/auth/github`. `app/error.tsx`,
+`app/global-error.tsx` and `app/not-found.tsx` always offer a way on. The Inbox (`components/InboxScreen.tsx`) shows what
 others did since the person last looked (a timestamp in localStorage) and
 suggestions from GitHub, applied through `useCommitMove`.
 The sidebar lists the boards under "Boards"; the command menu has a Boards
 group. Overview opens with **Project life** (`components/ProjectStory.tsx`,
 model in `lib/client/story.ts`): the repository's history as a timeline of
 the main line, branches leaving and merging, and open branches, read from
-`/api/github?resource=story` (300 commits of the default branch, 40 of each
-other). Nodes sit on springs; long stretches of work are grouped per month.
+`/api/github?resource=story` (`storyGraph`: 300 commits of the default branch,
+each other branch read back to where it left it). A branch that came back by
+fast-forward has no merge commit, so it shows as a "landed" mark on the main
+line. Nodes sit on springs; long stretches of work are grouped per month.
 
 If you remove or rename a screen, update `components/shell/Sidebar.tsx`, the
 command menu in `components/shell/CommandPalette.tsx`, the `G` shortcuts in

@@ -123,15 +123,27 @@ export function normalise(value: unknown): Checklist {
     .filter((v) => v && typeof v === "object" && typeof (v as ChecklistItem).text === "string")
     .map((v) => {
       const item = v as ChecklistItem;
+      // Items can come from a teammate's board.json: keep only fields of the right kind.
+      const str = (x: unknown) => (typeof x === "string" ? x : null);
       return {
         id: String(item.id ?? Math.random().toString(36).slice(2)),
         text: item.text,
         done: Boolean(item.done),
-        notes: item.notes ?? null,
-        assignee: item.assignee ?? null,
-        due: item.due ?? null,
+        notes: str(item.notes),
+        assignee: str(item.assignee),
+        due: typeof item.due === "number" ? item.due : null,
         children: normalise(item.children),
-        comments: Array.isArray(item.comments) ? item.comments : [],
+        comments: Array.isArray(item.comments)
+          ? item.comments
+              .filter((c) => c && typeof c === "object" && typeof (c as { text?: unknown }).text === "string")
+              .map((c) => ({
+                id: String(c.id ?? ""),
+                author: typeof c.author === "string" ? c.author : "",
+                kind: c.kind === "agent" ? ("agent" as const) : ("person" as const),
+                text: c.text,
+                at: typeof c.at === "number" ? c.at : 0,
+              }))
+          : [],
       };
     });
 }

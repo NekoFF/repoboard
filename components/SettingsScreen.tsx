@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Check, Copy, ExternalLink, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
+import { Bot, Check, Copy, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Logo, RelativeTime, Segmented, Spinner, useToast } from "@/components/ui";
-import { api } from "@/lib/client/api";
+import { api, type ProjectHealth, type ProjectInfo } from "@/lib/client/api";
+import { openProject } from "@/lib/client/project";
+import { ROLE_LABEL } from "@/lib/roles";
 
 function Card({ title, icon, description, children }: { title: string; icon: ReactNode; description?: ReactNode; children: ReactNode }) {
   return (
@@ -25,9 +28,6 @@ function Card({ title, icon, description, children }: { title: string; icon: Rea
   );
 }
 
-const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
-
-/** Ready-to-paste MCP configuration for the common AI clients. */
 function AgentSetup({ server, node, env }: { server: string; node: string; env: Record<string, string> }) {
   const [client, setClient] = useState<"claude" | "codex" | "cursor" | "desktop" | "other">("claude");
   const withAgent = (name: string) => ({ ...env, REPOBOARD_AGENT: name });
@@ -107,6 +107,15 @@ function CopyBlock({ text }: { text: string }) {
   );
 }
 
+const HEALTH_TEXT: Record<ProjectHealth, string> = {
+  ok: "Open",
+  expired: "Key ran out",
+  no_access: "Key has no access",
+  forbidden: "Refused by GitHub",
+  offline: "GitHub unreachable",
+  unknown: "Could not check",
+};
+
 export function SettingsScreen({
   authLabel,
   tokenSource,
@@ -123,40 +132,34 @@ export function SettingsScreen({
   const router = useRouter();
   const params = useSearchParams();
   const toast = useToast();
-  const { projects, connected, repo: activeRepo } = useShell();
+  const { projects, connected, repo: activeRepo, role } = useShell();
   const { choice, setChoice } = useTheme();
-  const [repo, setRepo] = useState("");
-  const [token, setToken] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(projects.length === 0 || Boolean(params.get("add")));
+  // Whether each project's key still opens its repository.
+  const [health, setHealth] = useState<Map<string, ProjectHealth> | null>(null);
+  const [healthInfo, setHealthInfo] = useState<Map<string, ProjectInfo>>(new Map());
+  const projectKey = projects.map((p) => p.repo).join(",");
+
+  // Old links to the connect form go to the connect screen.
+  useEffect(() => {
+    if (params.get("add")) router.replace("/connect");
+  }, [params, router]);
 
   useEffect(() => {
-    if (params.get("add")) setAdding(true);
-  }, [params]);
-
-  const connect = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy("connect");
-    setError(null);
-    try {
-      const body = await api.connectRepository(token, repo);
-      toast.push({
-        kind: "success",
-        message: `Connected ${body.repo.owner}/${body.repo.name}`,
-        detail: `Default branch ${body.repo.defaultBranch}, ${body.repo.visibility}`,
-      });
-      setToken("");
-      setRepo("");
-      setAdding(false);
-      router.refresh();
-      router.push("/");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
+    if (managedByEnvironment) return;
+    let cancelled = false;
+    api
+      .projectsHealth()
+      .then((info) => {
+        if (cancelled) return;
+        setHealth(new Map(info.projects.map((p) => [p.repo.toLowerCase(), p.health ?? "unknown"])));
+        setHealthInfo(new Map(info.projects.map((p) => [p.repo.toLowerCase(), p])));
+      })
+      .catch(() => !cancelled && setHealth(new Map()));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectKey, managedByEnvironment]);
 
   const act = async (key: string, fn: () => Promise<unknown>, message: string) => {
     setBusy(key);
@@ -188,7 +191,7 @@ export function SettingsScreen({
           <Card
             title="Projects"
             icon={<KeyRound className="size-4" />}
-            description="Each project is one GitHub repository with its own board, checklists and token. Tokens stay on this computer."
+            description="Each project is one GitHub repository with its own boards, checklists and key. Keys stay on this computer."
           >
             {managedByEnvironment && (
               <p className="rounded-lg bg-pill p-3 text-sm text-muted">
@@ -199,17 +202,34 @@ export function SettingsScreen({
 
             {projects.length > 0 && (
               <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
-                {projects.map((p) => (
+                {projects.map((listed) => {
+                  const p = { ...listed, ...healthInfo.get(listed.repo.toLowerCase()), active: listed.active };
+                  const state = managedByEnvironment ? (connected ? "ok" : undefined) : health?.get(p.repo.toLowerCase());
+                  const broken = state !== undefined && state !== "ok";
+                  return (
                   <div key={p.repo} className="flex items-center gap-3 px-4 py-3">
                     <ProjectMark repo={p.repo} size={28} />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 truncate text-base font-medium text-ink">
                         {p.repo}
-                        {p.active && <span className="rb-pill-ok">Active</span>}
+                        {p.active && !broken && state === "ok" && <span className="rb-pill-ok">Open</span>}
+                        {p.active && connected && (
+                          <span className="rb-pill" title="Your role in this repository on GitHub decides what you can change here">
+                            {ROLE_LABEL[role]}
+                          </span>
+                        )}
+                        {p.active && state === undefined && <span className="rb-pill">Open</span>}
+                        {broken && <span className="rb-pill-danger">{HEALTH_TEXT[state]}</span>}
                       </p>
                       <p className="text-xs text-muted">
-                        {p.open !== undefined ? `${p.open} open, ${p.done ?? 0} done` : "No board yet"}
-                        {p.lastSyncAt ? (
+                        {state === undefined && !managedByEnvironment
+                          ? "Checking the key…"
+                          : broken
+                            ? "Its boards are safe on this computer. Give it a new key to open it again."
+                            : p.open !== undefined
+                              ? `${p.open} open, ${p.done ?? 0} done`
+                              : "No board yet"}
+                        {!broken && p.lastSyncAt ? (
                           <>
                             {", synced "}
                             <RelativeTime value={p.lastSyncAt} />
@@ -217,11 +237,25 @@ export function SettingsScreen({
                         ) : null}
                       </p>
                     </div>
-                    {!p.active && !managedByEnvironment && (
+                    {broken && !managedByEnvironment && (
+                      <Link href={`/connect?repo=${encodeURIComponent(p.repo)}`} className="rb-btn-primary rb-btn-sm">
+                        <KeyRound className="size-3.5" /> {p.via === "github" ? "Sign in again" : "New key"}
+                      </Link>
+                    )}
+                    {!p.active && !broken && !managedByEnvironment && (
                       <button
                         className="rb-btn rb-btn-sm"
                         disabled={busy !== null}
-                        onClick={() => act(`switch-${p.repo}`, () => api.switchProject(p.repo), `Switched to ${p.repo}`)}
+                        onClick={() => {
+                          setBusy(`switch-${p.repo}`);
+                          api
+                            .switchProject(p.repo)
+                            .then(() => openProject())
+                            .catch((err) => {
+                              toast.push({ kind: "error", message: "Could not switch project", detail: (err as Error).message });
+                              setBusy(null);
+                            });
+                        }}
                       >
                         {busy === `switch-${p.repo}` && <Spinner />} Open
                       </button>
@@ -229,11 +263,23 @@ export function SettingsScreen({
                     {!managedByEnvironment && (
                       <button
                         className="rb-icon-btn"
-                        aria-label={`Disconnect ${p.repo}`}
-                        title="Disconnect — forgets the token; the board stays on this computer"
+                        aria-label={`Remove ${p.repo}`}
+                        title="Remove — forgets the key; the boards stay on this computer"
                         disabled={busy !== null}
                         onClick={() => {
-                          if (!window.confirm(`Disconnect ${p.repo}? Its token is removed from this computer; the boards stay here and on GitHub.`)) return;
+                          if (!window.confirm(`Remove ${p.repo} from this computer? Its key is forgotten; the boards stay here and on GitHub.`)) return;
+                          if (p.active) {
+                            // The open project goes away: start again from what is left.
+                            setBusy(`remove-${p.repo}`);
+                            api
+                              .removeProject(p.repo)
+                              .then(() => openProject("/"))
+                              .catch((err) => {
+                                toast.push({ kind: "error", message: "That did not work", detail: (err as Error).message });
+                                setBusy(null);
+                              });
+                            return;
+                          }
                           void act(`remove-${p.repo}`, () => api.removeProject(p.repo), `Disconnected ${p.repo}`);
                         }}
                       >
@@ -241,72 +287,19 @@ export function SettingsScreen({
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            {!managedByEnvironment &&
-              (adding ? (
-                <form className="flex flex-col gap-4 rounded-xl border border-border bg-canvas p-5" onSubmit={connect}>
-                  <p className="text-sm font-semibold text-ink">Connect a repository</p>
-                  <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-                    Repository
-                    <input
-                      className="rb-input h-9 font-mono"
-                      placeholder="owner/name"
-                      value={repo}
-                      onChange={(event) => setRepo(event.target.value)}
-                      required
-                      autoFocus
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-                    Fine-grained access token
-                    <input
-                      type="password"
-                      className="rb-input h-9 font-mono"
-                      placeholder="github_pat_…"
-                      value={token}
-                      onChange={(event) => setToken(event.target.value)}
-                      required
-                      autoComplete="off"
-                    />
-                  </label>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-sm text-muted">
-                    <p>
-                      <a className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/30 underline-offset-2" href={TOKEN_URL} target="_blank" rel="noreferrer noopener">
-                        Create a token on GitHub <ExternalLink className="size-3" />
-                      </a>{" "}
-                      with the repository's owner as <em>Resource owner</em>, <em>Only select repositories</em> → this repository, and these permissions:
-                    </p>
-                    <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <li><span className="text-ink">Contents</span> — read and write</li>
-                      <li><span className="text-ink">Metadata</span> — read</li>
-                      <li><span className="text-ink">Pull requests</span> — read</li>
-                      <li><span className="text-ink">Issues</span> — read</li>
-                      <li><span className="text-ink">Checks</span> — read</li>
-                    </ul>
-                  </div>
-                  {error && <p className="rounded-lg bg-danger-bg p-3 text-sm text-danger">{error}</p>}
-                  <div className="flex items-center gap-2">
-                    <button className="rb-btn-primary h-9 px-4" disabled={busy === "connect"}>
-                      {busy === "connect" && <Spinner />} {busy === "connect" ? "Checking with GitHub" : "Connect"}
-                    </button>
-                    {projects.length > 0 && (
-                      <button type="button" className="rb-btn-ghost" onClick={() => setAdding(false)}>
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </form>
-              ) : (
-                <button className="rb-btn w-fit" onClick={() => setAdding(true)}>
-                  <Plus className="size-3.5" /> Connect a repository
-                </button>
-              ))}
+            {!managedByEnvironment && (
+              <Link href="/connect" className="rb-btn w-fit">
+                <Plus className="size-3.5" /> Add a project
+              </Link>
+            )}
             <p className="text-xs text-faint">
-              {authLabel}
-              {tokenSource ? `, read from the ${tokenSource}` : ""}. The token is never sent to the browser.
+              Keys are GitHub {authLabel.toLowerCase()}s
+              {tokenSource ? `, read from the ${tokenSource === "env" ? "environment" : "file on this computer"}` : ""}. A key is never sent to the page.
             </p>
           </Card>
 

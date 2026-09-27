@@ -42,6 +42,7 @@ interface Body {
 function sizeOf(n: StoryNode): number {
   const count = n.commits.length;
   if (n.kind === "start" || n.kind === "merge" || n.kind === "fork" || n.kind === "now" || n.kind === "earlier") return 34;
+  if (n.kind === "landed") return 26;
   if (n.lane === 0) return Math.min(18 + Math.sqrt(count) * 5, 40);
   return Math.min(16 + Math.sqrt(count) * 4, 32);
 }
@@ -57,6 +58,10 @@ function headline(n: StoryNode, mainBranch: string): string {
       return count === 1 ? n.commits[0].message : `${count} commits`;
     case "merge":
       return `Merged ${n.commits[0].message.match(/from [^/\s]+\/(\S+)/)?.[1] ?? "a branch"}`;
+    case "landed": {
+      const names = n.landed ?? [];
+      return `${names[0]}${names.length > 1 ? ` and ${names.length - 1} more` : ""} landed on ${mainBranch}`;
+    }
     case "tip":
       return `${n.branch}, still open`;
     case "now":
@@ -79,6 +84,7 @@ function NodeIcon({ node }: { node: StoryNode }) {
   if (node.kind === "earlier") return <ChevronsLeft className={`${cls} text-muted`} />;
   if (node.kind === "merge") return <GitMerge className={`${cls} text-ink`} />;
   if (node.kind === "fork") return <GitBranch className={`${cls} text-ink`} />;
+  if (node.kind === "landed") return <GitBranch className={`${cls} text-muted`} />;
   if (node.kind === "now") return <span className="size-2.5 rounded-full bg-accent" />;
   if (node.commits.length > 1) return <span className="text-[10px] font-semibold tabular-nums text-ink">{node.commits.length}</span>;
   return null;
@@ -463,6 +469,12 @@ export function ProjectStory({
           </p>
         )}
         {n.pr && n.kind === "merge" && <p className="mt-1 text-xs text-muted">Pull request <span className="font-mono">#{n.pr}</span></p>}
+        {n.kind === "landed" && (
+          <p className="mt-1 text-xs text-muted">
+            {(n.landed ?? []).length > 1 && <span className="font-mono">{(n.landed ?? []).join(", ")}. </span>}
+            It came back without a merge commit, so git does not record where it started.
+          </p>
+        )}
         {n.commits.length > 1 && (
           <ul className="mt-2 flex flex-col gap-0.5 text-xs text-muted">
             {n.commits

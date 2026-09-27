@@ -230,7 +230,39 @@ function agentName() {
   return client?.name || "AI agent";
 }
 
+/**
+ * The name an agent goes by in the project — "Claude", "Codex" — the same way
+ * the app shows it (components/Actor.tsx agentLabel). Cards and items
+ * assigned to that name are this agent's work.
+ */
+function agentLabel(name = agentName()) {
+  const n = String(name).toLowerCase();
+  for (const [key, label] of [["claude", "Claude"], ["codex", "Codex"], ["cursor", "Cursor"], ["gemini", "Gemini"], ["copilot", "Copilot"], ["windsurf", "Windsurf"]]) {
+    if (n.includes(key)) return label;
+  }
+  return String(name);
+}
+
+// The first time an agent works on a project, the activity feed says it joined —
+// so the people on the project see who is at work, not a stranger's edits.
+const introduced = new Set();
+function introduce(repositoryId) {
+  if (introduced.has(repositoryId)) return;
+  introduced.add(repositoryId);
+  const label = agentLabel();
+  const before = db
+    .prepare("SELECT actor FROM activity_events WHERE repository_id = ? AND actor_kind = 'agent'")
+    .all(repositoryId)
+    .some((e) => agentLabel(e.actor ?? "") === label);
+  if (!before) {
+    db.prepare(
+      "INSERT INTO activity_events (id, repository_id, task_id, type, message, actor, actor_kind, created_at) VALUES (?,?,?,?,?,?,?,?)",
+    ).run(randomUUID(), repositoryId, null, "agent_joined", "joined the project", agentName(), "agent", now());
+  }
+}
+
 function logActivity(repositoryId, taskId, type, message) {
+  introduce(repositoryId);
   db.prepare(
     "INSERT INTO activity_events (id, repository_id, task_id, type, message, actor, actor_kind, created_at) VALUES (?,?,?,?,?,?,?,?)",
   ).run(randomUUID(), repositoryId, taskId, type, message, agentName(), "agent", now());
@@ -489,6 +521,18 @@ const tools = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "whoami",
+    description:
+      "How you appear in this project: your name as people see it (assign work to that name), and which project is open. Call it first.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "my_work",
+    description:
+      "Cards and checklist items assigned to you (to your name from whoami), on every board, not done yet. Work on these; hand them over for a person to check when finished.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "get_activity",
     description: "Recent events on the board and documents, newest first.",
     inputSchema: { type: "object", properties: { limit: { type: "number" } } },
@@ -596,6 +640,10 @@ const handlers = {
   create_card({ title, column, description, labels = [], assignee, priority, milestone, dueDate, board: boardName }) {
     const { repo, board } = requireBoard(boardName);
     const col = resolveColumn(board.id, column);
+    // Agents propose, people verify: nothing an agent makes starts out as done.
+    if (DONE_COLUMN.test(col.name.trim())) {
+      throw new Error(`An agent cannot put a card straight into ${col.name}. Create it in review and let a person check it.`);
+    }
     const id = randomUUID();
     const siblings = db
       .prepare("SELECT COUNT(*) AS n FROM tasks WHERE column_id = ? AND deleted_at IS NULL")
@@ -780,6 +828,10 @@ const handlers = {
       ? db.prepare(`SELECT * FROM tasks WHERE card_number = ? AND board_id IN (${marks})`).get(Number(number), ...ids)
       : db.prepare(`SELECT * FROM tasks WHERE id = ? AND board_id IN (${marks})`).get(card, ...ids);
     if (!task) throw new Error(`No card ${card} on this board`);
+    const inColumn = db.prepare("SELECT name FROM columns WHERE id = ?").get(task.column_id);
+    if (inColumn && DONE_COLUMN.test(inColumn.name.trim())) {
+      throw new Error(`${task.title} was deleted while done; bringing it back would count as finished work. Ask a person to restore it.`);
+    }
     db.prepare("UPDATE tasks SET deleted_at = NULL, updated_at = ? WHERE id = ?").run(now(), task.id);
     logActivity(repo.id, task.id, "card_restored", `restored ${task.title}`);
     return serialiseCard(cardOf(task.id));
@@ -847,6 +899,39 @@ const handlers = {
     const { project } = requireBoard();
     const content = await readFromGitHub(project, String(filePath).replace(/^\/+/, ""));
     return { path: filePath, format: FORMAT_HINT, content };
+  },
+
+  whoami() {
+    const { project, repo } = requireBoard();
+    introduce(repo.id);
+    return {
+      name: agentLabel(),
+      reportedAs: agentName(),
+      project: project.repo ?? `${repo.owner}/${repo.name}`,
+      note: `People assign work to you as "${agentLabel()}". Everything you change is shown under that name, marked AI. You cannot tick items or move cards to done: a person verifies.`,
+    };
+  },
+
+  my_work() {
+    const { repo, boards } = requireBoard();
+    introduce(repo.id);
+    const me = agentLabel().toLowerCase();
+    const mine = (who) => Boolean(who) && (String(who).toLowerCase() === me || agentLabel(String(who)).toLowerCase() === me);
+    return boards.flatMap((board) => {
+      const cols = new Map(columns(board.id).map((c) => [c.id, c.name]));
+      return db
+        .prepare("SELECT * FROM tasks WHERE board_id = ? AND deleted_at IS NULL")
+        .all(board.id)
+        .filter((t) => !DONE_COLUMN.test(cols.get(t.column_id) ?? ""))
+        .flatMap((t) => {
+          const card = t.card_number != null ? `RB-${t.card_number}` : t.id;
+          const items = numbered(t.checklist ? JSON.parse(t.checklist) : [])
+            .filter(({ item }) => mine(item.assignee) && !item.done)
+            .map(({ number, item }) => ({ board: board.name, card, cardTitle: t.title, item: number, text: item.text }));
+          const whole = mine(t.assignee) ? [{ board: board.name, card, cardTitle: t.title, column: cols.get(t.column_id) }] : [];
+          return [...whole, ...items];
+        });
+    });
   },
 
   needs_check() {

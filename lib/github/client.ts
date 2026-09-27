@@ -1,10 +1,27 @@
 import { Octokit } from "octokit";
 import { getAuthProvider, getConfiguredRepo } from "./auth-provider";
+import { roleOf, type Role } from "@/lib/roles";
 
 export class GitHubNotConfiguredError extends Error {
   constructor() {
     super("GitHub is not connected. Add a token on the Settings screen.");
     this.name = "GitHubNotConfiguredError";
+  }
+}
+
+/**
+ * Why GitHub would not open a repository with a token, in words a person can
+ * act on. `reason` lets screens offer the right next step.
+ */
+export type AccessReason = "expired" | "no_access" | "forbidden" | "offline" | "unknown";
+
+export class GitHubAccessError extends Error {
+  constructor(
+    readonly reason: AccessReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GitHubAccessError";
   }
 }
 
@@ -15,6 +32,24 @@ export interface RepoSummary {
   visibility: "public" | "private";
   htmlUrl: string;
   pushedAt: string | null;
+  /** What the person behind the token may do here, from their role on GitHub (lib/roles.ts). */
+  role: Role;
+}
+
+export interface AccessibleRepo {
+  fullName: string;
+  private: boolean;
+  description: string | null;
+  pushedAt: string | null;
+}
+
+/** A repository someone signed in with GitHub can open, and what GitHub lets them do in it. */
+export interface AppRepo {
+  fullName: string;
+  private: boolean;
+  description: string | null;
+  pushedAt: string | null;
+  role: "admin" | "maintain" | "write" | "triage" | "read";
 }
 
 export interface BranchSummary {
@@ -115,12 +150,29 @@ export function cardNumbersIn(text: string | null | undefined): number[] {
  * screen of a fresh repository wait ~15 seconds for nothing.
  */
 function makeOctokit(token: string): Octokit {
-  return new Octokit({
+  const octokit = new Octokit({
     auth: token,
     // Only for the demo and tests (scripts/demo-github.mjs); unset in real use.
     ...(process.env.GITHUB_API_URL ? { baseUrl: process.env.GITHUB_API_URL } : {}),
     retry: { doNotRetry: [400, 401, 403, 404, 409, 410, 422, 451] },
   });
+  // Any key can read public repositories, so one can open a repository it
+  // was never given — and GitHub refuses only when something is saved. Say
+  // that in words, wherever the save happens.
+  octokit.hook.error("request", (error, options) => {
+    const e = error as { status?: number; message?: string };
+    if (e.status === 403 && /not accessible by (personal access token|integration)/i.test(e.message ?? "")) {
+      const slug = String(options.url ?? "").match(/\/repos\/([^/]+\/[^/]+)/)?.[1];
+      const [owner, name] = (slug ?? "").split("/");
+      const which = owner && name ? `${decodeURIComponent(owner)}/${decodeURIComponent(name)}` : "this repository";
+      throw new GitHubAccessError(
+        "no_access",
+        `This key can read ${which} but may not save to it. On GitHub, edit the key: under Repository access, tick ${which}, and give Contents "Read and write".`,
+      );
+    }
+    throw error;
+  });
+  return octokit;
 }
 
 /** GitHub's answer for a repository that has no commits yet. */
@@ -158,18 +210,27 @@ export class GitHubClient {
       .then((r) => r.data)
       .catch((error: { status?: number; message?: string }) => {
         if (error.status === 401) {
-          throw new Error("GitHub did not accept this token. Check that it was copied whole and has not expired, or make a new one.");
+          throw new GitHubAccessError(
+            "expired",
+            "GitHub no longer accepts this key: it has expired or was deleted on GitHub.",
+          );
         }
         if (error.status === 404) {
-          throw new Error(
-            `This token cannot see ${slug}. Check the name, and that the token was given access to it (Repository access → Only select repositories → ${slug}; for an organisation, choose it as the resource owner).`,
+          throw new GitHubAccessError(
+            "no_access",
+            `This key cannot open ${slug}: it was made for other repositories, or the name is wrong.`,
           );
         }
         if (error.status === 403) {
-          throw new Error(`GitHub refused access to ${slug} with this token (${error.message ?? "forbidden"}). The organisation may need to approve fine-grained tokens.`);
+          throw new GitHubAccessError(
+            "forbidden",
+            `GitHub refused ${slug} with this key. If the repository belongs to an organisation, one of its owners may have to approve the key first.`,
+          );
         }
-        if (!error.status) throw new Error("GitHub could not be reached. Check the internet connection and try again.");
-        throw error;
+        if (!error.status) {
+          throw new GitHubAccessError("offline", "GitHub could not be reached. Check the internet connection.");
+        }
+        throw new GitHubAccessError("unknown", `GitHub answered with an error (${error.status}). Try again in a moment.`);
       });
     return {
       owner: data.owner.login,
@@ -178,7 +239,76 @@ export class GitHubClient {
       visibility: data.private ? "private" : "public",
       htmlUrl: data.html_url,
       pushedAt: data.pushed_at ?? null,
+      role: roleOf(data.permissions),
     };
+  }
+
+  /**
+   * The repositories a token can open, most recently pushed first, so the
+   * connect form can offer them instead of asking for "owner/name". A
+   * fine-grained token lists only the repositories it was given.
+   */
+  static async repositoriesFor(token: string): Promise<AccessibleRepo[]> {
+    const octokit = makeOctokit(token);
+    const repos = await octokit
+      .paginate(octokit.rest.repos.listForAuthenticatedUser, { per_page: 100, sort: "pushed" })
+      .catch((error: { status?: number }) => {
+        if (error.status === 401) {
+          throw new GitHubAccessError(
+            "expired",
+            "GitHub did not accept this token. Check that it was copied whole, or make a new one.",
+          );
+        }
+        if (!error.status) {
+          throw new GitHubAccessError("offline", "GitHub could not be reached. Check the internet connection.");
+        }
+        throw error;
+      });
+    return repos.slice(0, 300).map((r) => ({
+      fullName: r.full_name,
+      private: r.private,
+      description: r.description ?? null,
+      pushedAt: r.pushed_at ?? null,
+    }));
+  }
+
+  /**
+   * For a token from signing in with GitHub: every repository the RepoBoard
+   * app is installed on that this person may open, with their role in it.
+   */
+  static async appRepositories(token: string): Promise<AppRepo[]> {
+    const octokit = makeOctokit(token);
+    const fail = (error: { status?: number }) => {
+      if (error.status === 401) throw new GitHubAccessError("expired", "GitHub no longer accepts this sign-in. Sign in again.");
+      if (!error.status) throw new GitHubAccessError("offline", "GitHub could not be reached. Check the internet connection.");
+      throw error;
+    };
+    const installations = await octokit
+      .paginate(octokit.rest.apps.listInstallationsForAuthenticatedUser, { per_page: 100 })
+      .catch(fail);
+    const lists = await Promise.all(
+      installations.map((installation) =>
+        octokit
+          .paginate(octokit.rest.apps.listInstallationReposForAuthenticatedUser, {
+            installation_id: installation.id,
+            per_page: 100,
+          })
+          .catch(() => []),
+      ),
+    );
+    const seen = new Map<string, AppRepo>();
+    for (const r of lists.flat()) {
+      const p: { admin?: boolean; maintain?: boolean; push?: boolean; triage?: boolean } = r.permissions ?? {};
+      const role: AppRepo["role"] = p.admin ? "admin" : p.maintain ? "maintain" : p.push ? "write" : p.triage ? "triage" : "read";
+      seen.set(r.full_name.toLowerCase(), {
+        fullName: r.full_name,
+        private: r.private,
+        description: r.description ?? null,
+        pushedAt: r.pushed_at ?? null,
+        role,
+      });
+    }
+    return [...seen.values()].sort((a, b) => Date.parse(b.pushedAt ?? "0") - Date.parse(a.pushedAt ?? "0"));
   }
 
   /** The GitHub login the token belongs to — the default author of notes. */
@@ -203,6 +333,7 @@ export class GitHubClient {
       visibility: data.private ? "private" : "public",
       htmlUrl: data.html_url,
       pushedAt: data.pushed_at ?? null,
+      role: roleOf(data.permissions),
     };
   }
 
@@ -472,6 +603,76 @@ export class GitHubClient {
   }
 
   /**
+   * The history for Project life: the default branch far back, then each
+   * other branch read until it reaches a commit the default branch has — so
+   * a long-running branch still shows where it left, however many commits it
+   * carries. A branch that came back by fast-forward is only a name on a
+   * commit of the default branch (its `heads`).
+   */
+  async storyGraph(mainLimit = 300, maxBranches = 20, branchLimit = 300): Promise<GraphCommit[]> {
+    const repo = await this.getRepo();
+    const branches = await this.octokit.rest.repos
+      .listBranches({ owner: this.owner, repo: this.repo, per_page: 100 })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error)) return [];
+        throw error;
+      });
+    const main = branches.find((b) => b.name === repo.defaultBranch);
+    // RepoBoard's own sync branch carries board.json, not work: not part of the project's life.
+    const others = branches.filter((b) => b.name !== repo.defaultBranch && b.name !== "repoboard");
+    const bySha = new Map<string, GraphCommit>();
+    type Listed = Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"];
+    const add = (c: Listed[number]) => {
+      if (bySha.has(c.sha)) return;
+      bySha.set(c.sha, {
+        sha: c.sha,
+        message: c.commit.message.split("\n")[0],
+        author: c.author?.login ?? c.commit.author?.name ?? null,
+        date: c.commit.author?.date ?? null,
+        parents: c.parents.map((p) => p.sha),
+        heads: [],
+      });
+    };
+    const page = (sha: string, n: number, perPage: number) =>
+      this.octokit.rest.repos
+        .listCommits({ owner: this.owner, repo: this.repo, sha, per_page: perPage, page: n })
+        .then((r) => r.data)
+        .catch(() => [] as Listed);
+
+    if (main) {
+      const pages = Math.ceil(mainLimit / 100);
+      const data = (await Promise.all(Array.from({ length: pages }, (_, i) => page(main.name, i + 1, 100)))).flat();
+      data.forEach(add);
+    }
+    const onMain = new Set(bySha.keys());
+    // A branch whose tip is on the default branch needs no reading at all.
+    const reading = others.filter((b) => !onMain.has(b.commit.sha));
+    // The most recently moved branches first; the API gives no order, so read their tips.
+    const tips = await Promise.all(
+      reading.map(async (b) => ({ b, first: await page(b.name, 1, 40) })),
+    );
+    tips.sort((x, y) => Date.parse(y.first[0]?.commit.author?.date ?? "0") - Date.parse(x.first[0]?.commit.author?.date ?? "0"));
+    await Promise.all(
+      tips.slice(0, maxBranches).map(async ({ b, first }) => {
+        let data = first;
+        for (let n = 2; ; n += 1) {
+          const stop = data.findIndex((c) => onMain.has(c.sha));
+          if (stop >= 0) {
+            data.slice(0, stop + 1).forEach(add);
+            return;
+          }
+          data.forEach(add);
+          if (data.length < 40 || n * 40 > branchLimit) return;
+          data = await page(b.name, n, 40);
+        }
+      }),
+    );
+    for (const branch of branches) bySha.get(branch.commit.sha)?.heads.push(branch.name);
+    return [...bySha.values()].sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"));
+  }
+
+  /**
    * People who can be assigned work in this repository (GitHub's assignees:
    * the owner and collaborators). Empty when the token may not list them.
    */
@@ -676,6 +877,37 @@ export class GitHubClient {
     });
     await this.octokit.rest.git.updateRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}`, sha: commit.sha, force: false });
     return { commitSha: commit.sha };
+  }
+
+  /**
+   * Makes sure a branch exists, cut from the default branch's tip when it
+   * does not — for RepoBoard's own sync branch, which keeps board.json out
+   * of the history of the code.
+   */
+  async ensureBranch(name: string): Promise<void> {
+    const found = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${name}` })
+      .then(() => true)
+      .catch((error: { status?: number }) => {
+        if (error.status === 404) return false;
+        throw error;
+      });
+    if (found) return;
+    const repo = await this.getRepo();
+    const base = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${repo.defaultBranch}` })
+      .catch((error: { status?: number }) => {
+        if (error.status === 404 || error.status === 409) {
+          throw new Error("The repository has no commits yet, so there is nothing to keep the boards next to. Push a first commit.");
+        }
+        throw error;
+      });
+    await this.octokit.rest.git
+      .createRef({ owner: this.owner, repo: this.repo, ref: `refs/heads/${name}`, sha: base.data.object.sha })
+      .catch((error: { status?: number }) => {
+        // Another computer made it a moment ago.
+        if (error.status !== 422) throw error;
+      });
   }
 
   /**

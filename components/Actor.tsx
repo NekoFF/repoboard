@@ -16,6 +16,14 @@ export function agentLabel(name: string): string {
   return name;
 }
 
+const KNOWN_AGENTS = ["claude", "codex", "cursor", "gemini", "copilot", "windsurf"];
+
+/** Whether a name (an assignee, a board owner) is one of the project's AI agents. */
+export function isAgentName(name: string, agents: string[] = []): boolean {
+  const label = agentLabel(name).toLowerCase();
+  return KNOWN_AGENTS.includes(label) || agents.some((a) => agentLabel(a).toLowerCase() === label);
+}
+
 /**
  * A person's GitHub avatar, or a mark for an AI agent. The photo comes from
  * github.com/<login>.png, but only for people who work on the repository (see
@@ -33,8 +41,9 @@ export function ActorAvatar({
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const { people } = useShell();
-  if (kind === "agent") {
+  const { people, agents } = useShell();
+  // A card assigned to "Claude" is assigned to an agent: show it as one.
+  if (kind === "agent" || (kind !== "person" && isAgentName(name, agents))) {
     return (
       <span
         title={agentLabel(name)}
@@ -73,10 +82,12 @@ export function ActorAvatar({
 }
 
 export function ActorName({ name, kind }: { name: string; kind?: "person" | "agent" | null }) {
+  const { agents } = useShell();
+  const agent = kind === "agent" || (kind !== "person" && isAgentName(name, agents));
   return (
     <span className="font-medium text-ink">
-      {kind === "agent" ? agentLabel(name) : name}
-      {kind === "agent" && <span className="ml-1 text-2xs font-normal text-state-review">AI</span>}
+      {agent ? agentLabel(name) : name}
+      {agent && <span className="ml-1 text-2xs font-normal text-state-review">AI</span>}
     </span>
   );
 }

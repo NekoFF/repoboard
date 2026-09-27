@@ -5,6 +5,7 @@ import type { BoardData, BoardSummary, PendingChange } from "@/lib/board-service
 import type { DocChange, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type {
+  AppRepo,
   BranchSummary,
   CardReference,
   GraphCommit,
@@ -46,6 +47,20 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     body = { error: `The server answered with an error (${response.status})` };
   }
 
+  if (response.ok && typeof window !== "undefined" && url.startsWith("/api/board") && init?.method === "POST") {
+    // A change to the boards on this computer: automatic sync picks it up (components/shell/SyncAgent).
+    const action = (() => {
+      try {
+        return JSON.parse(String(init.body ?? "{}")).action as string | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    if (action && !["board-status", "board-pull", "board-push", "sync-now", "sync-settings"].includes(action)) {
+      window.dispatchEvent(new Event("rb-boards-changed"));
+    }
+  }
+
   if (!response.ok) {
     throw new ApiError(
       body.error ?? `Request failed (${response.status})`,
@@ -66,6 +81,23 @@ export interface ProjectInfo {
   open?: number;
   done?: number;
   lastSyncAt?: number | null;
+  /** Pasted key, or signing in with GitHub. */
+  via?: "key" | "github";
+  /** Its cover (components/ProjectArt); null picks one from the name. */
+  art?: string | null;
+  hue?: number | null;
+  /** Whether its token opens the repository now (only from `projectsHealth`). */
+  health?: ProjectHealth;
+}
+
+/** Why a project does not open: see GitHubAccessError on the server. */
+export type AccessReason = "expired" | "no_access" | "forbidden" | "offline" | "unknown";
+export type ProjectHealth = "ok" | AccessReason;
+
+export interface AccessProblem {
+  slug: string;
+  reason: AccessReason;
+  message: string;
 }
 
 export interface ConnectionInfo {
@@ -74,6 +106,7 @@ export interface ConnectionInfo {
   tokenSource: "env" | "file" | null;
   authLabel: string;
   projects: ProjectInfo[];
+  access: AccessProblem | null;
   live?: { owner: string; name: string; defaultBranch: string; visibility: string; htmlUrl: string };
 }
 
@@ -82,6 +115,8 @@ const post = <T>(url: string, body: unknown) =>
 
 export const api = {
   connection: () => request<ConnectionInfo>("/api/repo"),
+  /** The connection plus whether each project's token still works (asks GitHub, cached a few minutes). */
+  projectsHealth: () => request<ConnectionInfo>("/api/repo?health=1"),
 
   connectRepository: (token: string, repo: string) =>
     post<{
@@ -89,6 +124,35 @@ export const api = {
       repo: { owner: string; name: string; defaultBranch: string; visibility: string };
       projects: ProjectInfo[];
     }>("/api/repo", { token, repo }),
+
+  /** Asks GitHub which repositories this token opens; the token goes to our server only. */
+  repositoriesFor: (token: string) =>
+    post<{ repos: { fullName: string; private: boolean; description: string | null; pushedAt: string | null }[] }>(
+      "/api/repo",
+      { action: "repos", token },
+    ),
+
+  setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
+    post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
+
+  /* signing in with GitHub (app/api/auth/github) */
+  githubSignIn: {
+    status: () => request<{ available: boolean; login: string | null; installUrl: string | null }>("/api/auth/github"),
+    start: () =>
+      post<{ flowId: string; userCode: string; verificationUri: string; expiresIn: number; interval: number }>(
+        "/api/auth/github",
+        { action: "start" },
+      ),
+    poll: (flowId: string) =>
+      post<{ state: "pending" | "expired" | "denied" } | { state: "done"; login: string; repos: AppRepo[] }>(
+        "/api/auth/github",
+        { action: "poll", flowId },
+      ),
+    repos: () => post<{ login: string; repos: AppRepo[] }>("/api/auth/github", { action: "repos" }),
+    connect: (repos: string[]) =>
+      post<{ connected: string[]; opened: string }>("/api/auth/github", { action: "connect", repos }),
+    signOut: () => post<{ ok: true }>("/api/auth/github", { action: "sign-out" }),
+  },
 
   switchProject: (repo: string) =>
     post<{ switched: string; projects: ProjectInfo[] }>("/api/repo", { action: "switch", repo }),
@@ -150,9 +214,26 @@ export const api = {
   board: (boardId?: string | null) =>
     request<BoardData>(`/api/board${boardId ? `?board=${encodeURIComponent(boardId)}` : ""}`),
   boards: () => request<{ boards: BoardSummary[] }>("/api/board?list=1"),
-  createBoard: (fields: { name: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
+  createBoard: (fields: {
+    name: string;
+    description?: string | null;
+    color?: string | null;
+    art?: string | null;
+    owner?: string | null;
+    visibility?: "everyone" | "owner";
+  }) =>
     post<{ id: string }>("/api/board", { action: "board-create", ...fields }),
-  updateBoard: (boardId: string, fields: { name?: string; description?: string | null; color?: string | null; art?: string | null; owner?: string | null }) =>
+  updateBoard: (
+    boardId: string,
+    fields: {
+      name?: string;
+      description?: string | null;
+      color?: string | null;
+      art?: string | null;
+      owner?: string | null;
+      visibility?: "everyone" | "owner";
+    },
+  ) =>
     post<{ ok: true }>("/api/board", { action: "board-update", boardId, ...fields }),
   archiveBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-archive", boardId }),
   restoreBoard: (boardId: string) => post<{ ok: true }>("/api/board", { action: "board-restore", boardId }),
@@ -220,15 +301,21 @@ export const api = {
     }),
 
   boardStatus: () =>
-    request<{ tracked: boolean; changes: string[]; sha: string | null }>(
+    request<{ tracked: boolean; changes: string[]; sha: string | null; autoSync: boolean; syncedAt: number | null }>(
       "/api/board",
       { method: "POST", body: JSON.stringify({ action: "board-status" }) },
     ),
 
-  boardPush: () =>
+  /** Boards both ways through the repoboard branch (lib/board-service.ts syncBoards). */
+  syncNow: () => post<{ pulled: number; pushed: number; syncedAt: number }>("/api/board", { action: "sync-now" }),
+  setAutoSync: (autoSync: boolean) =>
+    post<{ pulled: number; pushed: number; syncedAt: number | null }>("/api/board", { action: "sync-settings", autoSync }),
+
+  /** `expectedSha`: the board.json the person reviewed (from boardStatus). */
+  boardPush: (expectedSha: string | null) =>
     request<{ commitSha: string; changes: string[] }>("/api/board", {
       method: "POST",
-      body: JSON.stringify({ action: "board-push" }),
+      body: JSON.stringify({ action: "board-push", expectedSha }),
     }),
 
   boardPull: () =>

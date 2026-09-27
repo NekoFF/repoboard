@@ -29,6 +29,11 @@ export type StoryKind =
   | "fork"
   /** Where a branch came back. */
   | "merge"
+  /**
+   * A branch whose tip is on the main line: it came back by fast-forward (or
+   * was cut from here and never moved), so git kept no record of where it left.
+   */
+  | "landed"
   /** The newest commit of a branch that is still open. */
   | "tip"
   /** The newest commit of the default branch. */
@@ -47,6 +52,8 @@ export interface StoryNode {
   pr: number | null;
   /** RB-n cards the commits mention. */
   cards: number[];
+  /** For "landed": the branches whose tip this is. */
+  landed?: string[];
 }
 
 export interface StoryEdge {
@@ -218,15 +225,26 @@ export function buildStory(input: StoryCommit[], mainBranch: string): Story {
   mainline.forEach((c, i) => {
     const first = i === 0;
     const last = i === mainline.length - 1;
-    const key = first || last || bases.has(c.sha) || merges.has(c.sha);
+    const landed = c.heads.filter((h) => h !== mainBranch);
+    const key = first || last || bases.has(c.sha) || merges.has(c.sha) || landed.length > 0;
     if (!key) {
       run.push(c);
       return;
     }
     flush();
-    const kind: StoryKind = last ? "now" : merges.has(c.sha) ? "merge" : first ? (truncated ? "earlier" : "start") : "fork";
+    const kind: StoryKind = last
+      ? "now"
+      : merges.has(c.sha)
+        ? "merge"
+        : first
+          ? truncated ? "earlier" : "start"
+          : bases.has(c.sha)
+            ? "fork"
+            : "landed";
     const merged = merges.get(c.sha);
-    mainNodes.push(make(kind, 0, mainBranch, [c], merged?.pr ?? mergeInfo(c.message).pr));
+    const node = make(kind, 0, mainBranch, [c], merged?.pr ?? mergeInfo(c.message).pr);
+    if (landed.length) node.landed = landed;
+    mainNodes.push(node);
   });
   flush();
   for (let i = 1; i < mainNodes.length; i += 1) {

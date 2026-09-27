@@ -11,7 +11,7 @@ import { statusOfColumn } from "@/lib/status";
 import { PageHeader } from "@/components/PageHeader";
 import { ActorAvatar, ActorName, eventText } from "@/components/Actor";
 import { useShell } from "@/components/shell/ShellContext";
-import { EmptyState, RelativeTime, RowSkeleton, useToast } from "@/components/ui";
+import { EmptyState, Logo, RelativeTime, RowSkeleton, useToast } from "@/components/ui";
 
 /** When the person last looked at the Inbox, per project — a convenience kept in this browser. */
 export const seenKey = (repo: string | null) => `rb-inbox-seen:${repo ?? ""}`;
@@ -189,7 +189,8 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
     const card = boards.flatMap((b) => b.data.tasks).find((t) => t.id === e.taskId);
     return (
       <li key={e.id} className={`flex items-start gap-3 px-4 py-2.5 ${isNew ? "bg-accent/[0.04]" : ""}`}>
-        {e.actor ? <ActorAvatar name={e.actor} kind={e.actorKind} size={20} /> : <span className="size-5" />}
+        {/* Events without a person are RepoBoard's own (setting up a board, a sync). */}
+        {e.actor ? <ActorAvatar name={e.actor} kind={e.actorKind} size={20} /> : <Logo size={20} />}
         <div className="min-w-0 flex-1 text-sm">
           <p className="text-muted">
             {e.actor && (

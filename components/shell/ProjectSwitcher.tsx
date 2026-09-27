@@ -6,24 +6,23 @@ import { Check, ChevronsUpDown, Plus, Settings2 } from "lucide-react";
 import { Menu, MenuItem, MenuLabel, MenuSeparator, Spinner, useToast } from "@/components/ui";
 import { useShell } from "@/components/shell/ShellContext";
 import { api } from "@/lib/client/api";
+import { openProject } from "@/lib/client/project";
+import { ProjectArt } from "@/components/ProjectArt";
 
-/** A square with the repository's first letter, tinted from its name. */
+/**
+ * The project's cover in small: a still moment of its pixel scene
+ * (ProjectArt), in the look chosen for it or one picked from its name.
+ */
 export function ProjectMark({ repo, size = 22 }: { repo: string | null; size?: number }) {
-  const name = repo?.split("/")[1] ?? "?";
-  let hash = 0;
-  for (const ch of repo ?? "") hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const hue = hash % 360;
+  const { projects } = useShell();
+  const look = repo ? projects.find((p) => p.repo.toLowerCase() === repo.toLowerCase()) : undefined;
   return (
     <span
-      className="grid shrink-0 place-items-center rounded-md text-2xs font-semibold text-white"
-      style={{
-        width: size,
-        height: size,
-        background: repo ? `hsl(${hue} 32% 42%)` : "rgb(var(--faint))",
-      }}
+      className="rb-project-mark relative block shrink-0 overflow-hidden"
+      style={{ width: size, height: size, borderRadius: Math.max(5, size * 0.26) }}
       aria-hidden
     >
-      {name.charAt(0).toUpperCase()}
+      {repo ? <ProjectArt repo={repo} look={look} still cellSize={Math.max(2, size / 9)} /> : <span className="block h-full w-full bg-faint" />}
     </span>
   );
 }
@@ -39,11 +38,9 @@ export function ProjectSwitcher() {
     setSwitching(target);
     try {
       await api.switchProject(target);
-      router.refresh();
-      router.push("/");
+      openProject();
     } catch (error) {
       toast.push({ kind: "error", message: "Could not switch project", detail: (error as Error).message });
-    } finally {
       setSwitching(null);
     }
   };
@@ -89,8 +86,8 @@ export function ProjectSwitcher() {
       )}
       <MenuSeparator />
       {!managedByEnvironment && (
-        <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => router.push("/settings?add=1")}>
-          Connect a repository
+        <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => router.push("/connect")}>
+          Add a project
         </MenuItem>
       )}
       <MenuItem icon={<Settings2 className="size-3.5" />} onSelect={() => router.push("/settings")}>

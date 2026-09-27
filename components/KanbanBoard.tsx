@@ -22,6 +22,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
+import { useShell } from "@/components/shell/ShellContext";
 import type { BoardData, BoardMilestone, BoardTask } from "@/lib/board-service";
 import { SortableTaskCard, StaticTaskCard, TaskCardBody } from "@/components/TaskCard";
 import { BoardCalendar } from "@/components/BoardCalendar";
@@ -67,6 +68,8 @@ function Column({
   setComposerOpen: (columnId: string | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  // Read-only people (lib/roles.ts) add nothing; known from the first render, unlike drag.
+  const canAdd = useShell().role !== "viewer";
   const [title, setTitle] = useState("");
   const adding = composerOpen === id;
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -96,14 +99,16 @@ function Column({
         <h2 className="text-sm font-semibold text-ink">{name}</h2>
         <span className="text-xs tabular-nums text-faint">{tasks.length}</span>
         <div className="flex-1" />
-        <button
-          className="rb-icon-btn size-6"
-          onClick={() => setComposerOpen(adding ? null : id)}
-          title={`Add a card to ${name}`}
-          aria-label={`Add a card to ${name}`}
-        >
-          <Plus className="size-3.5" />
-        </button>
+        {canAdd && (
+          <button
+            className="rb-icon-btn size-6"
+            onClick={() => setComposerOpen(adding ? null : id)}
+            title={`Add a card to ${name}`}
+            aria-label={`Add a card to ${name}`}
+          >
+            <Plus className="size-3.5" />
+          </button>
+        )}
       </div>
 
       <div ref={setNodeRef} className="rb-scroll-thin flex min-h-[72px] flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5">
@@ -171,7 +176,10 @@ function Column({
           ))
         )}
 
-        {!adding && tasks.length === 0 && (
+        {!adding && tasks.length === 0 && !canAdd && (
+          <p className="flex h-16 items-center justify-center rounded-lg border border-dashed border-border text-xs text-faint">Nothing here</p>
+        )}
+        {!adding && tasks.length === 0 && canAdd && (
           <button
             className="flex h-16 items-center justify-center rounded-lg border border-dashed border-border-strong/70 text-xs text-faint transition-colors hover:border-border-strong hover:text-muted"
             onClick={() => setComposerOpen(id)}
@@ -213,6 +221,24 @@ export function KanbanBoard({
   const openCard = useCallback((id: string) => router.push(`/board/card/${id}`), [router]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState<string | null>(null);
+  // Whether columns continue past either edge, for the fade that says so.
+  const scroller = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ left: false, right: false });
+  const measureMore = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const left = el.scrollLeft > 2;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setMore((m) => (m.left === left && m.right === right ? m : { left, right }));
+  }, []);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    measureMore();
+    const resize = new ResizeObserver(measureMore);
+    resize.observe(el);
+    return () => resize.disconnect();
+  }, [measureMore, data.columns.length]);
 
   useEffect(() => setTasks(data.tasks), [data.tasks]);
 
@@ -220,7 +246,9 @@ export function KanbanBoard({
   // server and the browser do differently. Drag is a pointer feature anyway, so
   // the first paint is the same board without it.
   const [interactive, setInteractive] = useState(false);
-  useEffect(() => setInteractive(true), []);
+  // Read-only people (lib/roles.ts) look at the board; nothing drags.
+  const { role } = useShell();
+  useEffect(() => setInteractive(role !== "viewer"), [role]);
 
   useEffect(() => {
     const card = searchParams.get("card");
@@ -512,10 +540,15 @@ export function KanbanBoard({
             setTasks(data.tasks);
           }}
         >
+          {/* The background runs behind the rail; the scrolling columns stop
+              short of it, and fade at the edge when there are more. */}
+          <div className="rb-board-canvas flex min-h-0 w-full flex-1" style={{ paddingRight: "var(--rb-rail)" }}>
           <div
-            className="rb-board-canvas flex min-h-0 w-full flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4"
-            // The background runs behind the rail; the columns stop short of it.
-            style={{ paddingRight: "calc(var(--rb-rail) + 16px)" }}
+            ref={scroller}
+            className="rb-board-scroll flex min-h-0 min-w-0 flex-1 gap-2.5 overflow-x-auto p-3 lg:p-4"
+            data-more={more.right ? "right" : undefined}
+            data-less={more.left ? "left" : undefined}
+            onScroll={measureMore}
           >
             {data.columns.map((column) => (
               <Column
@@ -536,6 +569,7 @@ export function KanbanBoard({
                 setComposerOpen={setComposerOpen}
               />
             ))}
+          </div>
           </div>
 
           <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.22,1,0.36,1)" }}>
