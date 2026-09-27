@@ -248,6 +248,31 @@ describe("a card moved to another board, arriving from another computer", () => 
   });
 });
 
+describe("settings that need a verified role", () => {
+  it("refuses the agent policy without one, and confirm-done outside the board", async () => {
+    const repoRoute = await import("@/app/api/repo/route");
+    const policy = () =>
+      repoRoute.POST(new Request("http://localhost/api/repo", { method: "POST", body: JSON.stringify({ action: "agent-policy", policy: "propose" }) }));
+    access.valid = true;
+    access.role = "member";
+    expect((await policy()).status).toBe(403);
+    access.role = "manager";
+    // GitHub unreachable or the key ran out: no role, no change.
+    const verified = vi.spyOn(await import("@/lib/github/access"), "currentWho").mockResolvedValueOnce(null);
+    expect((await policy()).status).toBe(403);
+    verified.mockRestore();
+
+    const main = service.getBoardData();
+    const otherId = service.createBoard({ name: "Elsewhere" });
+    const other = service.getBoardData(otherId);
+    const card = service.createTask({ boardId: otherId, columnId: other.columns[0].id, title: "Not here", repositoryId: main.repository!.id });
+    const confirm = await boardRoute.POST(
+      new Request("http://localhost/api/board", { method: "POST", body: JSON.stringify({ boardId: main.boardId, action: "confirm-done", taskId: card }) }),
+    );
+    expect(confirm.status).toBe(404);
+  });
+});
+
 function sqlite2() {
   return new Database(databaseFile);
 }

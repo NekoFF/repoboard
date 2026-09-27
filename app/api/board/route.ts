@@ -328,7 +328,7 @@ async function handlePost(request: Request) {
   const milestoneIds = new Set(data.milestones.map((m) => m.id));
   const invalidTarget =
     ((body.action === "create" || body.action === "import-issues" || body.action === "move" || body.action === "reorder") && !columnIds.has(body.columnId)) ||
-    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment" || body.action === "item-done") && !taskIds.has(body.taskId)) ||
+    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment" || body.action === "item-done" || body.action === "confirm-done") && !taskIds.has(body.taskId)) ||
     (body.action === "restore" && !taskBelongsToBoard(body.taskId, data.boardId)) ||
     (body.action === "reorder" && body.orderedIds.some((taskId) => !taskIds.has(taskId))) ||
     ((body.action === "milestone-update" || body.action === "milestone-delete") &&
