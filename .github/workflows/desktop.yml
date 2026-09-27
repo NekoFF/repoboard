@@ -27,8 +27,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A tag with a suffix (v0.7.0-beta.1) is a pre-release: only the beta channel takes it.
+          pre=""; [[ "$TAG" == *-* ]] && pre="--prerelease"
           gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --title "RepoBoard ${TAG#v}" --notes-file desktop/RELEASE_NOTES.md
+            gh release create "$TAG" --title "RepoBoard ${TAG#v}" --notes-file desktop/RELEASE_NOTES.md $pre
 
   build:
     needs: release

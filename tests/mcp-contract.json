@@ -1,0 +1,328 @@
+{
+  "get_overview": {
+    "params": {},
+    "required": []
+  },
+  "list_boards": {
+    "params": {},
+    "required": []
+  },
+  "create_board": {
+    "params": {
+      "name": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ]
+  },
+  "get_board": {
+    "params": {
+      "board": {
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "search_cards": {
+    "params": {
+      "query": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "create_card": {
+    "params": {
+      "title": {
+        "type": "string"
+      },
+      "column": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "labels": {
+        "type": "array"
+      },
+      "assignee": {
+        "type": "string"
+      },
+      "priority": {
+        "type": "string",
+        "enum": [
+          "none",
+          "urgent",
+          "high",
+          "medium",
+          "low"
+        ]
+      },
+      "milestone": {
+        "type": "string"
+      },
+      "dueDate": {
+        "type": "string"
+      },
+      "board": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "person_confirmed",
+          "already_done",
+          "cannot_be_checked"
+        ]
+      },
+      "note": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "column"
+    ]
+  },
+  "move_card": {
+    "params": {
+      "card": {
+        "type": "string"
+      },
+      "column": {
+        "type": "string"
+      },
+      "board": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "person_confirmed",
+          "already_done",
+          "cannot_be_checked"
+        ]
+      },
+      "note": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card",
+      "column"
+    ]
+  },
+  "update_card": {
+    "params": {
+      "card": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "assignee": {
+        "type": "string"
+      },
+      "labels": {
+        "type": "array"
+      },
+      "priority": {
+        "type": "string",
+        "enum": [
+          "none",
+          "urgent",
+          "high",
+          "medium",
+          "low"
+        ]
+      },
+      "milestone": {
+        "type": "string"
+      },
+      "dueDate": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card"
+    ]
+  },
+  "add_checklist_item": {
+    "params": {
+      "card": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "parent": {
+        "type": "string"
+      },
+      "notes": {
+        "type": "string"
+      },
+      "assignee": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array"
+      }
+    },
+    "required": [
+      "card",
+      "text"
+    ]
+  },
+  "set_checklist_item": {
+    "params": {
+      "card": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "done": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "person_confirmed",
+          "already_done",
+          "cannot_be_checked"
+        ]
+      },
+      "note": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card",
+      "text",
+      "done"
+    ]
+  },
+  "get_card": {
+    "params": {
+      "card": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card"
+    ]
+  },
+  "update_checklist_item": {
+    "params": {
+      "card": {
+        "type": "string"
+      },
+      "item": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "notes": {
+        "type": "string"
+      },
+      "assignee": {
+        "type": "string"
+      },
+      "comment": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card",
+      "item"
+    ]
+  },
+  "delete_card": {
+    "params": {
+      "card": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card"
+    ]
+  },
+  "restore_card": {
+    "params": {
+      "card": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card"
+    ]
+  },
+  "comment_on_card": {
+    "params": {
+      "card": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "card",
+      "message"
+    ]
+  },
+  "list_documents": {
+    "params": {},
+    "required": []
+  },
+  "read_document": {
+    "params": {
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "path"
+    ]
+  },
+  "needs_check": {
+    "params": {},
+    "required": []
+  },
+  "whoami": {
+    "params": {},
+    "required": []
+  },
+  "my_work": {
+    "params": {},
+    "required": []
+  },
+  "get_activity": {
+    "params": {
+      "limit": {
+        "type": "number"
+      }
+    },
+    "required": []
+  }
+}

@@ -246,7 +246,11 @@ looks whether that file changed (an app update, a pull) and loads it again:
 the client is told the tools changed, and when `RULES_VERSION` moved the next
 answer starts with the new rules — so an agent connected for hours follows
 the current version without a restart. Keep everything that can change in
-the core, and the process small. `whoami` and `get_overview` carry `tidyUp`:
+the core, and the process small. **The tools are a contract**
+(`tests/mcp-contract.json`, checked by `tests/mcp-arguments.test.ts`): add
+tools, parameters and enum values freely; never remove or rename one, change
+its type, or make a parameter required — agents written against it would
+break. Run the tests with `UPDATE_MCP_CONTRACT=1` to record additions. `whoami` and `get_overview` carry `tidyUp`:
 what is already in the wrong place (a plan kept as a checklist document,
 steps in a card's description, a pile on the main board) for the agent to
 put right. The server exposes the boards and documents to any MCP client
@@ -288,6 +292,12 @@ npm test          # unit + integration tests
 npm run build     # production build, writes to .next-build
 npm run demo      # the app against a fake GitHub, no token needed
 ```
+
+Releases: bump `package.json` and `desktop/package.json`, add notes to
+`desktop/RELEASE_NOTES.md`, merge to `main`, tag `vX.Y.Z` there — CI builds
+and attaches the apps. A tag with a suffix (`v0.7.0-beta.1`) becomes a
+pre-release, which only the desktop app's **beta** channel takes
+(`desktop/updates.cjs`, Settings → About); stable follows `releases/latest`.
 
 ## Design notes
 

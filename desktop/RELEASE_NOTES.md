@@ -1,5 +1,13 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.2
+
+- **Copy works in the app.** Every copy button did nothing in the desktop app: the code for GitHub, the agent command in Settings, links. Now they copy, including *Copy the code and open GitHub*.
+- **Set up Claude Code without a terminal.** If Claude Code runs in the Claude app, where there is no `claude` command, Settings shows the entry for its settings file. You can also paste it into a chat and have Claude add it.
+- **Stable or Beta.** Settings → About lets you choose: finished versions only, or new versions first.
+- **Agent tools stay compatible.** Agents written against RepoBoard's tools keep working in later versions. New tools and options are added; existing ones are not taken away.
+- The copy button no longer covers long commands.
+
 ## What's new in 0.6.1
 
 - **Agents keep up with RepoBoard.** An AI agent that is already connected follows a new version right away, with no restart. Its next answer brings the new rules.

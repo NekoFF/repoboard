@@ -299,6 +299,44 @@ describe("MCP server arguments", () => {
   });
 });
 
+// What agents rely on: every tool, its parameters and their types, what is
+// required, the values an enum accepts. Adding is fine; removing, renaming,
+// changing a type, dropping an enum value or requiring more breaks agents
+// already written against it. UPDATE_MCP_CONTRACT=1 records additions.
+type Contract = Record<string, { params: Record<string, { type?: string; enum?: string[] }>; required: string[] }>;
+const CONTRACT_FILE = path.join("tests", "mcp-contract.json");
+
+describe("MCP contract", () => {
+  it("keeps every tool and parameter agents may already use", async () => {
+    const listed = (await client.request("tools/list", {})).result as unknown as {
+      tools: { name: string; inputSchema: { properties?: Record<string, { type?: string; enum?: string[] }>; required?: string[] } }[];
+    };
+    const now: Contract = Object.fromEntries(
+      listed.tools.map((t) => [
+        t.name,
+        {
+          params: Object.fromEntries(
+            Object.entries(t.inputSchema.properties ?? {}).map(([k, v]) => [k, { type: v.type, ...(v.enum ? { enum: v.enum } : {}) }]),
+          ),
+          required: t.inputSchema.required ?? [],
+        },
+      ]),
+    );
+    if (process.env.UPDATE_MCP_CONTRACT) fs.writeFileSync(CONTRACT_FILE, `${JSON.stringify(now, null, 2)}\n`);
+    const recorded: Contract = JSON.parse(fs.readFileSync(CONTRACT_FILE, "utf8"));
+    for (const [tool, was] of Object.entries(recorded)) {
+      const is = now[tool];
+      expect(is, `tool ${tool} was removed or renamed`).toBeTruthy();
+      for (const [param, spec] of Object.entries(was.params)) {
+        expect(is.params[param], `${tool}.${param} was removed or renamed`).toBeTruthy();
+        expect(is.params[param].type, `${tool}.${param} changed type`).toBe(spec.type);
+        for (const value of spec.enum ?? []) expect(is.params[param].enum ?? [], `${tool}.${param} no longer accepts ${value}`).toContain(value);
+      }
+      for (const param of is.required) expect(was.required, `${tool} now requires ${param}`).toContain(param);
+    }
+  });
+});
+
 describe("MCP server updates", () => {
   it("follows a new version without a restart, and tells the agent the rules changed", async () => {
     // A copy inside the project, so it finds node_modules; the original stays untouched.

@@ -25,6 +25,7 @@
       "main.cjs",
       "preload.cjs",
       "updates.cjs",
+      "version.cjs",
       "package.json"
     ],
     "extraResources": [

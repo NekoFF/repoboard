@@ -40,10 +40,16 @@ function AgentSetup({ server, node, env }: { server: string; node: string; env: 
     Object.entries(withAgent(name))
       .map(([k, v]) => `-e ${k}="${v}"`)
       .join(" ");
-  const snippets = {
+  const snippets: Record<typeof client, { where: string; text: string; alt?: { where: string; text: string } }> = {
     claude: {
       where: "Run once in a terminal. --scope user makes it available in every project, not only the folder you run it in:",
       text: `claude mcp add --scope user repoboard ${flags("Claude Code")} -- "${node}" "${server}"`,
+      // Claude Code in the Claude app has no claude command: the same entry, written into its settings file.
+      alt: {
+        where:
+          "No claude command (Claude Code in the Claude app)? Add this under \"mcpServers\" in ~/.claude.json (on Windows %USERPROFILE%\\.claude.json), or paste it into a Claude Code chat and ask it to add the server for you. Then start a new session.",
+        text: JSON.stringify({ repoboard: { type: "stdio", command: node, args: [server], env: withAgent("Claude Code") } }, null, 2),
+      },
     },
     codex: {
       where: "Add to ~/.codex/config.toml:",
@@ -59,7 +65,7 @@ function AgentSetup({ server, node, env }: { server: string; node: string; env: 
         .map(([k, v]) => `${k}=${v}`)
         .join("\n")}\n"${node}" "${server}"`,
     },
-  } as const;
+  };
   const current = snippets[client];
   return (
     <div className="flex flex-col gap-3">
@@ -79,6 +85,12 @@ function AgentSetup({ server, node, env }: { server: string; node: string; env: 
       </div>
       <p className="text-xs text-muted">{current.where}</p>
       <CopyBlock text={current.text} />
+      {current.alt && (
+        <>
+          <p className="text-xs text-muted">{current.alt.where}</p>
+          <CopyBlock text={current.alt.text} />
+        </>
+      )}
       <p className="text-xs text-muted">
         <code className="font-mono">REPOBOARD_AGENT</code> is the name the activity feed shows for that agent. Without it
         RepoBoard uses the name the client reports.
@@ -137,6 +149,41 @@ function CheckForUpdates() {
     >
       {busy && <Spinner />} Check for updates
     </button>
+  );
+}
+
+/** Stable follows releases; beta takes pre-releases too. Desktop only. */
+function UpdateChannel() {
+  type Channel = "stable" | "beta";
+  type Bridge = { updates?: { channel?: () => Promise<Channel>; setChannel?: (c: Channel) => Promise<Channel> } };
+  const [bridge, setBridge] = useState<Bridge | null>(null);
+  const [channel, setChannel] = useState<Channel | null>(null);
+  useEffect(() => {
+    const found = (window as unknown as { repoboardDesktop?: Bridge }).repoboardDesktop ?? null;
+    setBridge(found);
+    void found?.updates?.channel?.().then(setChannel);
+  }, []);
+  if (!bridge?.updates?.setChannel || !channel) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <Segmented
+        size="sm"
+        value={channel}
+        onChange={(next) => {
+          setChannel(next);
+          void bridge.updates!.setChannel!(next).then(setChannel);
+        }}
+        options={[
+          { value: "stable", label: "Stable" },
+          { value: "beta", label: "Beta" },
+        ]}
+      />
+      <p className="text-xs text-muted">
+        {channel === "beta"
+          ? "You get new versions first, before they are finished. Back on Stable, the next stable version that is newer comes as usual."
+          : "Finished versions only. Beta brings new versions first, before they are finished."}
+      </p>
+    </div>
   );
 }
 
@@ -424,6 +471,7 @@ export function SettingsScreen({
                 What&rsquo;s new
               </a>
             </div>
+            {version.desktop && <UpdateChannel />}
           </Card>
 
           <Card title="Your data" icon={<HardDrive className="size-4" />} description="Everything RepoBoard stores lives in two files on this computer. Back them up by copying the folder.">

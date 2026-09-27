@@ -17,12 +17,18 @@
  * Downloads live in one temporary folder, emptied when the app starts.
  * Boards and keys are in ~/.repoboard and never touched.
  *
+ * Two channels: stable follows the latest release; beta also takes
+ * pre-releases (tags like v0.7.0-beta.1), for people who want new things
+ * first. The choice is kept in the app's own folder. Leaving beta never goes
+ * back a version: the next stable one that is newer arrives as usual.
+ *
  * Only files from this repository's releases are ever fetched.
  */
 const { app, dialog, net, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
+const { newer } = require("./version.cjs");
 
 const DIR = () => path.join(app.getPath("temp"), "RepoBoard update");
 
@@ -68,13 +74,35 @@ function send(win) {
   win?.webContents.send("repoboard:update", state);
 }
 
-function newer(a, b) {
-  const parse = (v) => String(v).replace(/^v/, "").split(/[.-]/).map((n) => Number.parseInt(n, 10) || 0);
-  const [x, y] = [parse(a), parse(b)];
-  for (let i = 0; i < 3; i += 1) {
-    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+const CHANNEL_FILE = () => path.join(app.getPath("userData"), "update-channel.json");
+
+function channel() {
+  try {
+    return JSON.parse(fs.readFileSync(CHANNEL_FILE(), "utf8")).channel === "beta" ? "beta" : "stable";
+  } catch {
+    // A version that was itself a beta starts on the beta channel.
+    return app.getVersion().includes("-") ? "beta" : "stable";
   }
-  return false;
+}
+
+function setChannel(next) {
+  const value = next === "beta" ? "beta" : "stable";
+  fs.mkdirSync(path.dirname(CHANNEL_FILE()), { recursive: true });
+  fs.writeFileSync(CHANNEL_FILE(), JSON.stringify({ channel: value }));
+  return value;
+}
+
+const api = (url) =>
+  net.fetch(url, { headers: { accept: "application/vnd.github+json", "user-agent": "RepoBoard" } }).then((res) => {
+    if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+    return res.json();
+  });
+
+/** The newest release of the chosen channel that has a build for this system. */
+async function newestRelease() {
+  if (channel() === "stable") return api(`https://api.github.com/repos/${REPO}/releases/latest`);
+  const releases = (await api(`https://api.github.com/repos/${REPO}/releases?per_page=20`)).filter((r) => !r.draft && assetFor(r));
+  return releases.reduce((best, r) => (!best || newer(r.tag_name, best.tag_name) ? r : best), null);
 }
 
 /** The release file for this system and processor: the .zip when a Mac copy can replace itself. */
@@ -96,12 +124,8 @@ async function check(win, { manual = false } = {}) {
   if (!app.isPackaged && !process.env.REPOBOARD_UPDATES) return;
   if (state.state === "downloading" || state.state === "ready") return;
   try {
-    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-      headers: { accept: "application/vnd.github+json", "user-agent": "RepoBoard" },
-    });
-    if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
-    const release = await res.json();
-    const asset = assetFor(release);
+    const release = await newestRelease();
+    const asset = release ? assetFor(release) : null;
     if (asset && newer(release.tag_name, app.getVersion())) {
       state = {
         state: "available",
@@ -242,9 +266,20 @@ async function install() {
 function listen(ipcMain, getWin) {
   cleanUp();
   ipcMain.handle("repoboard:update-check", () => check(getWin(), { manual: true }));
+  ipcMain.handle("repoboard:update-channel", () => channel());
+  ipcMain.handle("repoboard:update-set-channel", async (_event, next) => {
+    const value = setChannel(next);
+    // An offer from the other channel no longer stands.
+    if (state.state === "available" || state.state === "failed") {
+      state = { state: "idle" };
+      send(getWin());
+    }
+    void check(getWin());
+    return value;
+  });
   ipcMain.handle("repoboard:update-state", () => state);
   ipcMain.handle("repoboard:update-download", () => download(getWin()));
   ipcMain.handle("repoboard:update-install", () => install());
 }
 
-module.exports = { check, listen };
+module.exports = { check, listen, newer };
