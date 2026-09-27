@@ -211,6 +211,43 @@ describe("moving a card to another board", () => {
   });
 });
 
+describe("a card moved to another board, arriving from another computer", () => {
+  it("lands on its new board when pulled, and the boards keep syncing", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const areaId = service.createBoard({ name: "Security" });
+    const card = service.createTask({ boardId: main.boardId!, columnId: main.columns[0].id, title: "Audit the token store", repositoryId: main.repository!.id });
+
+    // Computer A moves it and saves the boards: the file GitHub now holds.
+    let file: { content: string; sha: string } | null = null;
+    const github = {
+      getFile: async () => {
+        if (!file) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return file;
+      },
+      putFile: async ({ content }: { content: string }) => {
+        file = { content, sha: `sha${Date.now()}` };
+        return { commitSha: "c1", contentSha: file.sha };
+      },
+    };
+    const factory = async () => github as never;
+    service.moveTaskToBoard(card, areaId);
+    await service.pushBoardState(factory);
+
+    // Computer B has not seen the move: the card is still on its main board there.
+    const db = sqlite2();
+    db.prepare("UPDATE tasks SET board_id = ?, column_id = ?, updated_at = 1 WHERE id = ?").run(main.boardId, main.columns[0].id, card);
+    db.close();
+
+    await expect(service.pullBoardState(factory)).resolves.toBeTruthy();
+    expect(service.findCardBoard(card)).toEqual({ boardId: areaId, taskId: card });
+    expect(service.getBoardData().tasks.some((t) => t.id === card)).toBe(false);
+    // And the next pull is quiet, not stuck.
+    await expect(service.pullBoardState(factory)).resolves.toEqual({ added: 0, updated: 0 });
+  });
+});
+
 function sqlite2() {
   return new Database(databaseFile);
 }

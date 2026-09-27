@@ -1546,11 +1546,14 @@ function writeCards(boardId: string, cards: BoardStateCard[]): void {
   const columnByName = new Map(cols.map((c) => [c.name, c.id]));
   const milestoneByName = new Map(boardMilestonesOf(boardId).map((m) => [m.name, m.id]));
 
-  // A remote board file must never move a card that lives on another board.
+  // A card moved between this project's boards arrives on its new board (the
+  // merge keeps each card on one board). A card of another project never moves.
+  const repositoryOf = (id: string) => db.select({ r: boards.repositoryId }).from(boards).where(eq(boards.id, id)).get()?.r ?? null;
+  const here = repositoryOf(boardId);
   for (const card of cards) {
     const existing = db.select({ boardId: tasks.boardId }).from(tasks).where(eq(tasks.id, card.id)).get();
-    if (existing && existing.boardId !== boardId) {
-      throw new Error("A card from another board has the same ID");
+    if (existing && existing.boardId !== boardId && repositoryOf(existing.boardId) !== here) {
+      throw new Error("A card from another project has the same ID");
     }
   }
 
