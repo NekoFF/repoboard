@@ -366,6 +366,13 @@ describe("MCP server updates", () => {
 
         // RepoBoard is updated under the running server: new rules, a new tool.
         const core = path.join(dir, "scripts", "mcp-core.mjs");
+        // Half a file, as an update may leave it for a moment: the old tools keep working.
+        const whole = fs.readFileSync(core, "utf8");
+        fs.writeFileSync(core, whole.slice(0, whole.length / 2));
+        fs.utimesSync(core, new Date(), new Date(Date.now() + 2000));
+        const during = await agent.request("tools/call", { name: "list_boards", arguments: {} });
+        expect(during.result?.isError ?? false).toBe(false);
+        fs.writeFileSync(core, whole);
         const source = fs
           .readFileSync(core, "utf8")
           .replace("Start with whoami", "Always greet the owner first.\n\nStart with whoami")

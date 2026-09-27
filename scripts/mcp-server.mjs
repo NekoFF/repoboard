@@ -47,7 +47,16 @@ async function current() {
     if (core) return core;
   }
   if (core && at === loadedAt) return core;
-  const next = await import(`${pathToFileURL(CORE).href}?v=${at}`);
+  let next;
+  try {
+    next = await import(`${pathToFileURL(CORE).href}?v=${at}`);
+  } catch (error) {
+    // Caught mid-write, or broken: keep working with the copy already loaded
+    // and look again on the next request (the file's time changes when it is done).
+    if (!core) throw error;
+    console.error("[repoboard-mcp] could not load the updated tools yet:", error?.message ?? error);
+    return core;
+  }
   next.setClient(() => server?.getClientVersion?.() ?? null);
   const previous = core;
   core = next;
