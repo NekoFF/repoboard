@@ -12,6 +12,7 @@ export default async function SettingsPage() {
   const token = await provider.getToken();
   return (
     <SettingsScreen
+      version={{ number: process.env.REPOBOARD_APP_VERSION || process.env.REPOBOARD_VERSION || "dev", desktop }}
       authLabel={provider.label}
       tokenSource={process.env.GITHUB_PAT ? "environment" : token ? "local file" : null}
       managedByEnvironment={isEnvironmentConfigured()}

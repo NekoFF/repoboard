@@ -95,6 +95,7 @@ async function startServer() {
       HOSTNAME: "127.0.0.1",
       REPOBOARD_DESKTOP: "1",
       REPOBOARD_API_TOKEN: apiToken,
+      REPOBOARD_APP_VERSION: app.getVersion(),
       // For Settings: agents run the bundled MCP server with this binary in Node mode.
       REPOBOARD_NODE: process.execPath,
     },

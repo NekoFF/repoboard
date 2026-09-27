@@ -116,13 +116,37 @@ const HEALTH_TEXT: Record<ProjectHealth, string> = {
   unknown: "Could not check",
 };
 
+/** The desktop app asks GitHub Releases now, and says so either way. */
+function CheckForUpdates() {
+  const [busy, setBusy] = useState(false);
+  type Bridge = { updates?: { check?: () => Promise<void> } };
+  // Read after mount: the page is rendered on the server first, where there is no app bridge.
+  const [bridge, setBridge] = useState<Bridge | null>(null);
+  useEffect(() => setBridge((window as unknown as { repoboardDesktop?: Bridge }).repoboardDesktop ?? null), []);
+  if (!bridge?.updates?.check) return null;
+  return (
+    <button
+      className="rb-btn rb-btn-sm"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void bridge.updates!.check!().finally(() => setBusy(false));
+      }}
+    >
+      {busy && <Spinner />} Check for updates
+    </button>
+  );
+}
+
 export function SettingsScreen({
+  version,
   authLabel,
   tokenSource,
   managedByEnvironment,
   paths,
   mcp,
 }: {
+  version: { number: string; desktop: boolean };
   authLabel: string;
   tokenSource: string | null;
   managedByEnvironment: boolean;
@@ -341,6 +365,24 @@ export function SettingsScreen({
               say how to verify it — are in <code className="font-mono text-xs">.repoboard/README.md</code>, which RepoBoard
               creates with the workspace.
             </p>
+          </Card>
+
+          <Card title="About" icon={<Logo size={16} />}>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-ink">
+                RepoBoard <span className="font-mono tabular-nums">{version.number}</span>
+                <span className="text-muted"> · {version.desktop ? "desktop app" : "in the browser"}</span>
+              </p>
+              {version.desktop && <CheckForUpdates />}
+              <a
+                className="ml-auto text-sm text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink"
+                href="https://github.com/NekoFF/repoboard/releases"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                What&rsquo;s new
+              </a>
+            </div>
           </Card>
 
           <Card title="Your data" icon={<HardDrive className="size-4" />} description="Everything RepoBoard stores lives in two files on this computer. Back them up by copying the folder.">
