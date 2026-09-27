@@ -351,8 +351,8 @@ function onOneBoard(
 export function mergeBoardFile(local: BoardState, remote: BoardState | null): FileMergeResult {
   if (!remote) return { state: local, added: 0, updated: 0, newBoards: [] };
   const main = mergeBoardState(local.cards, remote.cards);
-  let added = main.added;
-  let updated = main.updated;
+  // Board edits count here; cards are counted once they are placed, below.
+  let boardEdits = 0;
   const newBoards: string[] = [];
 
   const byId = new Map((local.boards ?? []).map((b) => [b.id, b]));
@@ -361,14 +361,11 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
     if (!mine) {
       byId.set(incoming.id, incoming);
       newBoards.push(incoming.name);
-      added += incoming.cards.length;
       continue;
     }
     const cards = mergeBoardState(mine.cards, incoming.cards);
-    added += cards.added;
-    updated += cards.updated;
     const meta = newerMeta(mine, incoming);
-    if (incoming.updatedAt > mine.updatedAt) updated += 1;
+    if (incoming.updatedAt > mine.updatedAt) boardEdits += 1;
     byId.set(mine.id, {
       ...meta,
       columns: meta === incoming ? incoming.columns : mine.columns,
@@ -378,8 +375,20 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
   }
 
   const board = local.board && remote.board ? newerMeta(local.board, remote.board) : (local.board ?? remote.board);
-  if (local.board && remote.board && remote.board.updatedAt > local.board.updatedAt) updated += 1;
+  if (local.board && remote.board && remote.board.updatedAt > local.board.updatedAt) boardEdits += 1;
   const placed = onOneBoard(local, main.cards, [...byId.values()]);
+
+  // What came in: cards this machine did not have, and cards whose copy from GitHub won.
+  const before = new Map<string, number>();
+  for (const card of local.cards) before.set(card.id, card.updatedAt);
+  for (const b of local.boards ?? []) for (const card of b.cards) before.set(card.id, card.updatedAt);
+  let added = 0;
+  let updated = boardEdits;
+  for (const card of [...placed.main, ...placed.boards.flatMap((b) => b.cards)]) {
+    const had = before.get(card.id);
+    if (had === undefined) added += 1;
+    else if (card.updatedAt > had) updated += 1;
+  }
   return {
     state: {
       ...local,

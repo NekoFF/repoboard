@@ -157,6 +157,8 @@ describe("several boards in one file", () => {
     const merged = mergeBoardFile(mine, theirs).state;
     expect(merged.cards.map((c) => c.id)).toEqual([]);
     expect(merged.boards?.[0].cards.map((c) => c.id)).toEqual(["c3"]);
+    // Moved here and not saved yet: nothing counts as new from GitHub.
+    expect(mergeBoardFile(mine, theirs)).toMatchObject({ added: 0, updated: 0 });
     // And the other way round: a teammate moved it, and theirs is newer.
     const back = mergeBoardFile(theirs, mine).state;
     expect(back.cards.map((c) => c.id)).toEqual([]);
