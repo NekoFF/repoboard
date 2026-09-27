@@ -8,6 +8,7 @@ import { useShell } from "@/components/shell/ShellContext";
 import { ApiError, api, type AccessReason, type HostChoice } from "@/lib/client/api";
 import { repoSlug } from "@/lib/github/slug";
 import { TOKENS_PAGE, tokenTemplateUrl } from "@/lib/github/token-link";
+import { copyText } from "@/lib/client/clipboard";
 
 type Repo = Awaited<ReturnType<typeof api.repositoriesFor>>["repos"][number];
 type Problem = { message: string; reason?: AccessReason };
@@ -536,7 +537,7 @@ function SignInFlow({
           type="button"
           className="rounded-2xl bg-ink/[0.05] px-6 py-4 font-mono text-[34px] font-semibold tracking-[0.18em] text-ink shadow-[inset_0_0_0_1px_rgb(var(--ink)/0.08)] hover:bg-ink/[0.08]"
           onClick={() => {
-            void navigator.clipboard?.writeText(flow.userCode).then(() => {
+            void copyText(flow.userCode).then(() => {
               setCopied(true);
               window.setTimeout(() => setCopied(false), 1400);
             });
@@ -552,7 +553,7 @@ function SignInFlow({
           target="_blank"
           rel="noreferrer noopener"
           onClick={() => {
-            void navigator.clipboard?.writeText(flow.userCode).then(() => setCopied(true));
+            void copyText(flow.userCode).then(() => setCopied(true));
           }}
         >
           Copy the code and open GitHub <ExternalLink className="size-3.5" />

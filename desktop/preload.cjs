@@ -10,12 +10,17 @@ const platform = process.platform === "darwin" ? "mac" : process.platform === "w
 
 contextBridge.exposeInMainWorld("repoboardDesktop", {
   platform,
+  /** Put text on the clipboard (write only: the page never reads it). */
+  copy: (text) => ipcRenderer.invoke("repoboard:copy", String(text)),
   updates: {
     state: () => ipcRenderer.invoke("repoboard:update-state"),
     download: () => ipcRenderer.invoke("repoboard:update-download"),
     install: () => ipcRenderer.invoke("repoboard:update-install"),
     /** Look now, and say so either way (a dialog when there is nothing new). */
     check: () => ipcRenderer.invoke("repoboard:update-check"),
+    /** "stable" or "beta" (pre-releases too). */
+    channel: () => ipcRenderer.invoke("repoboard:update-channel"),
+    setChannel: (channel) => ipcRenderer.invoke("repoboard:update-set-channel", channel === "beta" ? "beta" : "stable"),
     /** Calls back with every change; returns a function that stops listening. */
     subscribe: (callback) => {
       const listener = (_event, state) => callback(state);

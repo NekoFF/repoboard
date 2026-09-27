@@ -55,6 +55,7 @@ import { DONE_REASON_LABEL, progress, type DoneBy } from "@/lib/checklist";
 import { orderAfterMove, useCommitMove } from "@/lib/client/moves";
 import { setCurrentBoard } from "@/lib/client/current-board";
 import { useHotkeys } from "@/lib/client/hotkeys";
+import { copyText } from "@/lib/client/clipboard";
 
 function Section({ title, count, action, children }: { title: string; count?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
@@ -312,7 +313,7 @@ export function CardPage({
   };
 
   const copy = (text: string, what: string) => {
-    void navigator.clipboard?.writeText(text).then(
+    void copyText(text).then(
       () => toast.push({ kind: "success", message: `Copied ${what}` }),
       () => toast.push({ kind: "error", message: "Could not copy" }),
     );

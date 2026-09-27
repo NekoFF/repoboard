@@ -11,6 +11,7 @@ import { DueLabel, Menu, MenuItem, MenuSeparator, PriorityIcon, ProgressBar, Sta
 import { api } from "@/lib/client/api";
 import { useRepoLinks } from "@/lib/client/links";
 import { STATUS_LABEL } from "@/lib/status";
+import { copyText } from "@/lib/client/clipboard";
 
 /** [[docs/PRIVACY.md]] → a link to that document inside RepoBoard. */
 function linkify(text: string): string {
@@ -105,7 +106,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const copy = async () => {
     const text = ref.current?.textContent?.replace(/\n$/, "") ?? "";
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
