@@ -351,8 +351,8 @@ function onOneBoard(
 export function mergeBoardFile(local: BoardState, remote: BoardState | null): FileMergeResult {
   if (!remote) return { state: local, added: 0, updated: 0, newBoards: [] };
   const main = mergeBoardState(local.cards, remote.cards);
-  let added = main.added;
-  let updated = main.updated;
+  // Board edits count here; cards are counted once they are placed, below.
+  let boardEdits = 0;
   const newBoards: string[] = [];
 
   const byId = new Map((local.boards ?? []).map((b) => [b.id, b]));
@@ -361,14 +361,11 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
     if (!mine) {
       byId.set(incoming.id, incoming);
       newBoards.push(incoming.name);
-      added += incoming.cards.length;
       continue;
     }
     const cards = mergeBoardState(mine.cards, incoming.cards);
-    added += cards.added;
-    updated += cards.updated;
     const meta = newerMeta(mine, incoming);
-    if (incoming.updatedAt > mine.updatedAt) updated += 1;
+    if (incoming.updatedAt > mine.updatedAt) boardEdits += 1;
     byId.set(mine.id, {
       ...meta,
       columns: meta === incoming ? incoming.columns : mine.columns,
@@ -378,8 +375,20 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
   }
 
   const board = local.board && remote.board ? newerMeta(local.board, remote.board) : (local.board ?? remote.board);
-  if (local.board && remote.board && remote.board.updatedAt > local.board.updatedAt) updated += 1;
+  if (local.board && remote.board && remote.board.updatedAt > local.board.updatedAt) boardEdits += 1;
   const placed = onOneBoard(local, main.cards, [...byId.values()]);
+
+  // What came in: cards this machine did not have, and cards whose copy from GitHub won.
+  const before = new Map<string, number>();
+  for (const card of local.cards) before.set(card.id, card.updatedAt);
+  for (const b of local.boards ?? []) for (const card of b.cards) before.set(card.id, card.updatedAt);
+  let added = 0;
+  let updated = boardEdits;
+  for (const card of [...placed.main, ...placed.boards.flatMap((b) => b.cards)]) {
+    const had = before.get(card.id);
+    if (had === undefined) added += 1;
+    else if (card.updatedAt > had) updated += 1;
+  }
   return {
     state: {
       ...local,
@@ -396,7 +405,25 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
 
 /** What pushing the whole file would change, in words; other boards are named. */
 export function describeFileChanges(local: BoardState, remote: BoardState | null): string[] {
-  const lines = describeChanges(local.cards, remote?.cards ?? []);
+  // A card on another board than in the file moved; it is not added here and gone there.
+  const homes = (state: BoardState | null) => {
+    const map = new Map<string, { board: string; card: BoardStateCard }>();
+    for (const card of state?.cards ?? []) map.set(card.id, { board: state?.board?.name ?? "the main board", card });
+    for (const b of state?.boards ?? []) for (const card of b.cards) map.set(card.id, { board: b.name, card });
+    return map;
+  };
+  const [mine, theirs0] = [homes(local), homes(remote)];
+  const moved = new Set<string>();
+  const movedLines: string[] = [];
+  for (const [id, here] of mine) {
+    const there = theirs0.get(id);
+    if (there && there.board !== here.board && !here.card.deletedAt) {
+      moved.add(id);
+      movedLines.push(`moved ${here.card.title} from the board ${there.board} to ${here.board}`);
+    }
+  }
+  const keep = (cards: BoardStateCard[]) => cards.filter((c) => !moved.has(c.id));
+  const lines = [...movedLines, ...describeChanges(keep(local.cards), keep(remote?.cards ?? []))];
   if (local.board && remote?.board && local.board.updatedAt > remote.board.updatedAt) {
     lines.push(`edited the board ${local.board.name}`);
   }
@@ -410,7 +437,7 @@ export function describeFileChanges(local: BoardState, remote: BoardState | null
     } else if (board.updatedAt > there.updatedAt) {
       lines.push(there.name !== board.name ? `renamed the board ${there.name} to ${board.name}` : `edited the board ${board.name}`);
     }
-    for (const line of describeChanges(board.cards, there?.cards ?? [])) lines.push(`${board.name}: ${line}`);
+    for (const line of describeChanges(keep(board.cards), keep(there?.cards ?? []))) lines.push(`${board.name}: ${line}`);
   }
   for (const board of remote?.boards ?? []) {
     if (!(local.boards ?? []).some((b) => b.id === board.id) && !board.archivedAt) lines.push(`only on GitHub: board ${board.name}`);

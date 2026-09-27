@@ -1,5 +1,14 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.3
+
+- **Boards keep syncing after a card changes boards.** When you or an agent moved a card to another board, the other computers could no longer sync. They now take the card on its new board.
+- **Move a card to another board yourself.** On a card's page, choose ⋯ → *Move to board*. The card keeps its number, items and links.
+- **Save to repo says so.** A moved card shows as one line, *moved X from the board A to B*.
+- **Long agent output no longer locks a card.** Very long notes from an agent used to leave a card that could not be saved. Agents are now told the limit, and cards that are already too long get fitted to it.
+- **Tighter checks.** Only an admin can change what agents may do, and only when GitHub confirms that role. You can confirm an agent's work only on the board you are viewing.
+- An agent keeps working while an update is being written.
+
 ## What's new in 0.6.2
 
 - **Copy works in the app.** Every copy button did nothing in the desktop app: the code for GitHub, the agent command in Settings, links. Now they copy, including *Copy the code and open GitHub*.

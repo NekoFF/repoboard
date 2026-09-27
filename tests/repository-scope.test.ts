@@ -173,3 +173,106 @@ describe("roles from GitHub", () => {
     }
   });
 });
+
+describe("moving a card to another board", () => {
+  const post = (body: Record<string, unknown>) =>
+    boardRoute.POST(new Request("http://localhost/api/board", { method: "POST", body: JSON.stringify(body) }));
+
+  it("keeps its number and items, takes the milestone by name, and settles an agent's close", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const releaseId = service.createBoard({ name: "Release" });
+    const release = service.getBoardData(releaseId);
+    service.createMilestone({ boardId: main.boardId!, repositoryId: main.repository!.id, name: "Beta" });
+    const betaThere = service.createMilestone({ boardId: releaseId, repositoryId: main.repository!.id, name: "Beta" });
+    const beta = service.getBoardData().milestones.find((m) => m.name === "Beta")!;
+    const review = main.columns.find((c) => c.name === "Review")!;
+    const card = service.createTask({ boardId: main.boardId!, columnId: review.id, title: "Store listing", repositoryId: main.repository!.id });
+    service.updateTask(card, { milestoneId: beta.id, checklist: [{ id: "i1", text: "Screenshots", done: false, notes: null, assignee: null, due: null, children: [], comments: [] }] });
+    sqlite2().prepare("UPDATE tasks SET done_by = ? WHERE id = ?").run(JSON.stringify({ name: "Claude", kind: "agent", reason: "verified", note: "Ran it and saw it", at: 1 }), card);
+    const number = service.getBoardData().tasks.find((t) => t.id === card)!.number;
+
+    const response = await post({ boardId: main.boardId, action: "move-board", taskId: card, toBoardId: releaseId });
+    expect(response.status).toBe(200);
+    const moved = service.getBoardData(releaseId).tasks.find((t) => t.id === card)!;
+    expect(moved).toMatchObject({ number, milestoneId: betaThere, doneBy: null });
+    expect(moved.columnId).toBe(release.columns.find((c) => c.name === "Review")!.id);
+    expect(moved.checklist.map((i) => i.text)).toEqual(["Screenshots"]);
+    expect(service.getBoardData().tasks.some((t) => t.id === card)).toBe(false);
+    expect(service.findCardBoard(`RB-${number}`)).toEqual({ boardId: releaseId, taskId: card });
+
+    // A board this person cannot see is not a destination.
+    const hidden = service.createBoard({ name: "Max only", owner: "max", visibility: "owner" });
+    access.role = "member";
+    const refused = await post({ boardId: releaseId, action: "move-board", taskId: card, toBoardId: hidden });
+    expect(refused.status).toBe(404);
+    access.role = "manager";
+  });
+});
+
+describe("a card moved to another board, arriving from another computer", () => {
+  it("lands on its new board when pulled, and the boards keep syncing", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const areaId = service.createBoard({ name: "Security" });
+    const card = service.createTask({ boardId: main.boardId!, columnId: main.columns[0].id, title: "Audit the token store", repositoryId: main.repository!.id });
+
+    // Computer A moves it and saves the boards: the file GitHub now holds.
+    let file: { content: string; sha: string } | null = null;
+    const github = {
+      getFile: async () => {
+        if (!file) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return file;
+      },
+      putFile: async ({ content }: { content: string }) => {
+        file = { content, sha: `sha${Date.now()}` };
+        return { commitSha: "c1", contentSha: file.sha };
+      },
+    };
+    const factory = async () => github as never;
+    service.moveTaskToBoard(card, areaId);
+    await service.pushBoardState(factory);
+
+    // Computer B has not seen the move: the card is still on its main board there.
+    const db = sqlite2();
+    db.prepare("UPDATE tasks SET board_id = ?, column_id = ?, updated_at = 1 WHERE id = ?").run(main.boardId, main.columns[0].id, card);
+    db.close();
+
+    await expect(service.pullBoardState(factory)).resolves.toBeTruthy();
+    expect(service.findCardBoard(card)).toEqual({ boardId: areaId, taskId: card });
+    expect(service.getBoardData().tasks.some((t) => t.id === card)).toBe(false);
+    // And the next pull is quiet, not stuck.
+    await expect(service.pullBoardState(factory)).resolves.toEqual({ added: 0, updated: 0 });
+  });
+});
+
+describe("settings that need a verified role", () => {
+  it("refuses the agent policy without one, and confirm-done outside the board", async () => {
+    const repoRoute = await import("@/app/api/repo/route");
+    const policy = () =>
+      repoRoute.POST(new Request("http://localhost/api/repo", { method: "POST", body: JSON.stringify({ action: "agent-policy", policy: "propose" }) }));
+    access.valid = true;
+    access.role = "member";
+    expect((await policy()).status).toBe(403);
+    access.role = "manager";
+    // GitHub unreachable or the key ran out: no role, no change.
+    const verified = vi.spyOn(await import("@/lib/github/access"), "currentWho").mockResolvedValueOnce(null);
+    expect((await policy()).status).toBe(403);
+    verified.mockRestore();
+
+    const main = service.getBoardData();
+    const otherId = service.createBoard({ name: "Elsewhere" });
+    const other = service.getBoardData(otherId);
+    const card = service.createTask({ boardId: otherId, columnId: other.columns[0].id, title: "Not here", repositoryId: main.repository!.id });
+    const confirm = await boardRoute.POST(
+      new Request("http://localhost/api/board", { method: "POST", body: JSON.stringify({ boardId: main.boardId, action: "confirm-done", taskId: card }) }),
+    );
+    expect(confirm.status).toBe(404);
+  });
+});
+
+function sqlite2() {
+  return new Database(databaseFile);
+}

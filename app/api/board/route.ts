@@ -37,6 +37,7 @@ import {
   syncBoards,
   listArchivedBoards,
   confirmAgentDone,
+  moveTaskToBoard,
 } from "@/lib/board-service";
 import { DONE_REASONS } from "@/lib/checklist";
 
@@ -192,6 +193,7 @@ const boardPullSchema = z.object({ action: z.literal("board-pull") });
 const boardPushSchema = z.object({ action: z.literal("board-push"), expectedSha: z.string().nullable().optional() });
 const syncNowSchema = z.object({ action: z.literal("sync-now") });
 const confirmDoneSchema = z.object({ action: z.literal("confirm-done"), taskId: z.string() });
+const moveBoardSchema = z.object({ action: z.literal("move-board"), taskId: z.string(), toBoardId: z.string() });
 const syncSettingsSchema = z.object({ action: z.literal("sync-settings"), autoSync: z.boolean() });
 
 const importSchema = z.object({
@@ -239,6 +241,7 @@ const bodySchema = z.discriminatedUnion("action", [
   syncNowSchema,
   syncSettingsSchema,
   confirmDoneSchema,
+  moveBoardSchema,
 ]);
 
 /** Every change made through this route is attributed to the token's owner. */
@@ -325,7 +328,7 @@ async function handlePost(request: Request) {
   const milestoneIds = new Set(data.milestones.map((m) => m.id));
   const invalidTarget =
     ((body.action === "create" || body.action === "import-issues" || body.action === "move" || body.action === "reorder") && !columnIds.has(body.columnId)) ||
-    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment" || body.action === "item-done") && !taskIds.has(body.taskId)) ||
+    ((body.action === "move" || body.action === "update" || body.action === "link" || body.action === "unlink" || body.action === "delete" || body.action === "comment" || body.action === "item-done" || body.action === "confirm-done") && !taskIds.has(body.taskId)) ||
     (body.action === "restore" && !taskBelongsToBoard(body.taskId, data.boardId)) ||
     (body.action === "reorder" && body.orderedIds.some((taskId) => !taskIds.has(taskId))) ||
     ((body.action === "milestone-update" || body.action === "milestone-delete") &&
@@ -434,6 +437,24 @@ async function handlePost(request: Request) {
       return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
     case "board-push":
       return NextResponse.json(await pushBoardState(undefined, body.expectedSha));
+    case "move-board": {
+      if (!taskIds.has(body.taskId)) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      // The board it goes to has to be one this person may see.
+      const destination = listBoards(who).find((b) => b.id === body.toBoardId);
+      if (!destination) return NextResponse.json({ error: "No such board in this project" }, { status: 404 });
+      try {
+        const moved = moveTaskToBoard(body.taskId, body.toBoardId);
+        logActivity({
+          repositoryId: data.repository.id,
+          taskId: body.taskId,
+          type: "card_moved",
+          message: `moved ${moved.title} from the board ${moved.from} to ${moved.to}, ${moved.column}`,
+        });
+        return NextResponse.json({ ok: true, ...moved });
+      } catch (error) {
+        return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+      }
+    }
     case "confirm-done": {
       confirmAgentDone(body.taskId);
       const task = data.tasks.find((t) => t.id === body.taskId);

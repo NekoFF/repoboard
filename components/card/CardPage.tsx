@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
+  ArrowRightLeft,
   ArrowUp,
   CalendarDays,
   Check,
@@ -199,7 +200,18 @@ export function CardPage({
   // Everyone GitHub lets you assign in this repository, plus names already
   // used on the board (agents, people outside GitHub).
   const people = useResource(api.people, [], { enabled: connected });
-  const { agents } = useShell();
+  const { agents, boards: allBoards, role } = useShell();
+  // Where else this card could go: the project's other boards this person sees.
+  const otherBoards = task.markdownTaskId || role === "viewer" ? [] : allBoards.filter((b) => b.id !== data.boardId);
+  const moveToBoard = async (board: { id: string; name: string }) => {
+    try {
+      const moved = await api.boardAction({ boardId: data.boardId, action: "move-board", taskId: task.id, toBoardId: board.id });
+      toast.push({ kind: "success", message: `Moved to ${board.name}`, detail: (moved as { column?: string }).column });
+      router.refresh();
+    } catch (error) {
+      toast.push({ kind: "error", message: "Could not move the card", detail: (error as Error).message });
+    }
+  };
   const allAssignees = useMemo(
     () =>
       Array.from(
@@ -646,6 +658,17 @@ export function CardPage({
               >
                 Copy branch name
               </MenuItem>
+              {otherBoards.length > 0 && (
+                <>
+                  <MenuSeparator />
+                  <MenuLabel>Move to board</MenuLabel>
+                  {otherBoards.map((b) => (
+                    <MenuItem key={b.id} icon={<ArrowRightLeft className="size-3.5" />} onSelect={() => void moveToBoard(b)}>
+                      {b.name}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
               <MenuSeparator />
               <MenuItem danger icon={<Trash2 className="size-3.5" />} onSelect={remove}>
                 Delete card
@@ -665,7 +688,7 @@ export function CardPage({
         {/* ------------------------------------------------------- main -- */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-9">
-            {task.doneBy && (
+            {task.doneBy && status === "done" && (
               <AgentClosed
                 doneBy={task.doneBy}
                 onConfirm={async () => {

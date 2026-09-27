@@ -172,6 +172,8 @@ describe("MCP server arguments", () => {
     expect(toCheck).toMatchObject({ column: "Review" });
     // Closing needs a reason with a real note, and the project has to allow it.
     await refused("move_card", { card: "RB-1", column: "Done", reason: "verified", note: "works" }, "needs proof", "what you saw");
+    await refused("move_card", { card: "RB-1", column: "Done", reason: "verified", note: "x".repeat(5000) }, "under 4000 characters", "comment_on_card");
+    await refused("add_checklist_item", { card: "RB-1", text: "y".repeat(2500) }, '"text" is longer than 2000 characters');
     const closed = await client.call("move_card", { card: "RB-1", column: "Done", reason: "already_done", note: "Landed in commit abc123 last week" });
     expect(JSON.parse(closed.text)).toMatchObject({ column: "Done" });
     const doneBy = sqlite.prepare("SELECT done_by FROM tasks WHERE card_number = 1").get() as { done_by: string };
@@ -265,7 +267,7 @@ describe("MCP server arguments", () => {
   it("points out what is already in the wrong place", async () => {
     const snapshot = {
       version: 1,
-      title: "План сборки",
+      title: "Krumeto",
       total: 6,
       done: 0,
       review: 5,
@@ -274,11 +276,12 @@ describe("MCP server arguments", () => {
       links: [],
     };
     sqlite
-      .prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_plan', ?, '.repoboard/checklists/build-plan.md', 'checklist', ?)")
+      // A name that says nothing: the Russian heading alone gives it away.
+      .prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_plan', ?, '.repoboard/checklists/krumeto.md', 'checklist', ?)")
       .run(REPO, JSON.stringify(snapshot));
     sqlite.prepare("UPDATE tasks SET description = 'Add the repo; pick a domain; rent a server; write the Impressum', checklist = '[]' WHERE card_number = 1").run();
     const me = JSON.parse((await client.call("whoami", {})).text);
-    expect(me.tidyUp.join("\n")).toContain(".repoboard/checklists/build-plan.md");
+    expect(me.tidyUp.join("\n")).toContain(".repoboard/checklists/krumeto.md");
     expect(me.tidyUp.join("\n")).toContain("День 1 — скелет");
     expect(me.tidyUp.join("\n")).toContain("RB-1 keep their steps in the description");
     sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_plan'").run();
@@ -366,6 +369,13 @@ describe("MCP server updates", () => {
 
         // RepoBoard is updated under the running server: new rules, a new tool.
         const core = path.join(dir, "scripts", "mcp-core.mjs");
+        // Half a file, as an update may leave it for a moment: the old tools keep working.
+        const whole = fs.readFileSync(core, "utf8");
+        fs.writeFileSync(core, whole.slice(0, whole.length / 2));
+        fs.utimesSync(core, new Date(), new Date(Date.now() + 2000));
+        const during = await agent.request("tools/call", { name: "list_boards", arguments: {} });
+        expect(during.result?.isError ?? false).toBe(false);
+        fs.writeFileSync(core, whole);
         const source = fs
           .readFileSync(core, "utf8")
           .replace("Start with whoami", "Always greet the owner first.\n\nStart with whoami")

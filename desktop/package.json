@@ -1,7 +1,7 @@
 {
   "name": "repoboard-desktop",
   "productName": "RepoBoard",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Plan your project inside its repository \u2014 RepoBoard as a desktop app.",
   "author": "NekoFF",
   "private": true,

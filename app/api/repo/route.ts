@@ -155,8 +155,9 @@ async function handlePost(request: Request) {
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
     }
     if (body.action === "agent-policy") {
+      // Without a verified role (offline, key ran out) nobody changes it.
       const who = await currentWho();
-      if (who && who.role !== "manager") {
+      if (who?.role !== "manager") {
         return NextResponse.json({ error: "Only a project admin can decide what agents may do.", forbidden: true }, { status: 403 });
       }
       setAgentPolicy(body.policy);
@@ -164,7 +165,7 @@ async function handlePost(request: Request) {
     }
     if (body.action === "look") {
       const who = await currentWho();
-      if (who && who.role !== "manager") {
+      if (who?.role !== "manager") {
         return NextResponse.json({ error: "Only a project admin can change the project's cover.", forbidden: true }, { status: 403 });
       }
       setProjectLook(body.repo, { art: body.art, hue: body.hue });

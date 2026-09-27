@@ -509,6 +509,41 @@ function nextCardNumber(boardId: string): number {
   return (row?.max ?? 0) + 1;
 }
 
+/**
+ * A card to another board of the same project: into the column of the same
+ * name there (else the first), at its end, with a milestone of the same name
+ * (else none). Its number, items, labels and links go with it. A card that
+ * comes from the markdown board file stays on the main board.
+ */
+export function moveTaskToBoard(taskId: string, toBoardId: string): { title: string; from: string; to: string; column: string } {
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+  if (!task || task.deletedAt) throw new Error("No such card");
+  if (task.markdownTaskId) throw new Error("This card comes from the markdown board file, so it stays on the main board.");
+  const from = db.select().from(boards).where(eq(boards.id, task.boardId)).get();
+  const to = db.select().from(boards).where(eq(boards.id, toBoardId)).get();
+  if (!from || !to || to.repositoryId !== from.repositoryId || to.archivedAt) throw new Error("No such board in this project");
+  if (to.id === from.id) throw new Error("The card is already on that board");
+  const columnName = db.select({ name: columns.name }).from(columns).where(eq(columns.id, task.columnId)).get()?.name ?? "";
+  const targetColumns = boardColumnsOf(to.id);
+  const column = targetColumns.find((c) => c.name.toLowerCase() === columnName.toLowerCase()) ?? targetColumns[0];
+  if (!column) throw new Error(`${to.name} has no columns yet`);
+  const milestoneName = task.milestoneId
+    ? db.select({ name: milestones.name }).from(milestones).where(eq(milestones.id, task.milestoneId)).get()?.name
+    : undefined;
+  const milestone = milestoneName ? boardMilestonesOf(to.id).find((m) => m.name === milestoneName) : undefined;
+  const position = db
+    .select({ n: sql<number>`count(*)` })
+    .from(tasks)
+    .where(and(eq(tasks.columnId, column.id), isNull(tasks.deletedAt)))
+    .get()?.n ?? 0;
+  db.update(tasks)
+    // A person moved it: whatever an agent had closed is settled too.
+    .set({ boardId: to.id, columnId: column.id, position, milestoneId: milestone?.id ?? null, doneBy: null, updatedAt: now() })
+    .where(eq(tasks.id, taskId))
+    .run();
+  return { title: task.title, from: from.name, to: to.name, column: column.name };
+}
+
 /** A person settles what an agent closed: confirming keeps it done and makes it theirs. */
 export function confirmAgentDone(taskId: string): void {
   db.update(tasks).set({ doneBy: null, updatedAt: now() }).where(eq(tasks.id, taskId)).run();
@@ -1069,7 +1104,8 @@ export async function syncFromMarkdown(
       if (existing.deletedAt) return;
       if (existing.title !== mdTask.title || existing.columnId !== columnId) {
         db.update(tasks)
-          .set({ title: mdTask.title, columnId, updatedAt: now() })
+          // Moved in the file: whatever an agent had closed is settled.
+          .set({ title: mdTask.title, columnId, ...(existing.columnId !== columnId ? { doneBy: null } : {}), updatedAt: now() })
           .where(eq(tasks.id, existing.id))
           .run();
         updated += 1;
@@ -1511,11 +1547,14 @@ function writeCards(boardId: string, cards: BoardStateCard[]): void {
   const columnByName = new Map(cols.map((c) => [c.name, c.id]));
   const milestoneByName = new Map(boardMilestonesOf(boardId).map((m) => [m.name, m.id]));
 
-  // A remote board file must never move a card that lives on another board.
+  // A card moved between this project's boards arrives on its new board (the
+  // merge keeps each card on one board). A card of another project never moves.
+  const repositoryOf = (id: string) => db.select({ r: boards.repositoryId }).from(boards).where(eq(boards.id, id)).get()?.r ?? null;
+  const here = repositoryOf(boardId);
   for (const card of cards) {
     const existing = db.select({ boardId: tasks.boardId }).from(tasks).where(eq(tasks.id, card.id)).get();
-    if (existing && existing.boardId !== boardId) {
-      throw new Error("A card from another board has the same ID");
+    if (existing && existing.boardId !== boardId && repositoryOf(existing.boardId) !== here) {
+      throw new Error("A card from another project has the same ID");
     }
   }
 

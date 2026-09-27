@@ -398,6 +398,9 @@ const WHY = { verified: "checked", person_confirmed: "a person confirmed", alrea
 function closing(repoId, reason, note) {
   if (!reason) return null;
   if (!FINISH_REASONS.includes(reason)) throw new Error(`reason must be one of: ${PROOF_TEXT}.`);
+  if (String(note ?? "").trim().length > 4000) {
+    throw new Error("note is the proof in short — keep it under 4000 characters; put long output in a comment (comment_on_card) and point to it.");
+  }
   if (!note || String(note).trim().length < 12) {
     throw new Error(`Closing with reason "${reason}" needs proof in note: ${PROOF[reason]}. Without proof, leave out reason and the work goes to a person's check.`);
   }
@@ -456,7 +459,9 @@ function boardAdvice(repoId, board, { placed = true } = {}) {
   return parts.join(" ") || undefined;
 }
 
-const PLAN_WORDS = /\b(day|week|phase|sprint|stage|step)\s*\d|\b(день|неделя|этап|фаза|шаг|спринт)\s*\d|\b(plan|roadmap|backlog|todo)\b|план|бэклог|задачи/i;
+// Word edges by letters, not \b, which knows no Cyrillic.
+const PLAN_WORDS =
+  /(?<![\p{L}\p{N}])(day|week|phase|sprint|stage|step|день|неделя|этап|фаза|шаг|спринт)\s*\d|(?<![\p{L}\p{N}])(plan|roadmap|backlog|todo)(?![\p{L}\p{N}])|план|бэклог|задачи/iu;
 
 /**
  * What is already in the wrong place, for an agent to put right: a plan of
@@ -503,6 +508,8 @@ function buildItems(raw, where = "items", depth = 0) {
     const unknown = Object.keys(entry).filter((k) => !["text", "notes", "assignee", "items"].includes(k));
     if (unknown.length) throw new Error(`${at}: unknown field "${unknown[0]}" — allowed: text, notes, assignee, items`);
     if (typeof entry.text !== "string" || !entry.text.trim()) throw new Error(`${at}.text is required — the step, as a short line`);
+    if (entry.text.length > 2000) throw new Error(`${at}.text is longer than 2000 characters — keep the step short and put details in notes`);
+    if ((entry.notes?.length ?? 0) > 40_000) throw new Error(`${at}.notes is longer than 40000 characters`);
     for (const field of ["notes", "assignee"]) {
       if (entry[field] != null && typeof entry[field] !== "string") throw new Error(`${at}.${field} must be a string — got ${kindOf(entry[field])}`);
     }
@@ -712,10 +719,10 @@ const tools = [
       type: "object",
       properties: {
         card: text,
-        text,
+        text: { type: "string", maxLength: 2000 },
         parent: { type: "string", description: "Text of the item to nest under (optional)" },
-        notes: { type: "string", description: "Markdown: what to do, how to check it, what matters" },
-        assignee: text,
+        notes: { type: "string", maxLength: 40_000, description: "Markdown: what to do, how to check it, what matters" },
+        assignee: { type: "string", maxLength: 100 },
         items: ITEMS,
       },
       required: ["card", "text"],
@@ -751,10 +758,10 @@ const tools = [
       properties: {
         card: text,
         item: { type: "string", description: "Current text of the item" },
-        text: { type: "string", minLength: 1, description: "New text" },
-        notes: text,
-        assignee: text,
-        comment: text,
+        text: { type: "string", minLength: 1, maxLength: 2000, description: "New text" },
+        notes: { type: "string", maxLength: 40_000 },
+        assignee: { type: "string", maxLength: 100 },
+        comment: { type: "string", maxLength: 10_000 },
       },
       required: ["card", "item"],
     },
@@ -1461,6 +1468,7 @@ function checkArguments(tool, raw) {
     if (schema.type === "string") {
       if (typeof value !== "string") wrong();
       else if (schema.minLength && value.trim().length < schema.minLength) problems.push(`"${name}" must not be empty`);
+      else if (schema.maxLength && value.length > schema.maxLength) problems.push(`"${name}" is longer than ${schema.maxLength} characters`);
       else if (schema.enum && !schema.enum.includes(value.toLowerCase())) {
         problems.push(`"${name}" must be one of: ${schema.enum.join(", ")} — got "${value}"`);
       }
