@@ -48,6 +48,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { kindOfPath } from "@/lib/templates";
+import { copyText } from "@/lib/client/clipboard";
 
 type Mode = "checklist" | "read" | "edit";
 
@@ -326,7 +327,7 @@ export function DocScreen({ path }: { path: string }) {
               )}
               <MenuItem
                 icon={<Copy className="size-3.5" />}
-                onSelect={() => navigator.clipboard?.writeText(`[[${path}]]`).then(() => toast.push({ kind: "success", message: "Link copied", detail: `[[${path}]]` }))}
+                onSelect={() => copyText(`[[${path}]]`).then(() => toast.push({ kind: "success", message: "Link copied", detail: `[[${path}]]` }))}
               >
                 Copy link for other documents
               </MenuItem>

@@ -9,7 +9,7 @@
  * Windows 11 the acrylic material, and the page (html.rb-desktop, see
  * app/globals.css) lets it show through the desk behind the panels.
  */
-const { app, BrowserWindow, Menu, nativeTheme, shell, utilityProcess, dialog, ipcMain, session } = require("electron");
+const { app, BrowserWindow, Menu, clipboard, nativeTheme, shell, utilityProcess, dialog, ipcMain, session } = require("electron");
 const path = require("node:path");
 const net = require("node:net");
 const http = require("node:http");
@@ -350,7 +350,17 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     buildMenu();
     // The page asks for nothing (camera, notifications, …): refuse by default.
-    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    // Writing to the clipboard is the one thing it may do, and only RepoBoard's own pages.
+    session.defaultSession.setPermissionRequestHandler((contents, permission, callback) =>
+      callback(permission === "clipboard-sanitized-write" && isInternal(contents.getURL())),
+    );
+    // Copy buttons go through the app itself: the page's own clipboard access
+    // fails whenever the window is not focused (a link just opened the browser).
+    ipcMain.handle("repoboard:copy", (event, text) => {
+      if (!isInternal(event.senderFrame?.url ?? "") || typeof text !== "string" || text.length > 100_000) return false;
+      clipboard.writeText(text);
+      return true;
+    });
     // The shared secret goes with every request to RepoBoard's own server.
     session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
       if (isInternal(details.url)) details.requestHeaders["x-repoboard-token"] = apiToken;

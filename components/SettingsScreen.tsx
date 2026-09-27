@@ -12,6 +12,7 @@ import { Logo, RelativeTime, Segmented, Spinner, useToast } from "@/components/u
 import { api, type ProjectHealth, type ProjectInfo } from "@/lib/client/api";
 import { openProject } from "@/lib/client/project";
 import { ROLE_LABEL } from "@/lib/roles";
+import { copyText } from "@/lib/client/clipboard";
 
 function Card({ title, icon, description, children }: { title: string; icon: ReactNode; description?: ReactNode; children: ReactNode }) {
   return (
@@ -89,13 +90,14 @@ function AgentSetup({ server, node, env }: { server: string; node: string; env: 
 function CopyBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="relative rounded-lg border border-border bg-code-bg">
-      <pre className="overflow-x-auto whitespace-pre p-3 pr-12 font-mono text-xs leading-relaxed text-ink">{text}</pre>
+    // The button has a column of its own: a long line scrolls beside it, never under it.
+    <div className="flex items-start rounded-lg border border-border bg-code-bg">
+      <pre className="rb-scroll-thin min-w-0 flex-1 overflow-x-auto whitespace-pre py-3 pl-3 font-mono text-xs leading-relaxed text-ink">{text}</pre>
       <button
-        className="rb-icon-btn absolute right-1.5 top-1.5"
+        className="rb-icon-btn m-1.5 shrink-0"
         aria-label="Copy"
         onClick={() =>
-          navigator.clipboard?.writeText(text).then(() => {
+          void copyText(text).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           })

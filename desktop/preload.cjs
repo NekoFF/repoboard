@@ -10,6 +10,8 @@ const platform = process.platform === "darwin" ? "mac" : process.platform === "w
 
 contextBridge.exposeInMainWorld("repoboardDesktop", {
   platform,
+  /** Put text on the clipboard (write only: the page never reads it). */
+  copy: (text) => ipcRenderer.invoke("repoboard:copy", String(text)),
   updates: {
     state: () => ipcRenderer.invoke("repoboard:update-state"),
     download: () => ipcRenderer.invoke("repoboard:update-download"),

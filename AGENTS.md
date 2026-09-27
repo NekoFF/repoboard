@@ -114,7 +114,10 @@ Project (a GitHub repository)
    too. The desktop app also shares a per-launch secret with its server
    (`REPOBOARD_API_TOKEN`, sent as `x-repoboard-token` on every request), so
    other programs on the computer cannot use it; its windows never show a
-   page outside RepoBoard (`guardContents` in `desktop/main.cjs`).
+   page outside RepoBoard (`guardContents` in `desktop/main.cjs`), and they
+   get no permissions but writing the clipboard. Copy buttons use `copyText`
+   (`lib/client/clipboard.ts`), which goes through the app there
+   (`repoboard:copy`) — never `navigator.clipboard` directly.
 11. **Roles come from GitHub** (`lib/roles.ts`): Admin/Maintain → manager,
    Write → member, Triage/Read → viewer, from the repository's
    `permissions` for the token (`RepoSummary.role`, `currentWho()`). The
