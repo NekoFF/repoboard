@@ -236,6 +236,7 @@ function createWindow() {
 
   win.once("ready-to-show", () => win.show());
   // For checking the layout from a script: REPOBOARD_CAPTURE=shot.png electron .
+  // (REPOBOARD_CAPTURE_PATH=/board for another page)
   if (process.env.REPOBOARD_CAPTURE) {
     win.webContents.once("did-finish-load", () => {
       setTimeout(async () => {
@@ -248,7 +249,8 @@ function createWindow() {
   win.on("closed", () => {
     win = null;
   });
-  win.loadURL(origin);
+  // REPOBOARD_CAPTURE_PATH opens another page for the capture (README screenshots).
+  win.loadURL(origin + (process.env.REPOBOARD_CAPTURE ? (process.env.REPOBOARD_CAPTURE_PATH ?? "") : ""));
 }
 
 function goBack() {
