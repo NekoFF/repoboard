@@ -197,12 +197,17 @@ export function AppShell({
       ),
     [viewer, collaborators.data],
   );
+  const avatars = useMemo(
+    () => Object.fromEntries((collaborators.data?.people ?? []).filter((p) => p.avatarUrl).map((p) => [p.login.toLowerCase(), p.avatarUrl])),
+    [collaborators.data],
+  );
 
   const shell = useMemo(
     () => ({
       repo,
       viewer,
       people,
+      avatars,
       connected: unlocked,
       projects,
       docs,
@@ -213,7 +218,7 @@ export function AppShell({
       openPalette,
       openShortcuts,
     }),
-    [repo, viewer, people, unlocked, projects, docs, boards, managedByEnvironment, role, agents, openPalette, openShortcuts],
+    [repo, viewer, people, avatars, unlocked, projects, docs, boards, managedByEnvironment, role, agents, openPalette, openShortcuts],
   );
 
   const showingSettings = pathname === "/settings";

@@ -139,6 +139,8 @@ export const api = {
 
   setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
     post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
+  setAgentPolicy: (policy: "propose" | "reason") =>
+    post<{ ok: true; policy: "propose" | "reason" }>("/api/repo", { action: "agent-policy", policy }),
 
   /* signing in with GitHub (app/api/auth/github) */
   githubSignIn: {

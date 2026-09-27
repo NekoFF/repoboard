@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Shown in Settings; the desktop app passes its own (REPOBOARD_APP_VERSION).
+  env: { REPOBOARD_VERSION: JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version },
   // Production builds get their own directory: running `npm run build` while
   // `npm run dev` is up used to overwrite .next and leave the dev server
   // serving HTML that pointed at CSS chunks which no longer existed.

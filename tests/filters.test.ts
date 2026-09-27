@@ -23,6 +23,7 @@ function card(patch: Partial<BoardTask>): BoardTask {
     milestoneId: null,
     updatedAt: 0,
     checklist: [],
+    doneBy: null,
     markdownTaskId: null,
     labels: [],
     branches: [],

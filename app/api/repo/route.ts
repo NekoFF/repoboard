@@ -8,6 +8,7 @@ import {
   getBoardData,
   getRepoIdentity,
   projectSummaries,
+  setAgentPolicy,
   setProjectLook,
 } from "@/lib/board-service";
 import {
@@ -107,6 +108,7 @@ const bodySchema = z.union([
     art: z.string().max(40).nullable(),
     hue: z.number().int().min(0).max(360).nullable(),
   }),
+  z.object({ action: z.literal("agent-policy"), policy: z.enum(["propose", "reason"]) }),
   z.object({ action: z.literal("switch"), repo: slug }),
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
@@ -118,7 +120,14 @@ export async function POST(request: Request) {
 }
 
 async function handlePost(request: Request) {
-  if (isEnvironmentConfigured()) {
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+  }
+  const body = parsed.data;
+  // The environment fixes which repository and token; the project's own settings stay the person's.
+  const projectSetting = "action" in body && (body.action === "agent-policy" || body.action === "look");
+  if (isEnvironmentConfigured() && !projectSetting) {
     return NextResponse.json(
       {
         error:
@@ -127,11 +136,6 @@ async function handlePost(request: Request) {
       { status: 409 },
     );
   }
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
-  }
-  const body = parsed.data;
 
   try {
     if (body.action === "repos") {
@@ -149,6 +153,14 @@ async function handlePost(request: Request) {
       saveProject(`${summary.owner}/${summary.name}`, body.token.trim(), "key", host);
       invalidateAccessCache();
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
+    }
+    if (body.action === "agent-policy") {
+      const who = await currentWho();
+      if (who && who.role !== "manager") {
+        return NextResponse.json({ error: "Only a project admin can decide what agents may do.", forbidden: true }, { status: 403 });
+      }
+      setAgentPolicy(body.policy);
+      return NextResponse.json({ ok: true, policy: body.policy });
     }
     if (body.action === "look") {
       const who = await currentWho();

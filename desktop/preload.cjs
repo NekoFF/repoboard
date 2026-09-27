@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("repoboardDesktop", {
     state: () => ipcRenderer.invoke("repoboard:update-state"),
     download: () => ipcRenderer.invoke("repoboard:update-download"),
     install: () => ipcRenderer.invoke("repoboard:update-install"),
+    /** Look now, and say so either way (a dialog when there is nothing new). */
+    check: () => ipcRenderer.invoke("repoboard:update-check"),
     /** Calls back with every change; returns a function that stops listening. */
     subscribe: (callback) => {
       const listener = (_event, state) => callback(state);

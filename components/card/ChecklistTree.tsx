@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { CalendarDays, ChevronRight, CornerDownRight, MessageSquareText, NotebookText, Plus, Trash2 } from "lucide-react";
 import {
+  DONE_REASON_LABEL,
   newId,
   addItem,
   locate,
   progress,
   removeItem,
   setDone,
+  updateItem,
   type Checklist,
   type ChecklistItem,
 } from "@/lib/checklist";
@@ -95,10 +97,10 @@ export function ChecklistTree({
           </button>
           <button
             className="grid size-6 shrink-0 place-items-center rounded-md hover:bg-pill"
-            aria-label={item.done ? "Mark as not done" : "Mark as done"}
+            aria-label={item.done ? "Mark as not done" : item.review ? "Checked — mark as done" : "Mark as done"}
             onClick={() => onChange(setDone(items, item.id, !item.done))}
           >
-            <StatusIcon status={item.done ? "done" : kidProgress.done > 0 ? "doing" : "todo"} size={16} />
+            <StatusIcon status={item.done ? "done" : item.review ? "review" : kidProgress.done > 0 ? "doing" : "todo"} size={16} />
           </button>
           <span className="w-9 shrink-0 font-mono text-2xs text-faint">{number}</span>
           <button className="min-w-0 flex-1 truncate py-2 text-left" onClick={() => setDialog(item.id)}>
@@ -107,6 +109,20 @@ export function ChecklistTree({
             </span>
           </button>
           <span className="flex shrink-0 items-center gap-2 text-2xs text-faint">
+            {/* An agent said it is finished: a person checks, then ticks it. */}
+            {item.review && !item.done && <span className="rb-pill-review">Needs your check</span>}
+            {/* An agent closed it and left its proof; pressing hides the note. */}
+            {item.done && item.doneBy && (
+              <Tooltip content={`${item.doneBy.name}: ${item.doneBy.note} — press to hide`}>
+                <button
+                  className="rb-pill inline-flex items-center gap-1 hover:opacity-80"
+                  onClick={() => onChange(updateItem(items, item.id, (i) => ({ ...i, doneBy: null })))}
+                >
+                  <ActorAvatar name={item.doneBy.name} kind="agent" size={12} />
+                  {DONE_REASON_LABEL[item.doneBy.reason].short}
+                </button>
+              </Tooltip>
+            )}
             {item.notes && (
               <Tooltip content="Has notes">
                 <NotebookText className="size-3.5" />

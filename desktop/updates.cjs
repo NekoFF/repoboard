@@ -226,12 +226,22 @@ async function install() {
     app.quit();
     return;
   }
-  // macOS: open the disk image; the person drags RepoBoard to Applications.
+  // macOS: open the disk image, then quit — a running RepoBoard cannot be
+  // replaced, so the old one would keep running and keep offering the update.
   await shell.openPath(file);
+  await dialog.showMessageBox({
+    type: "info",
+    message: "Drag RepoBoard to Applications",
+    detail: "In the window that opened, drag RepoBoard onto Applications and choose Replace. RepoBoard closes now so it can be replaced; open it again from Applications afterwards.",
+    buttons: ["OK"],
+  });
+  app.isQuitting = true;
+  app.quit();
 }
 
 function listen(ipcMain, getWin) {
   cleanUp();
+  ipcMain.handle("repoboard:update-check", () => check(getWin(), { manual: true }));
   ipcMain.handle("repoboard:update-state", () => state);
   ipcMain.handle("repoboard:update-download", () => download(getWin()));
   ipcMain.handle("repoboard:update-install", () => install());

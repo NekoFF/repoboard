@@ -193,6 +193,10 @@
   .rb-pill-ok {
     @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-success-bg px-1.5 text-2xs font-medium text-success-fg;
   }
+  /* Waiting for a person's check, or closed by an agent: the review state's colour. */
+  .rb-pill-review {
+    @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-state-review/15 px-1.5 text-2xs font-medium text-state-review;
+  }
   .rb-pill-warn {
     @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm bg-warn-bg px-1.5 text-2xs font-medium text-warn-fg;
   }
@@ -1314,3 +1318,17 @@ html.rb-desktop-win .rb-desktop-titlebar {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
   mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
 }
+/* AI agents' marks (components/Actor.tsx AgentMark): each in its own colours. */
+.rb-agent {
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.08);
+}
+.rb-agent-claude { background: #d97757; color: #fff; }
+.rb-agent-codex { background: #111418; color: #fff; }
+.rb-agent-cursor { background: #1b1b1f; color: #fff; }
+.rb-agent-gemini { background: linear-gradient(135deg, #4f7cff, #a35bf2); color: #fff; }
+.rb-agent-copilot { background: #24292f; color: #fff; }
+.rb-agent-windsurf { background: #0fa3a3; color: #fff; }
+.rb-agent-other { background: rgb(var(--state-review) / 0.15); color: rgb(var(--state-review)); }
+.dark .rb-agent-codex,
+.dark .rb-agent-cursor,
+.dark .rb-agent-copilot { background: #f2f3f5; color: #111418; }

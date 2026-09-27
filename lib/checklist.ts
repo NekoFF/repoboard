@@ -17,10 +17,38 @@ export interface ChecklistComment {
   at: number;
 }
 
+/**
+ * An AI agent closed it, and the proof it gave: it checked the work itself,
+ * a person told it they had, it was done before, or nothing a person could
+ * look at would check it. The note says how (what ran, who said so, where).
+ */
+export const DONE_REASONS = ["verified", "person_confirmed", "already_done", "cannot_be_checked"] as const;
+export type DoneReason = (typeof DONE_REASONS)[number];
+
+/** How the proof reads: short on an item, whole in a sentence on a card. */
+export const DONE_REASON_LABEL: Record<DoneReason, { short: string; long: string }> = {
+  verified: { short: "Checked", long: "checked it itself" },
+  person_confirmed: { short: "You confirmed", long: "closed it because a person confirmed it" },
+  already_done: { short: "Done before", long: "found it was already done" },
+  cannot_be_checked: { short: "Nothing to check", long: "closed it: nothing a person could check" },
+};
+
+export interface DoneBy {
+  name: string;
+  kind: "agent";
+  reason: DoneReason;
+  note: string;
+  at: number;
+}
+
 export interface ChecklistItem {
   id: string;
   text: string;
   done: boolean;
+  /** An agent says it is finished; waiting for a person to check (like [?] in documents). */
+  review?: boolean;
+  /** Set when an agent closed it; cleared when a person ticks it or confirms. */
+  doneBy?: DoneBy | null;
   /** Markdown: what to do, how to verify it, anything worth knowing. */
   notes?: string | null;
   assignee?: string | null;
@@ -85,16 +113,19 @@ export function addItem(items: Checklist, parentId: string | null, item: Checkli
  * ancestors, since they cannot be done while part of them is not.
  */
 export function setDone(items: Checklist, id: string, done: boolean): Checklist {
+  // A person ticking or reopening settles it: no longer waiting, no longer an agent's.
   const setAll = (item: ChecklistItem): ChecklistItem => ({
     ...item,
     done,
+    review: false,
+    doneBy: null,
     children: item.children?.map(setAll),
   });
-  let next = updateItem(items, id, (item) => (done ? setAll(item) : { ...item, done: false }));
+  let next = updateItem(items, id, (item) => (done ? setAll(item) : { ...item, done: false, review: false, doneBy: null }));
   if (!done) {
     const found = locate(next, id);
     for (const ancestor of found?.path ?? []) {
-      next = updateItem(next, ancestor.id, (a) => ({ ...a, done: false }));
+      next = updateItem(next, ancestor.id, (a) => ({ ...a, done: false, doneBy: null }));
     }
   }
   return next;
@@ -117,6 +148,22 @@ export function findByText(items: Checklist, text: string): ChecklistItem | null
 }
 
 /** Accepts anything that was ever stored as a checklist and returns a clean tree. */
+/** Items at any depth an agent sent for a person's check. What it closed with proof waits for nobody. */
+export function waitingForCheck(items: Checklist): number {
+  return items.reduce(
+    (sum, item) => sum + (item.review && !item.done ? 1 : 0) + waitingForCheck(item.children ?? []),
+    0,
+  );
+}
+
+/** An agent's closing record as it came from a file or the database, or null if it is not one. */
+export function cleanDoneBy(value: unknown): DoneBy | null {
+  const by = value as Partial<DoneBy> | null | undefined;
+  return by && typeof by === "object" && typeof by.name === "string" && (DONE_REASONS as readonly string[]).includes(by.reason as string)
+    ? { name: by.name, kind: "agent", reason: by.reason as DoneReason, note: typeof by.note === "string" ? by.note : "", at: typeof by.at === "number" ? by.at : 0 }
+    : null;
+}
+
 export function normalise(value: unknown): Checklist {
   if (!Array.isArray(value)) return [];
   return value
@@ -125,10 +172,13 @@ export function normalise(value: unknown): Checklist {
       const item = v as ChecklistItem;
       // Items can come from a teammate's board.json: keep only fields of the right kind.
       const str = (x: unknown) => (typeof x === "string" ? x : null);
+      const doneBy = cleanDoneBy(item.doneBy);
       return {
         id: String(item.id ?? Math.random().toString(36).slice(2)),
         text: item.text,
         done: Boolean(item.done),
+        ...(item.review === true ? { review: true } : {}),
+        ...(doneBy ? { doneBy } : {}),
         notes: str(item.notes),
         assignee: str(item.assignee),
         due: typeof item.due === "number" ? item.due : null,

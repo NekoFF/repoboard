@@ -36,7 +36,9 @@ import {
   setAutoSync,
   syncBoards,
   listArchivedBoards,
+  confirmAgentDone,
 } from "@/lib/board-service";
+import { DONE_REASONS } from "@/lib/checklist";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +79,16 @@ const checklistItem: z.ZodType<ChecklistItem> = z.lazy(() =>
     id: z.string().min(1).max(64),
     text: z.string().max(2000),
     done: z.boolean(),
+    review: z.boolean().optional(),
+    doneBy: z
+      .object({
+        name: z.string().max(100),
+        kind: z.literal("agent"),
+        reason: z.enum(DONE_REASONS),
+        note: z.string().max(4000),
+        at: z.number(),
+      })
+      .nullish(),
     notes: z.string().max(40_000).nullish(),
     assignee: z.string().max(100).nullish(),
     due: z.number().nullish(),
@@ -179,6 +191,7 @@ const boardStatusSchema = z.object({ action: z.literal("board-status") });
 const boardPullSchema = z.object({ action: z.literal("board-pull") });
 const boardPushSchema = z.object({ action: z.literal("board-push"), expectedSha: z.string().nullable().optional() });
 const syncNowSchema = z.object({ action: z.literal("sync-now") });
+const confirmDoneSchema = z.object({ action: z.literal("confirm-done"), taskId: z.string() });
 const syncSettingsSchema = z.object({ action: z.literal("sync-settings"), autoSync: z.boolean() });
 
 const importSchema = z.object({
@@ -225,6 +238,7 @@ const bodySchema = z.discriminatedUnion("action", [
   boardPushSchema,
   syncNowSchema,
   syncSettingsSchema,
+  confirmDoneSchema,
 ]);
 
 /** Every change made through this route is attributed to the token's owner. */
@@ -360,6 +374,8 @@ async function handlePost(request: Request) {
       if (!moved) {
         return NextResponse.json({ error: "Task not found" }, { status: 404 });
       }
+      // A person moving a card settles whatever an agent had closed.
+      if (moved.fromColumn !== moved.toColumn) confirmAgentDone(body.taskId);
       if (moved.fromColumn !== moved.toColumn) {
         const task = data.tasks.find((t) => t.id === body.taskId);
         logActivity({
@@ -418,6 +434,17 @@ async function handlePost(request: Request) {
       return NextResponse.json((await pullBoardState()) ?? { added: 0, updated: 0 });
     case "board-push":
       return NextResponse.json(await pushBoardState(undefined, body.expectedSha));
+    case "confirm-done": {
+      confirmAgentDone(body.taskId);
+      const task = data.tasks.find((t) => t.id === body.taskId);
+      logActivity({
+        repositoryId: data.repository.id,
+        taskId: body.taskId,
+        type: "card_updated",
+        message: `confirmed ${task?.title ?? "a card"} closed by ${task?.doneBy?.name ?? "an agent"}`,
+      });
+      return NextResponse.json({ ok: true });
+    }
     case "sync-now":
       return NextResponse.json(await syncBoards());
     case "sync-settings":

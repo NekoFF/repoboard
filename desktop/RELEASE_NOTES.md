@@ -1,5 +1,14 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.0
+
+- **AI agents close work when they can prove it.** An agent marks a card or item done when it checked the work itself, when you told it you did, or when it was done before, and it says how it knows. The proof shows on the card, and *Reopen* sends it back. Without proof, the work waits in Review for you. In Settings → AI agents you can make every close wait for you instead.
+- **A calmer Inbox.** When an agent makes sixty changes in one go, the Inbox shows one line, for example *Claude made 60 changes: created 12 cards, moved 30…*. Open it to see each change.
+- **Better organised boards.** Agents are told to give large areas such as Design, Security or Release a board of their own. They can now create one.
+- **Who did what, at a glance.** The activity shows each agent's own mark and people's GitHub photos.
+- **The version in Settings.** Settings → About says which version runs, with *Check for updates*.
+- **Clearer answers for agents.** When an agent sends something wrong, RepoBoard tells it what to fix. It no longer passes on a database error.
+
 ## What's new in 0.5.0
 
 - **GitLab too.** The connect screen has GitHub and GitLab. For GitLab, give it gitlab.com or your company's own server, get a key (the link opens GitLab's page already filled in), and pick your projects. Boards, sync, checklists, the project's life, merge requests and roles all work the same way.

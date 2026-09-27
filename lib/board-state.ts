@@ -1,4 +1,4 @@
-import { normalise, type ChecklistItem } from "@/lib/checklist";
+import { cleanDoneBy, normalise, type ChecklistItem, type DoneBy } from "@/lib/checklist";
 
 /**
  * The board as a file in the repository.
@@ -33,6 +33,8 @@ export interface BoardStateCard {
   /** Optional so board files written before these existed still parse. */
   priority?: number;
   milestone?: string | null;
+  /** An AI agent closed the card with this reason; left out when nobody did. */
+  doneBy?: DoneBy;
   updatedAt: number;
   deletedAt: number | null;
 }
@@ -102,6 +104,12 @@ const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string =>
 const numbers = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is number => typeof x === "number") : []);
 const text = (v: unknown) => (typeof v === "string" ? v : null);
 
+/** The field only when there is a record, so files and comparisons stay as they were without one. */
+export function doneByField(value: unknown): { doneBy?: DoneBy } {
+  const doneBy = cleanDoneBy(value);
+  return doneBy ? { doneBy } : {};
+}
+
 function cleanCard(raw: unknown): BoardStateCard | null {
   const c = raw as Record<string, unknown>;
   if (!c || typeof c.id !== "string" || typeof c.title !== "string") return null;
@@ -122,6 +130,7 @@ function cleanCard(raw: unknown): BoardStateCard | null {
     markdownTaskId: text(c.markdownTaskId),
     priority: typeof c.priority === "number" ? c.priority : 0,
     milestone: text(c.milestone),
+    ...doneByField(c.doneBy),
     updatedAt: latest(c.updatedAt),
     deletedAt: typeof c.deletedAt === "number" ? c.deletedAt : null,
   };

@@ -116,13 +116,75 @@ const HEALTH_TEXT: Record<ProjectHealth, string> = {
   unknown: "Could not check",
 };
 
+/** The desktop app asks GitHub Releases now, and says so either way. */
+function CheckForUpdates() {
+  const [busy, setBusy] = useState(false);
+  type Bridge = { updates?: { check?: () => Promise<void> } };
+  // Read after mount: the page is rendered on the server first, where there is no app bridge.
+  const [bridge, setBridge] = useState<Bridge | null>(null);
+  useEffect(() => setBridge((window as unknown as { repoboardDesktop?: Bridge }).repoboardDesktop ?? null), []);
+  if (!bridge?.updates?.check) return null;
+  return (
+    <button
+      className="rb-btn rb-btn-sm"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void bridge.updates!.check!().finally(() => setBusy(false));
+      }}
+    >
+      {busy && <Spinner />} Check for updates
+    </button>
+  );
+}
+
+/** Whether agents may close cards and items themselves, when they say why. */
+function AgentPolicy({ initial, canChange }: { initial: "propose" | "reason"; canChange: boolean }) {
+  const toast = useToast();
+  const [policy, setPolicy] = useState(initial);
+  const change = async (next: "propose" | "reason") => {
+    const before = policy;
+    setPolicy(next);
+    try {
+      await api.setAgentPolicy(next);
+    } catch (error) {
+      setPolicy(before);
+      toast.push({ kind: "error", message: "Could not change it", detail: (error as Error).message });
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium text-ink">When an agent finishes work</p>
+      <Segmented
+        size="sm"
+        value={policy}
+        onChange={(v) => canChange && void change(v)}
+        options={[
+          { value: "reason", label: "Close with proof" },
+          { value: "propose", label: "Only send to check" },
+        ]}
+      />
+      <p className="text-sm text-muted">
+        {policy === "reason"
+          ? "Agents close work when they can show it is done: they checked it themselves, you told them you did, or it was done before. The proof shows on the card and you can reopen it. Without proof, work waits in Review for you."
+          : "Agents never close anything: finished work always waits in Review for you."}
+        {!canChange && " Only a project admin can change this."}
+      </p>
+    </div>
+  );
+}
+
 export function SettingsScreen({
+  agentPolicy,
+  version,
   authLabel,
   tokenSource,
   managedByEnvironment,
   paths,
   mcp,
 }: {
+  agentPolicy: "propose" | "reason";
+  version: { number: string; desktop: boolean };
   authLabel: string;
   tokenSource: string | null;
   managedByEnvironment: boolean;
@@ -336,11 +398,30 @@ export function SettingsScreen({
             }
           >
             <AgentSetup server={paths.mcpServer} node={mcp.node} env={mcp.env} />
+            {connected && <AgentPolicy initial={agentPolicy} canChange={role === "manager"} />}
             <p className="text-sm text-muted">
-              The rules agents follow — never tick an item themselves, mark it <code className="font-mono text-xs">[?]</code> and
-              say how to verify it — are in <code className="font-mono text-xs">.repoboard/README.md</code>, which RepoBoard
-              creates with the workspace.
+              In documents agents never tick an item themselves: they mark it <code className="font-mono text-xs">[?]</code> and
+              say how to verify it. The rules are in <code className="font-mono text-xs">.repoboard/README.md</code>, which
+              RepoBoard creates with the workspace.
             </p>
+          </Card>
+
+          <Card title="About" icon={<Logo size={16} />}>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-ink">
+                RepoBoard <span className="font-mono tabular-nums">{version.number}</span>
+                <span className="text-muted"> · {version.desktop ? "desktop app" : "in the browser"}</span>
+              </p>
+              {version.desktop && <CheckForUpdates />}
+              <a
+                className="ml-auto text-sm text-muted underline decoration-ink/20 underline-offset-2 hover:text-ink"
+                href="https://github.com/NekoFF/repoboard/releases"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                What&rsquo;s new
+              </a>
+            </div>
           </Card>
 
           <Card title="Your data" icon={<HardDrive className="size-4" />} description="Everything RepoBoard stores lives in two files on this computer. Back them up by copying the folder.">

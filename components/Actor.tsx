@@ -25,6 +25,67 @@ export function isAgentName(name: string, agents: string[] = []): boolean {
 }
 
 /**
+ * Each agent in its own colours, so the activity feed tells Claude from
+ * Codex at a glance. Drawn marks, not the companies' logos; colours are the
+ * .rb-agent-* rules in app/globals.css.
+ */
+function AgentMark({ name, size }: { name: string; size: number }) {
+  const label = agentLabel(name).toLowerCase();
+  const glyph = (() => {
+    switch (label) {
+      case "claude":
+        // A starburst of rays.
+        return (
+          <g stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            {Array.from({ length: 8 }, (_, i) => {
+              const a = (i / 8) * Math.PI * 2;
+              const r = i % 2 ? 6.2 : 7.6;
+              return <line key={i} x1={12 + Math.cos(a) * 2} y1={12 + Math.sin(a) * 2} x2={12 + Math.cos(a) * r} y2={12 + Math.sin(a) * r} />;
+            })}
+          </g>
+        );
+      case "codex":
+        return (
+          <g fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 9l3 3-3 3" />
+            <path d="M12.5 15.5H17" />
+          </g>
+        );
+      case "cursor":
+        return <path d="M8 6.5l9 5-4 1.2-1.8 4.3z" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />;
+      case "gemini":
+        return <path d="M12 4.5c.6 4 3.5 6.9 7.5 7.5-4 .6-6.9 3.5-7.5 7.5-.6-4-3.5-6.9-7.5-7.5 4-.6 6.9-3.5 7.5-7.5z" fill="currentColor" />;
+      case "copilot":
+        return (
+          <g fill="currentColor">
+            <circle cx="9" cy="12" r="2.4" />
+            <circle cx="15" cy="12" r="2.4" />
+          </g>
+        );
+      case "windsurf":
+        return <path d="M5 14c2.5-3 4.5-3 7 0s4.5 3 7 0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />;
+      default:
+        return null;
+    }
+  })();
+  return (
+    <span
+      title={`${agentLabel(name)} (AI)`}
+      className={`rb-agent rb-agent-${glyph ? label : "other"} grid shrink-0 place-items-center rounded-full`}
+      style={{ width: size, height: size }}
+    >
+      {glyph ? (
+        <svg viewBox="0 0 24 24" style={{ width: size * 0.78, height: size * 0.78 }} aria-hidden>
+          {glyph}
+        </svg>
+      ) : (
+        <Sparkles style={{ width: size * 0.55, height: size * 0.55 }} />
+      )}
+    </span>
+  );
+}
+
+/**
  * A person's GitHub avatar, or a mark for an AI agent. The photo comes from
  * github.com/<login>.png, but only for people who work on the repository (see
  * `people` in the shell): any other name — typed for a board or a card — would
@@ -41,23 +102,19 @@ export function ActorAvatar({
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const { people, agents, projects } = useShell();
+  const { people, agents, projects, avatars } = useShell();
   // Photos come from github.com by login; a GitLab project's people are someone else there.
   const onGitLab = projects.find((p) => p.active)?.host?.kind === "gitlab";
   // A card assigned to "Claude" is assigned to an agent: show it as one.
   if (kind === "agent" || (kind !== "person" && isAgentName(name, agents))) {
-    return (
-      <span
-        title={agentLabel(name)}
-        className="grid shrink-0 place-items-center rounded-full bg-state-review/15 text-state-review ring-1 ring-state-review/25"
-        style={{ width: size, height: size }}
-      >
-        <Sparkles style={{ width: size * 0.55, height: size * 0.55 }} />
-      </span>
-    );
+    return <AgentMark name={name} size={size} />;
   }
   const login = name.replace(/^@/, "");
-  if (failed || onGitLab || !/^[A-Za-z0-9-]+$/.test(login) || !people.includes(login.toLowerCase())) {
+  // The project's own list of people carries their photos (GitHub or GitLab);
+  // github.com/<login>.png only for GitHub projects, and only for its people.
+  const listed = avatars[login.toLowerCase()];
+  const src = listed || (!onGitLab ? `https://github.com/${login}.png?size=${size * 2}` : null);
+  if (failed || !src || !/^[A-Za-z0-9._-]+$/.test(login) || !people.includes(login.toLowerCase())) {
     return (
       <span
         title={login}
@@ -71,7 +128,7 @@ export function ActorAvatar({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://github.com/${login}.png?size=${size * 2}`}
+      src={src}
       alt={login}
       title={login}
       width={size}

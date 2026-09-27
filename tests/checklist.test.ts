@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addItem, findByText, locate, normalise, progress, removeItem, setDone } from "@/lib/checklist";
+import { addItem, findByText, locate, normalise, progress, removeItem, setDone, waitingForCheck } from "@/lib/checklist";
 
 const tree = normalise([
   {
@@ -45,5 +45,26 @@ describe("checklist tree", () => {
     const flat = normalise([{ id: "a", text: "One", done: true }]);
     expect(flat[0]).toMatchObject({ text: "One", done: true, children: [], comments: [] });
     expect(findByText(tree, "clear HISTORY")?.id).toBe("clear");
+  });
+
+  it("keeps what an agent left for a person until a person settles it", () => {
+    const by = { name: "Claude", kind: "agent", reason: "already_done", note: "Landed in #12", at: 1 };
+    const left = normalise([
+      { id: "a", text: "Sent to check", done: false, review: true },
+      { id: "b", text: "Closed by an agent", done: true, doneBy: by, children: [{ id: "c", text: "Child", done: true }] },
+      { id: "d", text: "Odd record", done: true, doneBy: { name: "x", reason: "because" } },
+    ]);
+    expect(left[0].review).toBe(true);
+    expect(left[1].doneBy).toEqual(by);
+    expect(left[2].doneBy).toBeUndefined();
+    // What an agent closed with proof waits for nobody.
+    expect(waitingForCheck(left)).toBe(1);
+    // A person ticking or reopening settles it.
+    const ticked = setDone(left, "a", true);
+    expect(ticked[0]).toMatchObject({ done: true, review: false, doneBy: null });
+    const reopened = setDone(left, "c", false);
+    expect(reopened[1]).toMatchObject({ done: false, doneBy: null });
+    expect(waitingForCheck(reopened)).toBe(1);
+    expect(normalise([{ id: "e", text: "Checked", done: true, doneBy: { ...by, reason: "verified" } }])[0].doneBy?.reason).toBe("verified");
   });
 });
