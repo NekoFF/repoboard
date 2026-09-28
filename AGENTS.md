@@ -105,7 +105,13 @@ Project (a GitHub repository)
    writes `.repoboard/board.json` — and only that — on the `repoboard`
    branch (`SYNC_BRANCH`, cut from the default branch by `ensureBranch`),
    merging first and with the SHA it read. Never the default branch, never
-   another file.
+   another file. The second exception, also the owner's choice: with
+   **agents writing documents directly** (`repositories.agent_docs =
+   "direct"`, Settings → AI agents, managers only) `applyProposals` in
+   `lib/docs-service.ts` commits agents' proposals — only under
+   `.repoboard/`, on the documents' branch, through `commitDocEdit` /
+   `createFiles` with the SHA it read. A proposal that no longer fits the
+   file waits for the person; agents still never set `[x]` or `Checked:`.
 2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),
    the list view and the card page all go through `useCommitMove` in
    `lib/client/moves.ts`, so a markdown-backed card always joins the queue of

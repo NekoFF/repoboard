@@ -99,4 +99,40 @@ describe("documents follow GitHub", () => {
     expect(commits[0].message).toBe("RepoBoard: create 2 documents proposed by Claude");
     expect(docs.listProposals().map((p) => p.id)).toEqual(["p3"]);
   });
+
+  it("writes agents' documents by itself only when the project allows it, and only inside .repoboard/", async () => {
+    const hub = fakeGitHub();
+    const commits: string[] = [];
+    const gh = {
+      ...hub.gh,
+      createFiles: async (args: { files: { path: string }[] }) => (commits.push(`create ${args.files.map((f) => f.path).join(",")}`), { commitSha: "n" }),
+      putFile: async (args: { path: string; content: string }) => {
+        commits.push(`put ${args.path}`);
+        hub.files.set(args.path, args.content);
+        return { commitSha: "e", contentSha: `sha-${args.content.length}` };
+      },
+    };
+    const factory = async () => gh as never;
+    const sqlite = new Database(path.join(scratch, "board.db"));
+    const repo = (sqlite.prepare("SELECT id FROM repositories LIMIT 1").get() as { id: string }).id;
+    sqlite.prepare("DELETE FROM doc_proposals").run();
+    const add = sqlite.prepare("INSERT INTO doc_proposals (id, repository_id, path, edits, content, author, summary, created_at) VALUES (?,?,?,?,?,?,?,?)");
+    add.run("n1", repo, ".repoboard/notes/tv.md", null, "# TV\n", "Claude", "New note: TV", Date.now());
+    add.run("e1", repo, ".repoboard/checklists/release-1.0.md", JSON.stringify([{ type: "add", section: null, title: "Store listing", details: ["Verify: no warnings"] }]), null, "Claude", "Add the check", Date.now());
+    add.run("o1", repo, "docs/PLAN.md", JSON.stringify([{ type: "add", section: null, title: "Outside" }]), null, "Claude", "Outside", Date.now());
+    sqlite.close();
+
+    // Waiting for review: nothing is written.
+    expect(await docs.applyProposals(factory)).toEqual({ applied: 0, kept: 0 });
+    expect(commits).toEqual([]);
+
+    docs.setAgentDocsMode("direct");
+    const result = await docs.applyProposals(factory);
+    expect(result.applied).toBe(2);
+    expect(commits).toEqual(["create .repoboard/notes/tv.md", "put .repoboard/checklists/release-1.0.md"]);
+    expect(hub.files.get(".repoboard/checklists/release-1.0.md")).toContain("- [ ] Store listing\n  - Verify: no warnings");
+    // Outside .repoboard/ it still waits for the person.
+    expect(docs.listProposals().map((p) => p.id)).toEqual(["o1"]);
+    docs.setAgentDocsMode("review");
+  });
 });

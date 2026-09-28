@@ -34,6 +34,9 @@ export const repositories = sqliteTable("repositories", {
   docsCheckedAt: integer("docs_checked_at", { mode: "timestamp_ms" }),
   // The branch documents are read from and committed to; null: the default branch.
   docsBranch: text("docs_branch"),
+  // What happens to documents an agent proposes: they wait for the person
+  // ("review"), or the app commits them itself, inside .repoboard/ ("direct").
+  agentDocs: text("agent_docs", { enum: ["review", "direct"] }).notNull().default("review"),
 });
 
 // A project (repository) has several boards: one per person ("Dima",

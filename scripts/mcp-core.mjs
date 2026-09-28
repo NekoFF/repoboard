@@ -691,8 +691,19 @@ function checkLines(check, repoId) {
   ];
 }
 
+/** Whether the project lets agents' documents be written at once (Settings → AI agents). */
+function agentDocsMode(repo) {
+  try {
+    return db.prepare("SELECT agent_docs AS m FROM repositories WHERE id = ?").get(repo.id)?.m === "direct" ? "direct" : "review";
+  } catch {
+    return "review";
+  }
+}
+
 const waitingNote = (repo, docPath) =>
-  `Proposed, not written yet: ${agentLabel()}'s change waits in RepoBoard until the person reviews it and commits it to ${docPath} on ${documentsBranch(repo)} (Documents). Do not report it as done until list_documents shows it without "proposed".`;
+  agentDocsMode(repo) === "direct" && docPath.startsWith(".repoboard/")
+    ? `Queued: RepoBoard commits it to ${docPath} on ${documentsBranch(repo)} by itself within seconds, while the app is open. Confirm with list_documents (no "proposed" left) before you report it as done.`
+    : `Proposed, not written yet: ${agentLabel()}'s change waits in RepoBoard until the person reviews it and commits it to ${docPath} on ${documentsBranch(repo)} (Documents). Do not report it as done until list_documents shows it without "proposed".`;
 
 function documents(repositoryId) {
   return db
@@ -1850,7 +1861,7 @@ Two kinds of things — choose by what it is, not by habit:
   Title; a sentence or two on what it is for; every step as an item (create_card items, add_checklist_item), sub-items for the parts of a step, and notes on how to do and how to check each. Never the steps in the description.
   A board per large area (Design, Security, Release…) once it has several cards: create_board, and move_card(board) to sort a crowded main board. Not a board per card.
 - A check, something that must be true and be verified — often again, before every release → an item in a document under .repoboard/checklists/: privacy and legal requirements, a release gate, store rules, licences. Write it as a statement ("Impressum reachable in two taps"), with Verify: (how to check) and Source: (why it is required). It stays after the work is done: that is its point. Knowledge goes in .repoboard/notes/, decisions and their reasons in .repoboard/decisions/.
-  Use the tools for documents: create_document, add_check, mark_check. They wait for the person to review and commit them, and show in the app at once. Editing .repoboard/ files in your checkout works too, but RepoBoard only sees them once they are on its documents branch.
+  Use the tools for documents: create_document, add_check, mark_check. They show in the app at once; depending on the project RepoBoard commits them itself or they wait for the person's review — the answer says which. Editing .repoboard/ files in your checkout works too, but RepoBoard only sees them once they are on its documents branch.
 - Join them. When a check needs work, make the card and name it on the check (add_check cards: ["RB-12"]). The card page then shows which check it serves, the document shows the card and its state, and when the card is done the check appears in needs_check as "work done — check it".
   If you would write "Day 1" or "Step 3" into a document, it is work: cards, a milestone per phase.
 - A release is a document too: .repoboard/checklists/release-<version>.md — everything that must be true before that version ships (tests pass, store listing, privacy policy current, licences, what changed). When you learn of something important for a release — a requirement, a risk, a thing not to forget — add it there as a check, not only in a card or a chat.

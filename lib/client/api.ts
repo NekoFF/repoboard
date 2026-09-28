@@ -141,6 +141,7 @@ export const api = {
 
   setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
     post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
+  setAgentDocs: (mode: "review" | "direct") => post<{ ok: true }>("/api/repo", { action: "agent-docs", mode }),
   setDocsBranch: (branch: string | null) => post<{ ok: true }>("/api/repo", { action: "docs-branch", branch }),
   setAgentPolicy: (policy: "propose" | "reason") =>
     post<{ ok: true; policy: "propose" | "reason" }>("/api/repo", { action: "agent-policy", policy }),

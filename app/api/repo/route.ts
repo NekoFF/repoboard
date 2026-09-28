@@ -25,7 +25,7 @@ import { currentWho, getAccessState, invalidateAccessCache, projectHealth, type 
 import { GitHubAccessError, GitHubClient } from "@/lib/github/client";
 import { GitLabClient, gitlabBase } from "@/lib/gitlab/client";
 import { repoSlug } from "@/lib/github/slug";
-import { setDocumentsBranch } from "@/lib/docs-service";
+import { setAgentDocsMode, setDocumentsBranch } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +111,7 @@ const bodySchema = z.union([
   }),
   z.object({ action: z.literal("agent-policy"), policy: z.enum(["propose", "reason"]) }),
   z.object({ action: z.literal("docs-branch"), branch: z.string().max(250).nullable() }),
+  z.object({ action: z.literal("agent-docs"), mode: z.enum(["review", "direct"]) }),
   z.object({ action: z.literal("switch"), repo: slug }),
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
@@ -128,7 +129,7 @@ async function handlePost(request: Request) {
   }
   const body = parsed.data;
   // The environment fixes which repository and token; the project's own settings stay the person's.
-  const projectSetting = "action" in body && (body.action === "agent-policy" || body.action === "look" || body.action === "docs-branch");
+  const projectSetting = "action" in body && (body.action === "agent-policy" || body.action === "look" || body.action === "docs-branch" || body.action === "agent-docs");
   if (isEnvironmentConfigured() && !projectSetting) {
     return NextResponse.json(
       {
@@ -155,6 +156,14 @@ async function handlePost(request: Request) {
       saveProject(`${summary.owner}/${summary.name}`, body.token.trim(), "key", host);
       invalidateAccessCache();
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
+    }
+    if (body.action === "agent-docs") {
+      const who = await currentWho();
+      if (who?.role !== "manager") {
+        return NextResponse.json({ error: "Only a project admin can let agents write documents.", forbidden: true }, { status: 403 });
+      }
+      setAgentDocsMode(body.mode);
+      return NextResponse.json({ ok: true, mode: body.mode });
     }
     if (body.action === "docs-branch") {
       const who = await currentWho();
