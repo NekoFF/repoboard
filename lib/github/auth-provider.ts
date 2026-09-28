@@ -36,6 +36,10 @@ interface StoredAccount {
   login: string;
   token: string;
   savedAt: string;
+  /** Renewing the eight-hour token (lib/github/app.ts renewToken); absent for tokens that do not expire. */
+  refreshToken?: string;
+  expiresAt?: number;
+  refreshExpiresAt?: number;
 }
 
 interface CredentialStore {
@@ -145,11 +149,50 @@ export function hostFor(repo: string): RepoHost {
 }
 
 /** Signing in with GitHub: the person and their token, kept like the keys (never sent to a page). */
-export function saveAccount(login: string, token: string): void {
+export function saveAccount(
+  login: string,
+  token: string,
+  renew?: { refreshToken?: string; expiresAt?: number; refreshExpiresAt?: number },
+): void {
   const store = readStore();
-  // Projects opened through the account use its token; a new sign-in renews them.
+  // Projects opened through the account use its token; a new sign-in (or a renewal) renews them.
   const projects = store.projects.map((p) => (p.via === "github" ? { ...p, token } : p));
-  writeStore({ ...store, projects, account: { login, token, savedAt: new Date().toISOString() } });
+  const keep = renew
+    ? {
+        ...(renew.refreshToken ? { refreshToken: renew.refreshToken } : {}),
+        ...(renew.expiresAt ? { expiresAt: renew.expiresAt } : {}),
+        ...(renew.refreshExpiresAt ? { refreshExpiresAt: renew.refreshExpiresAt } : {}),
+      }
+    : {};
+  writeStore({ ...store, projects, account: { login, token, savedAt: new Date().toISOString(), ...keep } });
+}
+
+let renewing: Promise<void> | null = null;
+
+/**
+ * Renews the signed-in account's token shortly before GitHub lets it run out
+ * (it lasts eight hours; the refresh token six months). Every project opened
+ * through the account gets the new token too, so the agents' MCP server
+ * reads it from the same file. One renewal at a time: a refresh token works
+ * once.
+ */
+export async function renewAccountIfNeeded(): Promise<void> {
+  const account = readStore().account;
+  if (!account?.refreshToken || !account.expiresAt) return;
+  if (account.expiresAt - Date.now() > 10 * 60_000) return;
+  if (account.refreshExpiresAt && account.refreshExpiresAt < Date.now()) return; // six months on: sign in again
+  renewing ??= (async () => {
+    try {
+      const { renewToken } = await import("@/lib/github/app");
+      const fresh = await renewToken(account.refreshToken!);
+      if (fresh) saveAccount(account.login, fresh.token, fresh);
+    } catch {
+      // Offline: try again on the next request; the old token may still work a while.
+    } finally {
+      renewing = null;
+    }
+  })();
+  await renewing;
 }
 
 export function accountToken(): string | null {
@@ -216,6 +259,8 @@ export class PatAuthProvider implements AuthProvider {
 
   async getToken(): Promise<string | null> {
     if (process.env.GITHUB_PAT) return process.env.GITHUB_PAT;
+    // Signed in with GitHub: keep the eight-hour token fresh before handing it out.
+    if (activeProject()?.via === "github") await renewAccountIfNeeded();
     return activeProject()?.token ?? null;
   }
 }
