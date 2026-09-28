@@ -10,6 +10,19 @@ const kinds: DocEdit[] = [
   { type: "add", section: null, title: "Plain" },
   { type: "note", line: 3, title: "One", author: "Claude", text: "Proof: ran it" },
   { type: "card", line: 3, title: "One", card: 12 },
+  {
+    type: "proof",
+    line: 3,
+    title: "One",
+    state: "review",
+    by: "Claude",
+    checked: false,
+    proofs: [
+      { kind: "image", path: "../evidence/one.png", alt: "Screenshot by Claude" },
+      { kind: "place", path: "src/app.ts", from: 10, to: 20 },
+      { kind: "link", url: "https://example.com/policy", label: "Policy" },
+    ],
+  },
   { type: "replace", content: "# All new\n" },
 ];
 

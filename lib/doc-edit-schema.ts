@@ -66,6 +66,7 @@ export const edit = z.discriminatedUnion("type", [
     state: itemState,
     by: z.string().min(1).max(40),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    checked: z.boolean().optional(),
     proofs: z
       .array(
         z.discriminatedUnion("kind", [

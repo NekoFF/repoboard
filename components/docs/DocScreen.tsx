@@ -85,6 +85,21 @@ function AgentProposals({ proposals, onTake, onDiscard }: { proposals: DocPropos
         ))}
         {proposals.length > 8 && <li>and {proposals.length - 8} more</li>}
       </ul>
+      {/* Screenshots the agent took as proof, to look at before taking them. */}
+      {proposals.some((p) => p.attachments.length) && (
+        <div className="flex flex-wrap gap-2 pl-6">
+          {proposals.flatMap((p) =>
+            p.attachments.map((a) => {
+              const src = `data:${/\.png$/i.test(a.path) ? "image/png" : /\.webp$/i.test(a.path) ? "image/webp" : "image/jpeg"};base64,${a.base64}`;
+              return (
+                // Browsers do not open data: pictures in a tab; shown large enough here.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={a.path} src={src} title={a.path} alt={`Screenshot from ${p.author}`} className="max-h-64 max-w-full rounded-lg object-contain ring-1 ring-border" />
+              );
+            }),
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-1.5 pl-6">
         <button className="rb-btn-primary rb-btn-sm" onClick={onTake}>
           Take into my changes
@@ -133,6 +148,15 @@ export function DocScreen({ path }: { path: string }) {
     }
   }, [taken, path]);
   const waiting = (proposals.data?.proposals ?? []).filter((p) => p.edits && !taken.includes(p.id));
+  // Files named in proofs open on the web, on the branch the documents come from.
+  const docsBranch = useResource(api.docsStatus, []).data?.status?.branch;
+  const fileUrl = useCallback(
+    (file: string, from?: number, to?: number) => {
+      const url = docsBranch ? links.blob(docsBranch, file.replace(/^\/+/, "")) : undefined;
+      return url && from ? `${url}#L${from}${to ? (links.service === "GitLab" ? `-${to}` : `-L${to}`) : ""}` : url;
+    },
+    [docsBranch, links],
+  );
   const [mode, setMode] = useState<Mode>("checklist");
   const [filter, setFilter] = useState<ChecklistFilter>("all");
   const [edits, setEdits] = useState<DocEdit[]>([]);
@@ -523,6 +547,12 @@ export function DocScreen({ path }: { path: string }) {
                       proposals={waiting}
                       onTake={() => {
                         setEdits((prev) => [...prev, ...waiting.flatMap((p) => p.edits ?? [])]);
+                        // Their screenshots go into the same commit.
+                        const mime = (file: string) => (/\.png$/i.test(file) ? "image/png" : /\.webp$/i.test(file) ? "image/webp" : "image/jpeg");
+                        setAttachments((prev) => [
+                          ...prev,
+                          ...waiting.flatMap((p) => p.attachments.map((a) => ({ ...a, url: `data:${mime(a.path)};base64,${a.base64}` }))),
+                        ]);
                         setTaken((prev) => [...prev, ...waiting.map((p) => p.id)]);
                       }}
                       onDiscard={async () => {
@@ -548,6 +578,7 @@ export function DocScreen({ path }: { path: string }) {
                 onAdd={addItem}
                 onCreateCard={createCard}
                 cards={linkedCards}
+                fileUrl={fileUrl}
                 onProof={setProving}
                 docPath={path}
                 pendingProofs={pendingProofs}

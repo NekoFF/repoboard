@@ -667,18 +667,18 @@ function findDocument(repoId, wanted) {
   throw new Error(`No document "${wanted}". Documents: ${names.join(", ") || "none yet — create_document makes one"}.`);
 }
 
-function propose(repoId, docPath, { edits = null, content = null }, summary) {
+function propose(repoId, docPath, { edits = null, content = null, attachments = [] }, summary) {
   pendingProposals(repoId); // says plainly when the database is too old
-  db.prepare("INSERT INTO doc_proposals (id, repository_id, path, edits, content, author, summary, created_at) VALUES (?,?,?,?,?,?,?,?)").run(
-    randomUUID(),
-    repoId,
-    docPath,
-    edits ? JSON.stringify(edits) : null,
-    content,
-    agentLabel(),
-    summary,
-    now(),
-  );
+  if (attachments.length) {
+    try {
+      db.prepare("SELECT attachments FROM doc_proposals LIMIT 0").all();
+    } catch {
+      throw new Error("This RepoBoard is too old to take screenshots from agents: update the app (0.6.11 or later).");
+    }
+  }
+  db.prepare(
+    `INSERT INTO doc_proposals (id, repository_id, path, edits, content, author, summary, created_at${attachments.length ? ", attachments" : ""}) VALUES (?,?,?,?,?,?,?,?${attachments.length ? ",?" : ""})`,
+  ).run(randomUUID(), repoId, docPath, edits ? JSON.stringify(edits) : null, content, agentLabel(), summary, now(), ...(attachments.length ? [JSON.stringify(attachments)] : []));
 }
 
 /** A check as markdown lines: the statement with its cards, then Verify and Source. */
@@ -993,13 +993,27 @@ const tools = [
   {
     name: "mark_check",
     description:
-      "Propose that a check in a document is ready for the person's check ([?]), with the proof: what you checked and saw. Never [x] — the person ticks it after reviewing.",
+      "Mark a check in a document ready for the person's check ([?]) with evidence they can follow. proof: in plain words for the person, not for a developer — what you checked, how, and what you saw. Add what shows it: screenshots (image files you took, e.g. of the app or the TV — shown in the document), files with lines (they open in the repository), links. Never [x]: the person ticks it after looking.",
     inputSchema: {
       type: "object",
       properties: {
         document: { type: "string", description: "Path, file name or title (list_documents)" },
         check: { type: "string", description: "The check's text, or enough of it to find it" },
-        proof: { type: "string", minLength: 12, maxLength: 4000, description: "What you checked, how, and what you saw" },
+        proof: { type: "string", minLength: 12, maxLength: 4000, description: "Plain words for the person: what you checked, how, and what you saw" },
+        screenshots: { type: "array", items: { type: "string" }, description: "Image files (png, jpg, webp; up to 5 MB each), a path in your checkout or absolute" },
+        files: {
+          type: "array",
+          description: "Where in the repository it is done",
+          items: {
+            type: "object",
+            properties: { path: { type: "string" }, from: { type: "number" }, to: { type: "number" } },
+            required: ["path"],
+          },
+        },
+        links: {
+          type: "array",
+          items: { type: "object", properties: { url: { type: "string" }, label: { type: "string" } }, required: ["url"] },
+        },
       },
       required: ["document", "check", "proof"],
     },
@@ -1535,7 +1549,7 @@ const handlers = {
     return { proposed: true, document: doc.path, note: waitingNote(repo, doc.path) };
   },
 
-  mark_check({ document, check, proof }) {
+  mark_check({ document, check, proof, screenshots, files, links }) {
     const { repo } = requireBoard();
     const doc = findDocument(repo.id, document);
     if (doc.kind === "proposed") throw new Error(`${doc.path} is not created yet: the person creates it first.`);
@@ -1546,16 +1560,48 @@ const handlers = {
     if (item.state === "done") throw new Error(`“${item.title}” is ticked already.`);
     const line = item.line;
     const title = item.text ?? item.title;
+    // Evidence the person can open: screenshots committed beside the document, files, links.
+    const attachments = [];
+    const proofs = [];
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+    (screenshots ?? []).forEach((given, index) => {
+      const here = checkout();
+      const file = path.isAbsolute(given) ? given : path.resolve(here?.root ?? process.cwd(), given);
+      const ext = path.extname(file).toLowerCase();
+      if (![".png", ".jpg", ".jpeg", ".webp"].includes(ext)) throw new Error(`screenshots[${index + 1}]: ${given} is not a png, jpg or webp picture`);
+      let bytes;
+      try {
+        bytes = fs.readFileSync(file);
+      } catch {
+        throw new Error(`screenshots[${index + 1}]: no file ${file}`);
+      }
+      if (bytes.length > 5 * 1024 * 1024) throw new Error(`screenshots[${index + 1}]: ${given} is over 5 MB — make it smaller`);
+      const where = `.repoboard/evidence/${slugOf(path.basename(doc.path, ".md"))}-${slugOf(item.title).slice(0, 40)}-${stamp}-${index + 1}${ext === ".jpeg" ? ".jpg" : ext}`;
+      attachments.push({ path: where, base64: bytes.toString("base64") });
+      proofs.push({ kind: "image", path: path.posix.relative(path.posix.dirname(doc.path), where), alt: `Screenshot by ${agentLabel()}` });
+    });
+    for (const f of files ?? []) {
+      if (typeof f.path !== "string" || f.path.includes("..")) throw new Error("files: each needs a path inside the repository");
+      // Named from the agent's checkout: a file that is not there would stop the person's commit.
+      const here = checkout();
+      if (here && (checkoutRepo() ?? "").toLowerCase() === `${repo.owner}/${repo.name}`.toLowerCase() && !fs.existsSync(path.join(here.root, f.path))) {
+        throw new Error(`files: ${f.path} is not in your checkout — name files as they are in the repository, from its root.`);
+      }
+      proofs.push({ kind: "place", path: f.path.replace(/^\/+/, ""), from: f.from ?? null, to: f.to ?? null });
+    }
+    for (const l of links ?? []) {
+      if (!/^https:\/\//.test(String(l.url))) throw new Error("links: each url must start with https://");
+      proofs.push({ kind: "link", url: String(l.url), label: String(l.label ?? l.url) });
+    }
+    const said = { type: "note", line, title, author: agentLabel(), text: String(proof).trim() };
+    const edits = proofs.length
+      ? [said, { type: "proof", line, title, state: "review", proofs, by: agentLabel(), checked: false }]
+      : [{ type: "state", line, title, state: "review" }, { ...said, text: `Proof: ${said.text}` }];
     propose(
       repo.id,
       doc.path,
-      {
-        edits: [
-          { type: "state", line, title, state: "review" },
-          { type: "note", line, title, author: agentLabel(), text: `Proof: ${String(proof).trim()}` },
-        ],
-      },
-      `“${item.title}” ready to check: ${String(proof).trim().slice(0, 120)}`,
+      { edits, attachments },
+      `“${item.title}” ready to check${proofs.length ? `, with ${proofs.length} proof${proofs.length === 1 ? "" : "s"}` : ""}: ${String(proof).trim().slice(0, 120)}`,
     );
     logActivity(repo.id, null, "doc_proposed", `marked “${item.title}” in ${doc.path} for a check`);
     return { proposed: true, document: doc.path, check: item.title, note: waitingNote(repo, doc.path) };
@@ -1873,7 +1919,7 @@ Finishing work — close it when you can prove it is done, send it to a person w
   already_done — it was done before (the commit, pull request or file);
   cannot_be_checked — there is nothing to look at (say why).
 - Writing the code is not proof. Without proof, leave out reason: the card goes to Review (the item is marked for a check) — say in a comment how to check it.
-- A check in a document is never ticked [x] by you: when its work is done, check it against Verify:, then mark_check with the proof (where, what you saw). A person ticks it. Closing a card tells you which checks it works for.
+- A check in a document is never ticked [x] by you: when its work is done, check it against Verify:, then mark_check. Write the proof for the person, in plain words (what you checked, how, what you saw), and attach what shows it: a screenshot when there is something to see (the app, the TV, a page), the files and lines where it is done, links. A person ticks it after looking. Closing a card tells you which checks it works for.
 - Look at needs_check now and then: close with person_confirmed what a person has since said works, and take up checks whose work is done.
 - Your proof shows on the card; a person can reopen it.
 

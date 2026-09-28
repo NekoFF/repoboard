@@ -216,6 +216,8 @@ export const docProposals = sqliteTable("doc_proposals", {
   edits: text("edits", { mode: "json" }).$type<import("@/lib/markdown/document").DocEdit[] | null>(),
   // …whose whole text this is.
   content: text("content"),
+  // Screenshots proving a check, committed with the edits: repository path and bytes.
+  attachments: text("attachments", { mode: "json" }).$type<{ path: string; base64: string }[] | null>(),
   author: text("author").notNull(),
   summary: text("summary").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),

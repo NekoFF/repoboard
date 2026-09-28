@@ -307,6 +307,8 @@ export type DocEdit =
       proofs: Proof[];
       by: string;
       date?: string;
+      /** False for an agent's evidence: the Proof lines only, no "Checked:" — a person checks. */
+      checked?: boolean;
     }
   | { type: "replace"; content: string };
 
@@ -444,7 +446,8 @@ function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
         // After everything that belongs to the item, so its own details stay first.
         const at = item.endLine + 1;
         const afterQuote = /^\s*>/.test(lines[item.endLine] ?? "") && item.endLine > item.line;
-        lines.splice(at, 0, ...(afterQuote ? [""] : []), ...evidence, `${indent}- Checked: ${by}, ${date}`);
+        const checkedLine = edit.checked === false ? [] : [`${indent}- Checked: ${by}, ${date}`];
+        lines.splice(at, 0, ...(afterQuote ? [""] : []), ...evidence, ...checkedLine);
         proved += evidence.length;
       }
       applied += 1;

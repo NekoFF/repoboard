@@ -308,3 +308,14 @@ describe("a check proposed with how to verify it", () => {
     expect(item.details.map((d) => d.key)).toEqual(["verify", "source"]);
   });
 });
+
+describe("an agent's evidence", () => {
+  it("writes the Proof lines and leaves Checked to a person", () => {
+    const raw = "# Release\n\n- [ ] Store listing complete\n";
+    const out = applyDocEdits(raw, [
+      { type: "proof", line: 2, title: "Store listing complete", state: "review", by: "Claude", checked: false, proofs: [{ kind: "image", path: "../evidence/listing.png", alt: "Screenshot by Claude" }] },
+    ]);
+    expect(out.content).toBe("# Release\n\n- [?] Store listing complete\n  - Proof: ![Screenshot by Claude](../evidence/listing.png)\n");
+    expect(out.content).not.toContain("Checked:");
+  });
+});
