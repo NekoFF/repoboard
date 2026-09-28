@@ -581,6 +581,19 @@ export function liveVersion(): string {
   return [repository.id, ids.length, boardsAt, cards?.n ?? 0, cards?.at ?? 0, events?.at ?? 0, docs?.n ?? 0, docs?.at ?? 0, proposed?.n ?? 0, proposed?.at ?? 0].join(":");
 }
 
+/** When the Inbox was last looked at for the open project (kept here, not in one window's storage). */
+export function inboxSeenAt(): number | null {
+  const repository = activeRepository();
+  if (!repository) return null;
+  return db.select({ at: repositories.inboxSeenAt }).from(repositories).where(eq(repositories.id, repository.id)).get()?.at?.getTime() ?? null;
+}
+
+export function markInboxSeen(at = Date.now()): void {
+  const repository = activeRepository();
+  if (!repository) return;
+  db.update(repositories).set({ inboxSeenAt: new Date(at) }).where(eq(repositories.id, repository.id)).run();
+}
+
 /** A person settles what an agent closed: confirming keeps it done and makes it theirs. */
 export function confirmAgentDone(taskId: string): void {
   db.update(tasks).set({ doneBy: null, updatedAt: now() }).where(eq(tasks.id, taskId)).run();

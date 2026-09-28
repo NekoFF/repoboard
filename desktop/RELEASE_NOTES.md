@@ -1,5 +1,11 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.10
+
+- **Cards drop where you drop them.** A card dragged onto Review now lands in Review. Before, it could jump to In Progress or Done.
+- **The Inbox remembers what you read.** Old messages no longer show as new after a restart or after signing in again.
+- **The app remembers its settings.** Theme, pins and the board view now survive a restart of the desktop app.
+
 ## What's new in 0.6.9
 
 - **Sign in with GitHub once, for months.** GitHub ends a sign-in after eight hours, so RepoBoard asked you to sign in again several times a day. It now renews the sign-in by itself, for up to six months. After this update, sign in one more time. From then on it lasts.

@@ -8,9 +8,11 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -309,6 +311,20 @@ export function KanbanBoard({
     return tasks.find((t) => t.id === id)?.columnId ?? null;
   };
 
+  /**
+   * The column under the pointer decides where a card goes; within it, the
+   * nearest card. Nearest corners over the whole board let a full column
+   * next door win over a short one the pointer is plainly on (Review between
+   * In Progress and Done). The keyboard has no pointer: nearest corners.
+   */
+  const collision: CollisionDetection = (args) => {
+    const under = pointerWithin(args);
+    const column = under.map((c) => columnOf(String(c.id))).find(Boolean);
+    if (!column) return closestCorners(args);
+    const inColumn = args.droppableContainers.filter((c) => columnOf(String(c.id)) === column);
+    return closestCorners({ ...args, droppableContainers: inColumn });
+  };
+
   // The one path for every column change (see lib/client/moves.ts).
   const commitMove = useCommitMove(data, {
     revert: () => setTasks(data.tasks),
@@ -532,7 +548,7 @@ export function KanbanBoard({
           // differently on the server and in the browser (a hydration mismatch).
           id="repoboard-board"
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collision}
           onDragStart={(event: DragStartEvent) => setActiveId(String(event.active.id))}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
