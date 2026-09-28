@@ -75,7 +75,7 @@ async function current() {
 const first = await current();
 
 server = new Server(
-  { name: "repoboard", version: "0.6.10" },
+  { name: "repoboard", version: "0.6.11" },
   // The instructions go out once, on connect; after an update the new rules come with the next answer.
   { capabilities: { tools: { listChanged: true } }, instructions: first.INSTRUCTIONS },
 );
