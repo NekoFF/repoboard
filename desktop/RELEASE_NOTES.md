@@ -1,5 +1,12 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.6
+
+- **Documents keep up with GitHub by themselves.** RepoBoard checks for a new commit every minute and whenever you come back to the app, and reads the documents again when there is one.
+- **See where documents come from.** Documents show *Read from main at 8dc29fc, checked just now*, with *Check now*.
+- **Documents from any branch.** An admin can choose the branch documents are read from and committed to, for example a working branch where the team keeps `.repoboard/`.
+- **Agents know when their documents are missing.** An agent is told which branch RepoBoard reads, and which of its own `.repoboard/` files RepoBoard cannot see yet, so it no longer reports them as done.
+
 ## What's new in 0.6.5
 
 - **Boards update by themselves.** What an agent or a teammate changes appears within a few seconds, with no reload. RepoBoard waits while you drag or type. The reload button still works.
