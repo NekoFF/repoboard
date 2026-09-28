@@ -740,10 +740,11 @@ export class GitHubClient {
   }
 
   /** Lists the markdown files a user can pick as a board source. */
-  async listMarkdownFiles(): Promise<string[]> {
+  /** `branch`: where documents are read from (Documents → branch); the default branch otherwise. */
+  async listMarkdownFiles(branch?: string): Promise<string[]> {
     const repo = await this.getRepo();
     const data = await this.octokit.rest.git
-      .getTree({ owner: this.owner, repo: this.repo, tree_sha: repo.defaultBranch, recursive: "1" })
+      .getTree({ owner: this.owner, repo: this.repo, tree_sha: branch ?? repo.defaultBranch, recursive: "1" })
       .then((r) => r.data)
       .catch((error) => {
         // An empty repository has no tree yet; a 404 means the default branch does not exist yet.
@@ -788,9 +789,10 @@ export class GitHubClient {
   async createFiles(args: {
     files: { path: string; content: string }[];
     message: string;
+    branch?: string;
   }): Promise<{ commitSha: string }> {
     const repo = await this.getRepo();
-    const branch = repo.defaultBranch;
+    const branch = args.branch ?? repo.defaultBranch;
     const ref = await this.octokit.rest.git
       .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` })
       .then((r) => r.data)
@@ -844,9 +846,9 @@ export class GitHubClient {
   }
 
   /** The commit the default branch points at now — what a permalink should name. */
-  async headCommit(): Promise<string> {
+  async headCommit(branch?: string): Promise<string> {
     const repo = await this.getRepo();
-    const { data } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${repo.defaultBranch}` });
+    const { data } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch ?? repo.defaultBranch}` });
     return data.object.sha;
   }
 
@@ -867,8 +869,8 @@ export class GitHubClient {
   }
 
   /** A file's bytes — for images and PDFs, which must not pass through a string. */
-  async getFileBytes(path: string): Promise<{ bytes: Buffer; sha: string }> {
-    const { data } = await this.octokit.rest.repos.getContent({ owner: this.owner, repo: this.repo, path });
+  async getFileBytes(path: string, ref?: string): Promise<{ bytes: Buffer; sha: string }> {
+    const { data } = await this.octokit.rest.repos.getContent({ owner: this.owner, repo: this.repo, path, ...(ref ? { ref } : {}) });
     if (Array.isArray(data) || data.type !== "file") throw new Error(`${path} is not a file`);
     if (data.content) return { bytes: Buffer.from(data.content, "base64"), sha: data.sha };
     // Files over 1 MB come without content; the blob has them.
@@ -886,9 +888,10 @@ export class GitHubClient {
     message: string;
     edits: { path: string; content: string; expectedSha: string }[];
     adds: { path: string; base64: string }[];
+    branch?: string;
   }): Promise<{ commitSha: string }> {
     const repo = await this.getRepo();
-    const branch = repo.defaultBranch;
+    const branch = args.branch ?? repo.defaultBranch;
     const { data: ref } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` });
     const { data: head } = await this.octokit.rest.git.getCommit({ owner: this.owner, repo: this.repo, commit_sha: ref.object.sha });
 

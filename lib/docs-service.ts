@@ -2,7 +2,7 @@ import { activeHost } from "@/lib/github/auth-provider";
 import { and, asc, eq } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
-import { markdownSources, type DocSnapshot } from "@/db/schema";
+import { markdownSources, repositories, type DocSnapshot } from "@/db/schema";
 import { GitHubClient } from "@/lib/github/client";
 import { activeRepository, logActivity, type MarkdownGitHub } from "@/lib/board-service";
 import {
@@ -108,7 +108,56 @@ async function resolveProofs(edits: DocEdit[], gh: DocsGitHub): Promise<DocEdit[
   );
 }
 type ClientFactory = () => Promise<DocsGitHub>;
-const defaultClientFactory: ClientFactory = () => GitHubClient.create();
+/** The branch documents are read from and committed to (Documents → branch), or null for the default one. */
+export function documentsBranch(): string | null {
+  const repository = activeRepository();
+  if (!repository) return null;
+  return db.select({ b: repositories.docsBranch }).from(repositories).where(eq(repositories.id, repository.id)).get()?.b ?? null;
+}
+
+/**
+ * The client, pointed at the documents' branch: every read, list and commit
+ * of a document goes there, so a team that keeps .repoboard/ on a working
+ * branch sees and edits it where it is.
+ */
+export function onBranch(gh: DocsGitHub, branch: string | null): DocsGitHub {
+  if (!branch) return gh;
+  const client = gh as DocsGitHub & Record<string, unknown>;
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === "getFile") return (path: string, ref?: string) => target.getFile(path, ref ?? branch);
+      if (prop === "listMarkdownFiles" && target.listMarkdownFiles) return () => (target.listMarkdownFiles as (b?: string) => Promise<string[]>)(branch);
+      if (prop === "headCommit" && target.headCommit) return () => (target.headCommit as (b?: string) => Promise<string>)(branch);
+      if (prop === "putFile") return (args: Parameters<DocsGitHub["putFile"]>[0]) => target.putFile({ ...args, branch: args.branch ?? branch });
+      if (prop === "commitChanges" && target.commitChanges) return (args: object) => (target.commitChanges as (a: object) => Promise<{ commitSha: string }>)({ branch, ...args });
+      if (prop === "createFiles" && target.createFiles) return (args: object) => (target.createFiles as (a: object) => Promise<{ commitSha: string }>)({ branch, ...args });
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as DocsGitHub;
+}
+
+const defaultClientFactory: ClientFactory = async () => onBranch(await GitHubClient.create(), documentsBranch());
+
+/** Documents read from `branch` from now on (null: the default branch); the next look reads them again. */
+export async function setDocumentsBranch(branch: string | null): Promise<void> {
+  const repository = requireRepository();
+  const wanted = branch?.trim() || null;
+  if (wanted) {
+    // It has to exist: a look at its newest commit says so.
+    const gh = await GitHubClient.create();
+    if (!gh.headCommit) throw new Error("This host cannot read other branches");
+    await (gh.headCommit as (b?: string) => Promise<string>)(wanted).catch(() => {
+      throw new Error(`No branch "${wanted}" in the repository`);
+    });
+  }
+  db.update(repositories).set({ docsBranch: wanted, docsCommit: null }).where(eq(repositories.id, repository.id)).run();
+  logActivity({
+    repositoryId: repository.id,
+    type: "doc_tracked",
+    message: wanted ? `read the documents from the branch ${wanted}` : "read the documents from the default branch again",
+  });
+}
 
 export interface TrackedDoc {
   id: string;
@@ -488,6 +537,59 @@ export async function syncWorkspace(
   }
   if (added.length) await refreshDocs(clientFactory);
   return { exists: files.length > 0, added, removed };
+}
+
+/** Where the documents come from, and when that was last looked at. */
+export interface DocsStatus {
+  branch: string;
+  defaultBranch: string;
+  commit: string | null;
+  checkedAt: number | null;
+}
+
+export function docsStatus(): DocsStatus | null {
+  const repository = activeRepository();
+  if (!repository) return null;
+  const row = db
+    .select({ main: repositories.defaultBranch, docs: repositories.docsBranch, commit: repositories.docsCommit, at: repositories.docsCheckedAt })
+    .from(repositories)
+    .where(eq(repositories.id, repository.id))
+    .get();
+  return row
+    ? { branch: row.docs ?? row.main, defaultBranch: row.main, commit: row.commit ?? null, checkedAt: row.at?.getTime() ?? null }
+    : null;
+}
+
+/**
+ * Keeps the documents in step with GitHub: one cheap look at the default
+ * branch's newest commit, and only when it moved (or `force`), the file list
+ * and the documents are read again. Asked every minute and on focus by the
+ * open app (components/shell/DocsWatch.tsx), and by "Check now".
+ */
+export async function watchDocs(
+  { force = false }: { force?: boolean } = {},
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<DocsStatus & { changed: boolean; added: string[]; removed: string[]; refreshed: number }> {
+  const repository = requireRepository();
+  const gh = await clientFactory();
+  const head = gh.headCommit ? await gh.headCommit().catch(() => null) : null;
+  const before = docsStatus();
+  const stamp = (commit: string | null) =>
+    db.update(repositories).set({ docsCommit: commit, docsCheckedAt: new Date() }).where(eq(repositories.id, repository.id)).run();
+  if (!force && head && head === before?.commit) {
+    stamp(head);
+    return { ...docsStatus()!, changed: false, added: [], removed: [], refreshed: 0 };
+  }
+  const workspace = await syncWorkspace(clientFactory);
+  const { refreshed } = await refreshDocs(clientFactory);
+  stamp(head ?? before?.commit ?? null);
+  return {
+    ...docsStatus()!,
+    changed: workspace.added.length + workspace.removed.length + refreshed > 0,
+    added: workspace.added,
+    removed: workspace.removed,
+    refreshed,
+  };
 }
 
 export interface WorkspaceFile {

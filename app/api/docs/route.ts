@@ -11,6 +11,9 @@ import {
   createWorkspace,
   previewWorkspace,
   syncWorkspace,
+  docsStatus,
+  documentsBranch,
+  watchDocs,
   commitDocEdit,
   listDocs,
   previewDocCreate,
@@ -72,10 +75,15 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const path = url.searchParams.get("path");
   try {
+    // Where the documents come from; watch=1 looks at GitHub first (read only, so everyone may).
+    if (url.searchParams.get("status")) return NextResponse.json({ status: docsStatus() });
+    if (url.searchParams.get("watch")) return NextResponse.json(await watchDocs({ force: url.searchParams.get("force") === "1" }));
     if (path) return NextResponse.json(await readDoc(path));
+    // Documents, their text and their screenshots come from the documents' branch.
+    const branch = documentsBranch() ?? undefined;
     if (url.searchParams.get("files")) {
       const gh = await GitHubClient.create();
-      return NextResponse.json({ files: await gh.listMarkdownFiles() });
+      return NextResponse.json({ files: await gh.listMarkdownFiles(branch) });
     }
     if (url.searchParams.get("all")) {
       const gh = await GitHubClient.create();
@@ -84,7 +92,7 @@ export async function GET(request: Request) {
     const text = url.searchParams.get("text");
     if (text) {
       const gh = await GitHubClient.create();
-      const file = await gh.getFile(text);
+      const file = await gh.getFile(text, branch);
       if (file.content.includes("\u0000")) return NextResponse.json({ error: "That file is not text" }, { status: 415 });
       return NextResponse.json({ path: text, content: file.content, sha: file.sha });
     }
@@ -93,7 +101,7 @@ export async function GET(request: Request) {
       const type = RAW_TYPES[raw.split(".").pop()?.toLowerCase() ?? ""];
       if (!type) return NextResponse.json({ error: "Only images and PDFs are shown" }, { status: 415 });
       const gh = await GitHubClient.create();
-      const { bytes, sha } = await gh.getFileBytes(raw);
+      const { bytes, sha } = await gh.getFileBytes(raw, branch);
       return new NextResponse(new Uint8Array(bytes), {
         headers: {
           "content-type": type,

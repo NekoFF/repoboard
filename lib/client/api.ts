@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardData, BoardSummary, PendingChange } from "@/lib/board-service";
-import type { DocChange, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
+import type { DocChange, DocsStatus, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type {
   AppRepo,
@@ -118,6 +118,8 @@ export interface ConnectionInfo {
 const post = <T>(url: string, body: unknown) =>
   request<T>(url, { method: "POST", body: JSON.stringify(body) });
 
+export type DocsStatusInfo = DocsStatus;
+
 export const api = {
   connection: () => request<ConnectionInfo>("/api/repo"),
   /** The connection plus whether each project's token still works (asks GitHub, cached a few minutes). */
@@ -139,6 +141,7 @@ export const api = {
 
   setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
     post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
+  setDocsBranch: (branch: string | null) => post<{ ok: true }>("/api/repo", { action: "docs-branch", branch }),
   setAgentPolicy: (policy: "propose" | "reason") =>
     post<{ ok: true; policy: "propose" | "reason" }>("/api/repo", { action: "agent-policy", policy }),
 
@@ -178,6 +181,9 @@ export const api = {
   untrackDoc: (id: string) => post<{ ok: true }>("/api/docs", { action: "untrack", id }),
   pinDoc: (id: string, pinned: boolean) => post<{ ok: true }>("/api/docs", { action: "pin", id, pinned }),
   refreshDocs: () => post<{ refreshed: number; failed: string[] }>("/api/docs", { action: "refresh" }),
+  docsStatus: () => request<{ status: DocsStatus | null }>("/api/docs?status=1"),
+  watchDocs: (force = false) =>
+    request<DocsStatus & { changed: boolean; added: string[]; removed: string[]; refreshed: number }>(`/api/docs?watch=1${force ? "&force=1" : ""}`),
   syncWorkspace: () =>
     post<{ exists: boolean; added: string[]; removed: string[] }>("/api/docs", { action: "sync-workspace" }),
   previewWorkspace: (templates: string[], readme: boolean) =>
