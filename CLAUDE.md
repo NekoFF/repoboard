@@ -46,6 +46,16 @@ Project (a GitHub repository)
   `SyncChip` instead of "Save to repo". Cards compare by content
   (`sameCard`), never by `JSON.stringify` of objects built in different
   places — field order differs between the database and the parser.
+- Documents follow GitHub on their own: `components/shell/DocsWatch.tsx`
+  asks `/api/docs?watch=1` every minute and on focus; `watchDocs` looks at
+  the documents branch's newest commit and reads the files again only when
+  it moved (`repositories.docs_commit`, `docs_checked_at`). `DocsSource`
+  shows "Read from <branch> at <sha>, checked … · Check now"; admins pick
+  the branch there (`repositories.docs_branch`, null = default). Every
+  document read and commit goes to that branch through `onBranch` in
+  `lib/docs-service.ts` — never call the client for documents without it.
+  MCP `whoami` reports `documentsBranch` and, in `tidyUp`, `.repoboard/`
+  files in the agent's checkout that RepoBoard does not have.
 - Open pages stay current on their own: `components/shell/LiveRefresh.tsx`
   asks `/api/board?live=1` (`liveVersion`, a fingerprint of cards, boards
   and activity) every 3 s while the page is visible, and on a change calls

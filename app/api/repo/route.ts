@@ -25,6 +25,7 @@ import { currentWho, getAccessState, invalidateAccessCache, projectHealth, type 
 import { GitHubAccessError, GitHubClient } from "@/lib/github/client";
 import { GitLabClient, gitlabBase } from "@/lib/gitlab/client";
 import { repoSlug } from "@/lib/github/slug";
+import { setDocumentsBranch } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,7 @@ const bodySchema = z.union([
     hue: z.number().int().min(0).max(360).nullable(),
   }),
   z.object({ action: z.literal("agent-policy"), policy: z.enum(["propose", "reason"]) }),
+  z.object({ action: z.literal("docs-branch"), branch: z.string().max(250).nullable() }),
   z.object({ action: z.literal("switch"), repo: slug }),
   z.object({ action: z.literal("remove"), repo: slug }),
 ]);
@@ -126,7 +128,7 @@ async function handlePost(request: Request) {
   }
   const body = parsed.data;
   // The environment fixes which repository and token; the project's own settings stay the person's.
-  const projectSetting = "action" in body && (body.action === "agent-policy" || body.action === "look");
+  const projectSetting = "action" in body && (body.action === "agent-policy" || body.action === "look" || body.action === "docs-branch");
   if (isEnvironmentConfigured() && !projectSetting) {
     return NextResponse.json(
       {
@@ -153,6 +155,14 @@ async function handlePost(request: Request) {
       saveProject(`${summary.owner}/${summary.name}`, body.token.trim(), "key", host);
       invalidateAccessCache();
       return NextResponse.json({ connected: true, repo: summary, projects: projects() });
+    }
+    if (body.action === "docs-branch") {
+      const who = await currentWho();
+      if (who?.role !== "manager") {
+        return NextResponse.json({ error: "Only a project admin can choose where the documents are read from.", forbidden: true }, { status: 403 });
+      }
+      await setDocumentsBranch(body.branch);
+      return NextResponse.json({ ok: true });
     }
     if (body.action === "agent-policy") {
       // Without a verified role (offline, key ran out) nobody changes it.

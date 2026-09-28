@@ -567,7 +567,12 @@ export function liveVersion(): string {
     .where(eq(activityEvents.repositoryId, repository.id))
     .get();
   const boardsAt = ids.reduce((m, b) => Math.max(m, Number(b.updatedAt ?? 0), Number(b.archivedAt ?? 0)), 0);
-  return [repository.id, ids.length, boardsAt, cards?.n ?? 0, cards?.at ?? 0, events?.at ?? 0].join(":");
+  const docs = db
+    .select({ at: sql<number>`coalesce(max(${markdownSources.snapshotAt}), 0)`, n: sql<number>`count(*)` })
+    .from(markdownSources)
+    .where(eq(markdownSources.repositoryId, repository.id))
+    .get();
+  return [repository.id, ids.length, boardsAt, cards?.n ?? 0, cards?.at ?? 0, events?.at ?? 0, docs?.n ?? 0, docs?.at ?? 0].join(":");
 }
 
 /** A person settles what an agent closed: confirming keeps it done and makes it theirs. */

@@ -89,6 +89,28 @@ function checkoutRepo() {
   return null;
 }
 
+/** The agent's checkout: its folder and the branch it has out (a worktree's .git is a file). */
+function checkout() {
+  let dir = process.cwd();
+  for (let i = 0; i < 12; i += 1) {
+    const dotGit = path.join(dir, ".git");
+    if (fs.existsSync(dotGit)) {
+      let gitDir = dotGit;
+      try {
+        if (fs.statSync(dotGit).isFile()) gitDir = path.resolve(dir, fs.readFileSync(dotGit, "utf8").match(/gitdir:\s*(.+)/)?.[1].trim() ?? "");
+        const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
+        return { root: dir, branch: head.match(/^ref: refs\/heads\/(.+)$/)?.[1] ?? null };
+      } catch {
+        return { root: dir, branch: null };
+      }
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
 /** The project: from the environment, the agent's checkout, or the app's active one. */
 function activeProject() {
   let repo = process.env.REPOBOARD_REPO || process.env.GITHUB_REPO || null;
@@ -498,7 +520,48 @@ function tidyUp(repoId) {
   const main = boardsOf(repoId)[0];
   const pile = main ? boardAdvice(repoId, main, { placed: false }) : undefined;
   if (pile) out.push(pile);
+  const repo = db.prepare("SELECT * FROM repositories WHERE id = ?").get(repoId);
+  const unseen = repo ? unseenLocalDocs(repo) : null;
+  if (unseen) out.push(unseen);
   return out.length ? out : undefined;
+}
+
+/** Where RepoBoard reads documents from: the branch chosen in Documents, else the default one. */
+function documentsBranch(repo) {
+  try {
+    return db.prepare("SELECT docs_branch AS b FROM repositories WHERE id = ?").get(repo.id)?.b || repo.default_branch;
+  } catch {
+    return repo.default_branch; // A database from before the setting existed.
+  }
+}
+
+/**
+ * Files in the agent's own .repoboard/ that RepoBoard does not know: they are
+ * on another branch than the one it reads, or not pushed yet. Said plainly —
+ * otherwise the agent believes it is done and the person sees nothing.
+ */
+function unseenLocalDocs(repo) {
+  const here = checkout();
+  if (!here || (checkoutRepo() ?? "").toLowerCase() !== `${repo.owner}/${repo.name}`.toLowerCase()) return null;
+  const local = [];
+  const walk = (dir, rel) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) walk(path.join(dir, e.name), `${rel}/${e.name}`);
+      else if (e.name.endsWith(".md")) local.push(`${rel}/${e.name}`);
+    }
+  };
+  walk(path.join(here.root, ".repoboard"), ".repoboard");
+  const known = new Set(db.prepare("SELECT path FROM markdown_sources WHERE repository_id = ?").all(repo.id).map((r) => r.path));
+  const unseen = local.filter((p) => !known.has(p));
+  if (!unseen.length) return null;
+  const branch = documentsBranch(repo);
+  return `${unseen.length} file${unseen.length === 1 ? "" : "s"} in your .repoboard/ ${unseen.length === 1 ? "is" : "are"} not in RepoBoard: ${unseen.slice(0, 8).join(", ")}${unseen.length > 8 ? "…" : ""}. RepoBoard reads documents from the branch ${branch}${here.branch && here.branch !== branch ? `, and you are on ${here.branch}` : ""}; it looks there every minute. Push them to ${branch}${here.branch && here.branch !== branch ? `, or ask the person to read documents from ${here.branch} (Documents → Read from)` : ""} — until then nobody sees them. Do not report them as done before they show in list_documents.`;
 }
 
 /** Items as the agent sent them, checked field by field; the app's own shape out. */
@@ -843,6 +906,7 @@ const handlers = {
     const done = cardsDone + docDone;
     return {
       repository: `${repo.owner}/${repo.name}`,
+      documentsBranch: documentsBranch(repo),
       tidyUp: tidyUp(repo.id),
       progress: { done, total, percent: total ? Math.round((done / total) * 100) : 0 },
       board: cols.map((c) => ({ column: c.name, cards: cards.filter((t) => t.column_id === c.id).length })),
@@ -1301,6 +1365,8 @@ const handlers = {
       reportedAs: agentName(),
       project: project.repo ?? `${repo.owner}/${repo.name}`,
       boards: boardsOf(repo.id).map((b) => b.name),
+      // Documents live on this branch: files elsewhere are not seen (tidyUp says which).
+      documentsBranch: documentsBranch(repo),
       // Put these right as part of your work, and tell the person what you moved.
       tidyUp: tidyUp(repo.id),
       note: `People assign work to you as "${agentLabel()}". Everything you change is shown under that name, marked AI.`,
@@ -1560,7 +1626,7 @@ Finishing work — close it when you can prove it is done, send it to a person w
 - Look at needs_check now and then: close with person_confirmed what a person has since said works, and take up checks whose work is done.
 - Your proof shows on the card; a person can reopen it.
 
-You cannot commit to GitHub from here: edit .repoboard/ files in your own checkout and commit them with the work, mentioning RB-n.`;
+You cannot commit to GitHub from here: edit .repoboard/ files in your own checkout and commit them with the work, mentioning RB-n. RepoBoard reads documents from one branch — documentsBranch in whoami — and only sees them once they are there; check list_documents before you say a document is done.`;
 
 /** Changes whenever the rules change: the process around this tells connected agents. */
 export const RULES_VERSION = createHash("sha1").update(INSTRUCTIONS).digest("hex").slice(0, 12);

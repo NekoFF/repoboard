@@ -309,6 +309,45 @@ describe("MCP server arguments", () => {
     sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_privacy'").run();
   });
 
+  it("tells an agent which branch documents are read from, and what it has that RepoBoard cannot see", async () => {
+    // The agent's checkout of acme/alpha, on its own branch, with a checklist nobody sees yet.
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), "repoboard-checkout-"));
+    fs.mkdirSync(path.join(work, ".git"));
+    fs.writeFileSync(path.join(work, ".git", "config"), '[remote "origin"]\n\turl = git@github.com:acme/alpha.git\n');
+    fs.writeFileSync(path.join(work, ".git", "HEAD"), "ref: refs/heads/feature/remote\n");
+    fs.mkdirSync(path.join(work, ".repoboard", "checklists"), { recursive: true });
+    fs.writeFileSync(path.join(work, ".repoboard", "checklists", "release-1.0.md"), "# Release 1.0\n\n- [ ] Tests pass\n");
+    const agent = new McpClient(
+      spawn(process.execPath, [path.resolve("scripts/mcp-server.mjs")], {
+        cwd: work,
+        env: {
+          PATH: process.env.PATH,
+          HOME: scratch,
+          DATABASE_URL: `file:${databaseFile}`,
+          REPOBOARD_REPO: "acme/alpha",
+          GITHUB_PAT: "test-token",
+          GITHUB_API_URL: "http://127.0.0.1:9",
+          REPOBOARD_AGENT: "claude-test",
+        } as unknown as NodeJS.ProcessEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+      }),
+    );
+    try {
+      await agent.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "vitest", version: "1" } });
+      agent.notify("notifications/initialized");
+      const answer = await agent.call("whoami", {});
+      if (answer.isError) throw new Error(answer.text);
+      const me = JSON.parse(answer.text);
+      expect(me.documentsBranch).toBe("main");
+      const tidy = (me.tidyUp ?? []).join("\n");
+      expect(tidy).toContain(".repoboard/checklists/release-1.0.md");
+      expect(tidy).toContain("reads documents from the branch main, and you are on feature/remote");
+    } finally {
+      agent.child.kill();
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  });
+
   it("turns a database error into a plain answer and writes nothing half-way", async () => {
     sqlite.exec("DROP TABLE task_labels");
     const text = await refused(

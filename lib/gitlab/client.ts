@@ -465,8 +465,8 @@ export class GitLabClient {
       .catch(() => []);
   }
 
-  private async tree(): Promise<string[]> {
-    const ref = await this.branch();
+  private async tree(branch?: string): Promise<string[]> {
+    const ref = branch ?? (await this.branch());
     return this.list<{ path: string; type: string }>("/repository/tree", { recursive: true, ref }, 50)
       .then((t) => t.filter((n) => n.type === "blob").map((n) => n.path).sort())
       .catch((error) => {
@@ -475,8 +475,8 @@ export class GitLabClient {
       });
   }
 
-  async listMarkdownFiles(): Promise<string[]> {
-    return (await this.tree()).filter((p) => p.endsWith(".md"));
+  async listMarkdownFiles(branch?: string): Promise<string[]> {
+    return (await this.tree(branch)).filter((p) => p.endsWith(".md"));
   }
 
   async listFiles(): Promise<string[]> {
@@ -496,13 +496,13 @@ export class GitLabClient {
     return { path, content: Buffer.from(f.content, "base64").toString("utf8"), sha: f.blob_id };
   }
 
-  async getFileBytes(path: string): Promise<{ bytes: Buffer; sha: string }> {
-    const f = await this.file(path);
+  async getFileBytes(path: string, ref?: string): Promise<{ bytes: Buffer; sha: string }> {
+    const f = await this.file(path, ref);
     return { bytes: Buffer.from(f.content, "base64"), sha: f.blob_id };
   }
 
-  async headCommit(): Promise<string> {
-    const b = await this.req<{ commit: { id: string } }>("GET", `/repository/branches/${encodeURIComponent(await this.branch())}`);
+  async headCommit(branch?: string): Promise<string> {
+    const b = await this.req<{ commit: { id: string } }>("GET", `/repository/branches/${encodeURIComponent(branch ?? (await this.branch()))}`);
     return b.commit.id;
   }
 
@@ -513,11 +513,12 @@ export class GitLabClient {
     );
   }
 
-  async createFiles(args: { files: { path: string; content: string }[]; message: string }): Promise<{ commitSha: string }> {
-    for (const f of args.files) if (await this.exists(f.path)) throw new Error(`${f.path} already exists`);
+  async createFiles(args: { files: { path: string; content: string }[]; message: string; branch?: string }): Promise<{ commitSha: string }> {
+    const branch = args.branch ?? (await this.branch());
+    for (const f of args.files) if (await this.exists(f.path, branch)) throw new Error(`${f.path} already exists`);
     const commit = await this.req<{ id: string }>("POST", "/repository/commits", {
       body: {
-        branch: await this.branch(),
+        branch,
         commit_message: args.message,
         actions: args.files.map((f) => ({ action: "create", file_path: f.path, content: f.content })),
       },
@@ -529,8 +530,9 @@ export class GitLabClient {
     message: string;
     edits: { path: string; content: string; expectedSha: string }[];
     adds: { path: string; base64: string }[];
+    branch?: string;
   }): Promise<{ commitSha: string }> {
-    const branch = await this.branch();
+    const branch = args.branch ?? (await this.branch());
     const edits = await Promise.all(
       args.edits.map(async (e) => {
         const current = await this.file(e.path, branch);

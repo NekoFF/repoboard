@@ -122,15 +122,7 @@ export function OverviewScreen({
   const issues = useResource(api.issues, [], { enabled: connected });
   const activity = useResource(() => api.activity(14), []);
 
-  // Refresh the document snapshots quietly, then re-render with fresh numbers.
-  useEffect(() => {
-    if (!connected) return;
-    api
-      .syncWorkspace()
-      .then(() => api.refreshDocs())
-      .then((r) => r.refreshed > 0 && router.refresh())
-      .catch(() => null);
-  }, [connected, router]);
+  // Documents are kept in step with GitHub by DocsWatch (components/shell/DocsWatch.tsx).
 
   // Every board of the project, each card with its board and state.
   const cards = useMemo(

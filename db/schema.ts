@@ -29,6 +29,11 @@ export const repositories = sqliteTable("repositories", {
   // What AI agents may do here: only propose (a person marks done), or also
   // close work when they give proof (checked it, a person confirmed, done before, cannot be checked).
   agentPolicy: text("agent_policy", { enum: ["propose", "reason"] }).notNull().default("reason"),
+  // The commit of the default branch the documents were last read from, and when it was looked at.
+  docsCommit: text("docs_commit"),
+  docsCheckedAt: integer("docs_checked_at", { mode: "timestamp_ms" }),
+  // The branch documents are read from and committed to; null: the default branch.
+  docsBranch: text("docs_branch"),
 });
 
 // A project (repository) has several boards: one per person ("Dima",

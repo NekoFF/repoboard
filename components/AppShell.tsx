@@ -11,6 +11,7 @@ import { ToolRail } from "@/components/shell/ToolRail";
 import { DesktopBar } from "@/components/shell/DesktopBar";
 import { SyncAgent } from "@/components/shell/SyncAgent";
 import { LiveRefresh } from "@/components/shell/LiveRefresh";
+import { DocsWatch } from "@/components/shell/DocsWatch";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -236,6 +237,7 @@ export function AppShell({
               <DesktopBar />
               <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
               {unlocked && <LiveRefresh />}
+              {unlocked && <DocsWatch />}
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.
                 children

@@ -36,12 +36,14 @@ import {
 } from "@/components/ui";
 import { DocsGraph } from "@/components/docs/DocsGraph";
 import { DOCUMENT_TEMPLATES, KIND_FOLDER, TEMPLATES, WORKSPACE_DIR, templatePath, type DocKind } from "@/lib/templates";
+import { DocsSource } from "@/components/docs/DocsSource";
+import { checkDocs } from "@/components/shell/DocsWatch";
 
 const GROUPS: { kind: DocKind; title: string; blurb: string; icon: React.ReactNode }[] = [
   {
     kind: "checklist",
     title: "Checklists",
-    blurb: "What must be done and checked — nothing on these gets lost.",
+    blurb: "What must be true and verified — the privacy policy, each release, licences. The work they need is on the boards.",
     icon: <ListChecks className="size-4" />,
   },
   {
@@ -437,6 +439,7 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
       const result = await api.syncWorkspace();
       setWorkspaceExists(result.exists);
       await api.refreshDocs().catch(() => null);
+      void checkDocs().catch(() => null);
       const fresh = await api.docs();
       setDocs(fresh.docs);
       if (result.added.length || result.removed.length) router.refresh();
@@ -492,6 +495,7 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
       <div className="rb-under-header rb-scroll-thin min-h-0 flex-1 overflow-y-auto">
         {/* The graph is a work surface and takes the width; the list is for reading. */}
         <div className={`mx-auto flex flex-col gap-10 ${view === "graph" ? "max-w-none px-4 pb-4 pt-4" : "max-w-[960px] px-6 pb-20 pt-9 sm:px-10"}`}>
+          {view === "list" && <DocsSource className="-mb-6" />}
           {!workspaceExists && !syncing && <WorkspaceSetup onCreated={sync} />}
 
           {view === "graph" && docs.length > 0 && (

@@ -50,6 +50,7 @@ import {
 import { kindOfPath } from "@/lib/templates";
 import { copyText } from "@/lib/client/clipboard";
 import { statusOfColumn } from "@/lib/status";
+import { DocsSource } from "@/components/docs/DocsSource";
 
 type Mode = "checklist" | "read" | "edit";
 
@@ -462,12 +463,8 @@ export function DocScreen({ path }: { path: string }) {
                     <Stat status="review" count={parsed.review} label="need your check" />
                     <Stat status="doing" count={parsed.doing} label="in progress" />
                     <Stat status="todo" count={parsed.total - parsed.done - parsed.review - parsed.doing} label="to do" />
-                    {tracked?.snapshotAt && (
-                      <span className="text-sm text-faint">
-                        Read from GitHub <RelativeTime value={tracked.snapshotAt} />
-                      </span>
-                    )}
                   </div>
+                  <DocsSource />
                 </div>
               )}
             </div>
