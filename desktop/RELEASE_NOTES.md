@@ -1,5 +1,10 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.8
+
+- **Agents can write documents themselves.** Turn it on in Settings → AI agents → *When an agent writes a document* → *Write it directly*. RepoBoard then commits the agent's documents and checks within seconds while it is open, only inside `.repoboard/`. Agents still never tick a check done. Anything else waits for you.
+- **Create all at once.** When agents propose several new documents, *Review and create all* shows them together and creates them in one commit.
+
 ## What's new in 0.6.7
 
 - **Agents write documents through RepoBoard.** An agent can propose a new document, add a check (what must be true, how to verify it, why), or mark a check ready with its proof. The proposal shows in the app at once. *Take into my changes* lets you review it and commit, or you discard it. Agents never write to GitHub themselves.
