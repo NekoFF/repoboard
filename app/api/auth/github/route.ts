@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         if (result.state !== "done") return NextResponse.json({ state: result.state });
         const login = await GitHubClient.viewer(result.token);
         if (!login) return NextResponse.json({ error: "GitHub gave a token it does not accept. Try again." }, { status: 400 });
-        saveAccount(login, result.token);
+        saveAccount(login, result.token, result.renew);
         invalidateAccessCache();
         const repos = await GitHubClient.appRepositories(result.token);
         return NextResponse.json({ state: "done", login, repos });

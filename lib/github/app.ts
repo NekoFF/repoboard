@@ -6,8 +6,11 @@ import { randomUUID } from "node:crypto";
  * on github.com and approves, and RepoBoard receives a token for exactly the
  * repositories the app is installed on and the person may open — including
  * ones where they are only a collaborator, which fine-grained keys cannot
- * reach. No secret is needed: the app's client id is public, and the app is
- * set not to expire its tokens.
+ * reach. No secret is needed: the app's client id is public. GitHub's user
+ * tokens last eight hours; the refresh token that comes with them lasts six
+ * months and, for the device flow, renews them without a secret —
+ * auth-provider.ts does that before a token runs out, so a person signs in
+ * about twice a year, not every day.
  * https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app#using-the-device-flow-to-generate-a-user-access-token
  */
 
@@ -83,9 +86,39 @@ export async function startSignIn(): Promise<{
   };
 }
 
+/** A user token and what renews it; times in ms since 1970, absent when GitHub gave none (tokens that never expire). */
+export interface AppToken {
+  token: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  refreshExpiresAt?: number;
+}
+
+function tokenOf(data: Record<string, unknown>): AppToken {
+  const now = Date.now();
+  return {
+    token: String(data.access_token),
+    ...(typeof data.refresh_token === "string" ? { refreshToken: data.refresh_token } : {}),
+    ...(Number(data.expires_in) > 0 ? { expiresAt: now + Number(data.expires_in) * 1000 } : {}),
+    ...(Number(data.refresh_token_expires_in) > 0 ? { refreshExpiresAt: now + Number(data.refresh_token_expires_in) * 1000 } : {}),
+  };
+}
+
+/** A new user token for the refresh token (device flow: no client secret). Null when GitHub refuses it. */
+export async function renewToken(refreshToken: string): Promise<AppToken | null> {
+  const app = githubApp();
+  if (!app) return null;
+  const data = await post("/login/oauth/access_token", {
+    client_id: app.clientId,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+  return typeof data.access_token === "string" ? tokenOf(data) : null;
+}
+
 export type SignInPoll =
   | { state: "pending" }
-  | { state: "done"; token: string }
+  | { state: "done"; token: string; renew: AppToken }
   | { state: "expired" }
   | { state: "denied" };
 
@@ -105,7 +138,7 @@ export async function pollSignIn(flowId: string): Promise<SignInPoll> {
   });
   if (typeof data.access_token === "string") {
     flows.delete(flowId);
-    return { state: "done", token: data.access_token };
+    return { state: "done", token: data.access_token, renew: tokenOf(data) };
   }
   switch (data.error) {
     case "slow_down":

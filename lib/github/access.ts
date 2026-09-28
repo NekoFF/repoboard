@@ -6,6 +6,7 @@ import {
   GITHUB,
   hostFor,
   listProjects,
+  renewAccountIfNeeded,
   tokenFor,
   type RepoHost,
 } from "@/lib/github/auth-provider";
@@ -90,6 +91,8 @@ export type ProjectHealth = "ok" | AccessReason;
  * ones work before the person switches.
  */
 export async function projectHealth(): Promise<Map<string, ProjectHealth>> {
+  // A signed-in account's token renews itself first, so its projects do not read as expired.
+  await renewAccountIfNeeded();
   const out = new Map<string, ProjectHealth>();
   await Promise.all(
     listProjects().map(async (p) => {
