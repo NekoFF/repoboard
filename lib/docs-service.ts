@@ -564,6 +564,44 @@ export function listProposals(path?: string | null): DocProposal[] {
     .map((p) => ({ id: p.id, path: p.path, edits: p.edits ?? null, content: p.content ?? null, author: p.author, summary: p.summary, createdAt: p.createdAt.getTime() }));
 }
 
+/** New documents agents proposed, as they would be created: what is new, and what exists already. */
+export async function previewProposedDocs(
+  ids: string[],
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ files: (WorkspaceFile & { id: string; author: string })[]; existing: string[] }> {
+  requireRepository();
+  const wanted = listProposals().filter((p) => p.content != null && ids.includes(p.id));
+  const gh = await clientFactory();
+  const all = new Set(gh.listMarkdownFiles ? await gh.listMarkdownFiles() : []);
+  const existing = wanted.filter((p) => all.has(p.path)).map((p) => p.path);
+  return {
+    files: wanted
+      .filter((p) => !all.has(p.path))
+      .map((p) => ({ id: p.id, author: p.author, path: p.path, content: p.content!, diff: buildDiff("", p.content!) })),
+    existing,
+  };
+}
+
+/** Creates them in one commit, after the person has seen them all; the proposals are done. */
+export async function createProposedDocs(
+  ids: string[],
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; paths: string[] }> {
+  const repository = requireRepository();
+  const gh = await clientFactory();
+  if (!gh.createFiles) throw new Error("This client cannot create files");
+  const { files } = await previewProposedDocs(ids, clientFactory);
+  if (!files.length) throw new Error("Those documents exist already");
+  const authors = Array.from(new Set(files.map((f) => f.author))).join(", ");
+  const message =
+    files.length === 1 ? `RepoBoard: create ${files[0].path}` : `RepoBoard: create ${files.length} documents proposed by ${authors}`;
+  const result = await gh.createFiles({ files: files.map(({ path, content }) => ({ path, content })), message });
+  clearProposals(files.map((f) => f.id));
+  logActivity({ repositoryId: repository.id, type: "doc_changed", message });
+  await syncWorkspace(clientFactory);
+  return { commitSha: result.commitSha, paths: files.map((f) => f.path) };
+}
+
 /** Committed with the document, or discarded: either way they no longer wait. */
 export function clearProposals(ids: string[]): void {
   const repository = requireRepository();

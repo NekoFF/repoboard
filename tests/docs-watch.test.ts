@@ -74,4 +74,29 @@ describe("documents follow GitHub", () => {
     // No branch chosen: the client as it is.
     expect(docs.onBranch(hub.gh as never, null)).toBe(hub.gh);
   });
+
+  it("creates the documents agents proposed in one commit, and they no longer wait", async () => {
+    const hub = fakeGitHub();
+    const commits: { files: { path: string }[]; message: string }[] = [];
+    const gh = { ...hub.gh, createFiles: async (args: { files: { path: string }[]; message: string }) => (commits.push(args), { commitSha: "new" }) };
+    const factory = async () => gh as never;
+    const sqlite = new Database(path.join(scratch, "board.db"));
+    const repo = (sqlite.prepare("SELECT id FROM repositories LIMIT 1").get() as { id: string }).id;
+    const add = sqlite.prepare("INSERT INTO doc_proposals (id, repository_id, path, edits, content, author, summary, created_at) VALUES (?,?,?,?,?,?,?,?)");
+    add.run("p1", repo, ".repoboard/checklists/cra.md", null, "# CRA\n\n- [ ] SBOM published\n", "Claude", "New checklist: CRA", Date.now());
+    add.run("p2", repo, ".repoboard/notes/tv.md", null, "# TV\n", "Claude", "New note: TV", Date.now());
+    // Exists already: shown, not created again.
+    add.run("p3", repo, ".repoboard/checklists/release-1.0.md", null, "# Release\n", "Claude", "New checklist: Release", Date.now());
+    sqlite.close();
+
+    const preview = await docs.previewProposedDocs(["p1", "p2", "p3"], factory);
+    expect(preview.files.map((f) => f.path)).toEqual([".repoboard/checklists/cra.md", ".repoboard/notes/tv.md"]);
+    expect(preview.existing).toEqual([".repoboard/checklists/release-1.0.md"]);
+
+    const done = await docs.createProposedDocs(["p1", "p2"], factory);
+    expect(done.paths).toHaveLength(2);
+    expect(commits).toHaveLength(1);
+    expect(commits[0].message).toBe("RepoBoard: create 2 documents proposed by Claude");
+    expect(docs.listProposals().map((p) => p.id)).toEqual(["p3"]);
+  });
 });
