@@ -564,6 +564,118 @@ export function listProposals(path?: string | null): DocProposal[] {
     .map((p) => ({ id: p.id, path: p.path, edits: p.edits ?? null, content: p.content ?? null, author: p.author, summary: p.summary, createdAt: p.createdAt.getTime() }));
 }
 
+/** New documents agents proposed, as they would be created: what is new, and what exists already. */
+export async function previewProposedDocs(
+  ids: string[],
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ files: (WorkspaceFile & { id: string; author: string })[]; existing: string[] }> {
+  requireRepository();
+  const wanted = listProposals().filter((p) => p.content != null && ids.includes(p.id));
+  const gh = await clientFactory();
+  const all = new Set(gh.listMarkdownFiles ? await gh.listMarkdownFiles() : []);
+  const existing = wanted.filter((p) => all.has(p.path)).map((p) => p.path);
+  return {
+    files: wanted
+      .filter((p) => !all.has(p.path))
+      .map((p) => ({ id: p.id, author: p.author, path: p.path, content: p.content!, diff: buildDiff("", p.content!) })),
+    existing,
+  };
+}
+
+/** Creates them in one commit, after the person has seen them all; the proposals are done. */
+export async function createProposedDocs(
+  ids: string[],
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ commitSha: string; paths: string[] }> {
+  const repository = requireRepository();
+  const gh = await clientFactory();
+  if (!gh.createFiles) throw new Error("This client cannot create files");
+  const { files } = await previewProposedDocs(ids, clientFactory);
+  if (!files.length) throw new Error("Those documents exist already");
+  const authors = Array.from(new Set(files.map((f) => f.author))).join(", ");
+  const message =
+    files.length === 1 ? `RepoBoard: create ${files[0].path}` : `RepoBoard: create ${files.length} documents proposed by ${authors}`;
+  const result = await gh.createFiles({ files: files.map(({ path, content }) => ({ path, content })), message });
+  clearProposals(files.map((f) => f.id));
+  logActivity({ repositoryId: repository.id, type: "doc_changed", message });
+  await syncWorkspace(clientFactory);
+  return { commitSha: result.commitSha, paths: files.map((f) => f.path) };
+}
+
+/** What happens to documents agents propose: they wait for the person, or are committed at once. */
+export function agentDocsMode(): "review" | "direct" {
+  const repository = activeRepository();
+  if (!repository) return "review";
+  const row = db.select({ m: repositories.agentDocs }).from(repositories).where(eq(repositories.id, repository.id)).get();
+  return row?.m === "direct" ? "direct" : "review";
+}
+
+export function setAgentDocsMode(mode: "review" | "direct"): void {
+  const repository = requireRepository();
+  db.update(repositories).set({ agentDocs: mode }).where(eq(repositories.id, repository.id)).run();
+  logActivity({
+    repositoryId: repository.id,
+    type: "sync_settings",
+    message: mode === "direct" ? "let AI agents write the documents in .repoboard/ directly" : "made AI agents' document changes wait for review",
+  });
+}
+
+let applying = false;
+
+/**
+ * With agents writing directly (Settings → AI agents), the open app commits
+ * what they proposed: new documents together in one commit, changes to a
+ * document in one commit each — through the same checked write a person
+ * uses (SHA the edit was computed on). Only inside .repoboard/. A change
+ * that no longer fits the file, or a commit GitHub refuses, stays waiting
+ * for the person, so nothing is lost. Called by open pages every few
+ * seconds (/api/board?live=1) and by the documents watch.
+ */
+export async function applyProposals(clientFactory: ClientFactory = defaultClientFactory): Promise<{ applied: number; kept: number }> {
+  if (applying || agentDocsMode() !== "direct") return { applied: 0, kept: 0 };
+  const waiting = listProposals().filter((p) => p.path.startsWith(`${WORKSPACE_DIR}/`));
+  if (!waiting.length) return { applied: 0, kept: 0 };
+  applying = true;
+  let applied = 0;
+  let kept = 0;
+  try {
+    const repository = requireRepository();
+    const created = waiting.filter((p) => p.content != null);
+    if (created.length) {
+      const { files, existing } = await previewProposedDocs(created.map((p) => p.id), clientFactory);
+      if (files.length) {
+        await createProposedDocs(files.map((f) => f.id), clientFactory);
+        applied += files.length;
+      }
+      kept += existing.length;
+    }
+    const byPath = new Map<string, DocProposal[]>();
+    for (const p of waiting) if (p.edits) byPath.set(p.path, [...(byPath.get(p.path) ?? []), p]);
+    const gh = await clientFactory();
+    for (const [docPath, proposals] of byPath) {
+      const edits = proposals.flatMap((p) => p.edits ?? []);
+      try {
+        const file = await gh.getFile(docPath);
+        const result = applyDocEdits(file.content, edits);
+        if (result.missed.length || result.content === file.content) {
+          kept += proposals.length; // the file moved under them: the person decides
+          continue;
+        }
+        await commitDocEdit({ path: docPath, edits, expectedSha: file.sha }, clientFactory);
+        clearProposals(proposals.map((p) => p.id));
+        applied += proposals.length;
+        const authors = Array.from(new Set(proposals.map((p) => p.author))).join(", ");
+        logActivity({ repositoryId: repository.id, type: "doc_changed", message: `committed ${authors}'s changes to ${docPath}: ${proposals.map((p) => p.summary).join("; ")}` });
+      } catch {
+        kept += proposals.length;
+      }
+    }
+  } finally {
+    applying = false;
+  }
+  return { applied, kept };
+}
+
 /** Committed with the document, or discarded: either way they no longer wait. */
 export function clearProposals(ids: string[]): void {
   const repository = requireRepository();
@@ -605,6 +717,8 @@ export async function watchDocs(
   clientFactory: ClientFactory = defaultClientFactory,
 ): Promise<DocsStatus & { changed: boolean; added: string[]; removed: string[]; refreshed: number }> {
   const repository = requireRepository();
+  // Agents' documents first, when they may be written directly: the look below then reads them back.
+  await applyProposals(clientFactory).catch(() => null);
   const gh = await clientFactory();
   const head = gh.headCommit ? await gh.headCommit().catch(() => null) : null;
   const before = docsStatus();

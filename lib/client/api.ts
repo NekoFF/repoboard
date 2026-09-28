@@ -141,6 +141,7 @@ export const api = {
 
   setProjectLook: (repo: string, look: { art: string | null; hue: number | null }) =>
     post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
+  setAgentDocs: (mode: "review" | "direct") => post<{ ok: true }>("/api/repo", { action: "agent-docs", mode }),
   setDocsBranch: (branch: string | null) => post<{ ok: true }>("/api/repo", { action: "docs-branch", branch }),
   setAgentPolicy: (policy: "propose" | "reason") =>
     post<{ ok: true; policy: "propose" | "reason" }>("/api/repo", { action: "agent-policy", policy }),
@@ -185,6 +186,9 @@ export const api = {
   proposals: (path?: string) =>
     request<{ proposals: DocProposal[] }>(`/api/docs?proposals=1${path ? `&for=${encodeURIComponent(path)}` : ""}`),
   clearProposals: (ids: string[]) => post<{ ok: true }>("/api/docs", { action: "proposals-clear", ids }),
+  previewProposedDocs: (ids: string[]) =>
+    post<{ files: (WorkspaceFile & { id: string; author: string })[]; existing: string[] }>("/api/docs", { action: "proposals-preview", ids }),
+  createProposedDocs: (ids: string[]) => post<{ commitSha: string; paths: string[] }>("/api/docs", { action: "proposals-create", ids }),
   watchDocs: (force = false) =>
     request<DocsStatus & { changed: boolean; added: string[]; removed: string[]; refreshed: number }>(`/api/docs?watch=1${force ? "&force=1" : ""}`),
   syncWorkspace: () =>

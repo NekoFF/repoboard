@@ -187,6 +187,42 @@ function UpdateChannel() {
   );
 }
 
+/** Whether agents' documents wait for the person, or the app commits them itself. */
+function AgentDocs({ initial, canChange }: { initial: "review" | "direct"; canChange: boolean }) {
+  const toast = useToast();
+  const [mode, setMode] = useState(initial);
+  const change = async (next: "review" | "direct") => {
+    const before = mode;
+    setMode(next);
+    try {
+      await api.setAgentDocs(next);
+    } catch (error) {
+      setMode(before);
+      toast.push({ kind: "error", message: "Could not change it", detail: (error as Error).message });
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium text-ink">When an agent writes a document</p>
+      <Segmented
+        size="sm"
+        value={mode}
+        onChange={(v) => canChange && void change(v)}
+        options={[
+          { value: "review", label: "Wait for my review" },
+          { value: "direct", label: "Write it directly" },
+        ]}
+      />
+      <p className="text-sm text-muted">
+        {mode === "direct"
+          ? "RepoBoard commits agents' documents and checks to .repoboard/ on the documents' branch by itself, a few seconds after they propose them, while RepoBoard is open. Agents still never tick a check done. Anything outside .repoboard/, or a change that no longer fits the file, waits for you."
+          : "Agents' new documents and checks wait in Documents until you review and commit them."}
+        {!canChange && " Only a project admin can change this."}
+      </p>
+    </div>
+  );
+}
+
 /** Whether agents may close cards and items themselves, when they say why. */
 function AgentPolicy({ initial, canChange }: { initial: "propose" | "reason"; canChange: boolean }) {
   const toast = useToast();
@@ -225,6 +261,7 @@ function AgentPolicy({ initial, canChange }: { initial: "propose" | "reason"; ca
 
 export function SettingsScreen({
   agentPolicy,
+  agentDocs,
   version,
   authLabel,
   tokenSource,
@@ -233,6 +270,7 @@ export function SettingsScreen({
   mcp,
 }: {
   agentPolicy: "propose" | "reason";
+  agentDocs: "review" | "direct";
   version: { number: string; desktop: boolean };
   authLabel: string;
   tokenSource: string | null;
@@ -448,6 +486,7 @@ export function SettingsScreen({
           >
             <AgentSetup server={paths.mcpServer} node={mcp.node} env={mcp.env} />
             {connected && <AgentPolicy initial={agentPolicy} canChange={role === "manager"} />}
+            {connected && <AgentDocs initial={agentDocs} canChange={role === "manager"} />}
             <p className="text-sm text-muted">
               In documents agents never tick an item themselves: they mark it <code className="font-mono text-xs">[?]</code> and
               say how to verify it. The rules are in <code className="font-mono text-xs">.repoboard/README.md</code>, which

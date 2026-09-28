@@ -16,6 +16,8 @@ import {
   documentsBranch,
   listProposals,
   clearProposals,
+  previewProposedDocs,
+  createProposedDocs,
   watchDocs,
   commitDocEdit,
   listDocs,
@@ -131,6 +133,8 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("pin"), id: z.string(), pinned: z.boolean() }),
   z.object({ action: z.literal("refresh") }),
   z.object({ action: z.literal("proposals-clear"), ids: z.array(z.string()).max(500) }),
+  z.object({ action: z.literal("proposals-preview"), ids: z.array(z.string()).min(1).max(100) }),
+  z.object({ action: z.literal("proposals-create"), ids: z.array(z.string()).min(1).max(100) }),
   z.object({ action: z.literal("sync-workspace") }),
   z.object({
     action: z.literal("workspace-preview"),
@@ -197,6 +201,10 @@ async function handlePost(request: Request, login: string | null) {
       case "proposals-clear":
         clearProposals(body.ids);
         return NextResponse.json({ ok: true });
+      case "proposals-preview":
+        return NextResponse.json(await previewProposedDocs(body.ids));
+      case "proposals-create":
+        return NextResponse.json(await createProposedDocs(body.ids));
       case "sync-workspace":
         return NextResponse.json(await syncWorkspace());
       case "workspace-preview":

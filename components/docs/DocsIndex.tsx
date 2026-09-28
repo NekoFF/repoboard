@@ -106,6 +106,92 @@ function DocRow({ doc }: { doc: TrackedDoc }) {
 }
 
 /** First run: explain the folder and create it from a few templates in one commit. */
+/** Every new document agents proposed, seen together and created in one commit. */
+function CreateProposed({ proposals, onClose, onDone }: { proposals: DocProposal[]; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [preview, setPreview] = useState<{ files: (WorkspaceFile & { id: string; author: string })[]; existing: string[] } | null>(null);
+  const [chosen, setChosen] = useState<Set<string>>(new Set(proposals.map((p) => p.id)));
+  const [open, setOpen] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api
+      .previewProposedDocs(proposals.map((p) => p.id))
+      .then(setPreview)
+      .catch((error) => toast.push({ kind: "error", message: "Could not prepare the documents", detail: (error as Error).message }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const files = preview?.files ?? [];
+  const picked = files.filter((f) => chosen.has(f.id));
+  const create = async () => {
+    setBusy(true);
+    try {
+      const result = await api.createProposedDocs(picked.map((f) => f.id));
+      toast.push({ kind: "success", message: `Created ${result.paths.length} document${result.paths.length === 1 ? "" : "s"}`, detail: "In one commit" });
+      onDone();
+    } catch (error) {
+      toast.push({ kind: "error", message: "Could not create them", detail: (error as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      wide
+      title="Create the proposed documents"
+      description="Added in one commit on the documents' branch. Untick what you do not want; open one to read it."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="rb-btn" onClick={onClose}>
+            Back
+          </button>
+          <div className="flex-1" />
+          <button className="rb-btn-primary" onClick={() => void create()} disabled={busy || picked.length === 0}>
+            {busy && <Spinner />} Create {picked.length} document{picked.length === 1 ? "" : "s"}
+          </button>
+        </>
+      }
+    >
+      {!preview ? (
+        <RowSkeleton rows={4} />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {files.map((f) => (
+            <li key={f.id}>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[rgb(var(--accent))]"
+                  checked={chosen.has(f.id)}
+                  onChange={(event) =>
+                    setChosen((prev) => {
+                      const next = new Set(prev);
+                      if (event.target.checked) next.add(f.id);
+                      else next.delete(f.id);
+                      return next;
+                    })
+                  }
+                  aria-label={`Create ${f.path}`}
+                />
+                <button className="min-w-0 flex-1 truncate text-left font-mono text-xs text-ink hover:underline" onClick={() => setOpen(open === f.id ? null : f.id)}>
+                  {f.path}
+                </button>
+                <DiffStat diff={f.diff} />
+              </div>
+              {open === f.id && (
+                <pre className="rb-scroll-thin max-h-72 overflow-auto whitespace-pre-wrap border-t border-border bg-code-bg px-4 py-3 font-mono text-xs leading-relaxed text-ink">{f.content}</pre>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {preview && preview.existing.length > 0 && (
+        <p className="mt-3 text-xs text-muted">Already in the repository, not created again: {preview.existing.join(", ")}</p>
+      )}
+    </Modal>
+  );
+}
+
 function WorkspaceSetup({ onCreated }: { onCreated: () => void }) {
   const toast = useToast();
   const [chosen, setChosen] = useState<Set<string>>(new Set(["release", "privacy", "licenses", "commands"]));
@@ -428,6 +514,7 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
   const proposals = useResource(() => api.proposals(), [], { live: true });
   const proposedNew = (proposals.data?.proposals ?? []).filter((p) => p.content != null);
   const [creating, setCreating] = useState<DocProposal | null>(null);
+  const [creatingAll, setCreatingAll] = useState(false);
   const [view, setView] = useState<"list" | "graph">("list");
   const [syncing, setSyncing] = useState(true);
   const [workspaceExists, setWorkspaceExists] = useState(initial.some((d) => d.path.startsWith(`${WORKSPACE_DIR}/`)));
@@ -504,7 +591,14 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
           {view === "list" && <DocsSource className="-mb-6" />}
           {view === "list" && proposedNew.length > 0 && (
             <section className="flex flex-col gap-2">
-              <h2 className="text-sm font-semibold text-ink">Proposed by agents</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="flex-1 text-sm font-semibold text-ink">Proposed by agents</h2>
+                {proposedNew.length > 1 && (
+                  <button className="rb-btn-primary rb-btn-sm" onClick={() => setCreatingAll(true)}>
+                    Review and create all ({proposedNew.length})
+                  </button>
+                )}
+              </div>
               <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
                 {proposedNew.map((p) => (
                   <div key={p.id} className="flex items-center gap-3 px-4 py-3">
@@ -526,6 +620,18 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
                 ))}
               </div>
             </section>
+          )}
+          {creatingAll && (
+            <CreateProposed
+              proposals={proposedNew}
+              onClose={() => setCreatingAll(false)}
+              onDone={() => {
+                setCreatingAll(false);
+                proposals.reload();
+                void sync();
+                router.refresh();
+              }}
+            />
           )}
           {creating && (
             <DocWriteDialog

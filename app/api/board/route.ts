@@ -41,6 +41,7 @@ import {
   moveTaskToBoard,
 } from "@/lib/board-service";
 import { DONE_REASONS } from "@/lib/checklist";
+import { agentDocsMode, applyProposals, listProposals } from "@/lib/docs-service";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,11 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url);
   // Cheap, asked every few seconds by open pages: has anything changed?
-  if (url.searchParams.get("live")) return NextResponse.json({ version: liveVersion() });
+  if (url.searchParams.get("live")) {
+    // Agents may write documents directly: commit what they proposed, in the background.
+    if (agentDocsMode() === "direct" && listProposals().length) void applyProposals().catch(() => null);
+    return NextResponse.json({ version: liveVersion() });
+  }
   const who = await currentWho();
   if (url.searchParams.get("list")) return NextResponse.json({ boards: listBoards(who) });
   if (url.searchParams.get("all")) return NextResponse.json(getProjectData(who));
