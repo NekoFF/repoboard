@@ -56,6 +56,15 @@ Project (a GitHub repository)
   `lib/docs-service.ts` — never call the client for documents without it.
   MCP `whoami` reports `documentsBranch` and, in `tidyUp`, `.repoboard/`
   files in the agent's checkout that RepoBoard does not have.
+- **Agents propose document changes; people commit them.** MCP
+  `create_document`, `add_check`, `mark_check` write rows to
+  `doc_proposals` (never GitHub). The document page shows them ("Claude
+  proposed 2 changes · Take into my changes / Discard"); taken ones join the
+  person's uncommitted edits and are cleared once committed. New documents
+  appear under "Proposed by agents" in Documents with *Review and create*.
+  `mark_check` proposes `[?]` plus a `Proof:` note — never `[x]` or
+  `Checked:`. Every DocEdit type must be in `lib/doc-edit-schema.ts`, or the
+  API refuses it (`tests/doc-edit-schema.test.ts`).
 - Open pages stay current on their own: `components/shell/LiveRefresh.tsx`
   asks `/api/board?live=1` (`liveVersion`, a fingerprint of cards, boards
   and activity) every 3 s while the page is visible, and on a change calls

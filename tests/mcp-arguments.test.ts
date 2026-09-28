@@ -348,6 +348,60 @@ describe("MCP server arguments", () => {
     }
   });
 
+  it("proposes documents and checks, for the person to commit", async () => {
+    const proposals = () => sqlite.prepare("SELECT * FROM doc_proposals ORDER BY created_at").all() as { path: string; edits: string | null; content: string | null; author: string; summary: string }[];
+    // A new release document with a check tied to a card.
+    const made = JSON.parse(
+      (await client.call("create_document", { kind: "checklist", title: "Release 1.0", checks: [{ text: "All tests pass", verify: "npm test is green", cards: ["RB-1"] }] })).text,
+    );
+    expect(made).toMatchObject({ proposed: true, document: ".repoboard/checklists/release-1-0.md" });
+    expect(made.note).toContain("Do not report it as done");
+    expect(proposals()[0].content).toBe("# Release 1.0\n\n- [ ] All tests pass RB-1\n  - Verify: npm test is green\n");
+    await refused("create_document", { kind: "checklist", title: "Release 1.0" }, "is proposed already");
+    await refused("add_check", { document: "Release 1.0", text: "x", verify: "y", cards: ["RB-999"] }, "No card RB-999");
+    // A check for the proposed document goes into its text.
+    await client.call("add_check", { document: "Release 1.0", text: "Store listing complete", verify: "Play console shows no warnings", source: "Play policy" });
+    expect(proposals()[0].content).toContain("- [ ] Store listing complete\n  - Verify: Play console shows no warnings\n  - Source: Play policy\n");
+    const listed = JSON.parse((await client.call("list_documents", {})).text);
+    expect(listed[0]).toMatchObject({ path: ".repoboard/checklists/release-1-0.md", proposed: "new document, waiting for the person to create it" });
+
+    // An existing document: checks and marks become edits the app applies.
+    const snapshot = {
+      version: 1, title: "Privacy", total: 1, done: 0, review: 0, textLines: 3,
+      sections: [{ heading: "", depth: 0, total: 1, done: 0 }],
+      items: [{ title: "Impressum reachable in two taps", text: "Impressum reachable in two taps RB-1", state: "todo", done: false, section: 0, line: 2, cards: [1] }],
+      links: [],
+    };
+    sqlite.prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_priv', ?, '.repoboard/checklists/privacy.md', 'checklist', ?)").run(REPO, JSON.stringify(snapshot));
+    await client.call("add_check", { document: "privacy", text: "No tracker before consent", verify: "Charles proxy shows no calls before the dialog", cards: ["RB-1"] });
+    const add = JSON.parse(proposals()[1].edits!);
+    expect(add).toEqual([{ type: "add", section: null, title: "No tracker before consent", details: ["Verify: Charles proxy shows no calls before the dialog"], cards: [1] }]);
+    await refused("mark_check", { document: "privacy", check: "nothing like it", proof: "I looked at it closely" }, 'No check "nothing like it"', "Impressum reachable");
+    await client.call("mark_check", { document: "privacy", check: "impressum", proof: "Opened Settings → About → Legal on the TV: two presses" });
+    const mark = JSON.parse(proposals()[2].edits!);
+    expect(mark[0]).toMatchObject({ type: "state", line: 2, state: "review" });
+    expect(mark[1]).toMatchObject({ type: "note", author: "Claude", text: "Proof: Opened Settings → About → Legal on the TV: two presses" });
+
+    // Closing the card says which checks it works for.
+    const before = sqlite.prepare("SELECT board_id, column_id FROM tasks WHERE card_number = 1").get() as { board_id: string; column_id: string };
+    sqlite.prepare("UPDATE tasks SET board_id = ? WHERE card_number = 1").run(MAIN);
+    const closed = JSON.parse((await client.call("move_card", { card: "RB-1", column: "Done", reason: "verified", note: "Ran the suite and saw it pass" })).text);
+    expect(closed.checksToVerify).toEqual([{ document: ".repoboard/checklists/privacy.md", line: 3, check: "Impressum reachable in two taps" }]);
+    sqlite.prepare("UPDATE tasks SET board_id = ?, column_id = ?, done_by = NULL WHERE card_number = 1").run(before.board_id, before.column_id);
+    sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_priv'").run();
+    sqlite.prepare("DELETE FROM doc_proposals").run();
+  });
+
+  it("does not let a document with tables pass for empty", async () => {
+    const snapshot = { version: 1, title: "CRA readiness", total: 0, done: 0, textLines: 40, tables: 3, sections: [], items: [], links: [] };
+    sqlite.prepare("INSERT INTO markdown_sources (id, repository_id, path, role, snapshot) VALUES ('doc_cra', ?, '.repoboard/checklists/cra.md', 'checklist', ?)").run(REPO, JSON.stringify(snapshot));
+    const listed = JSON.parse((await client.call("list_documents", {})).text);
+    expect(listed.find((d: { path: string }) => d.path === ".repoboard/checklists/cra.md").hint).toContain("3 table(s) and 40 lines of text, but no checkbox items");
+    const me = JSON.parse((await client.call("whoami", {})).text);
+    expect((me.tidyUp ?? []).join("\n")).toContain(".repoboard/checklists/cra.md is a checklist with 3 table(s)");
+    sqlite.prepare("DELETE FROM markdown_sources WHERE id = 'doc_cra'").run();
+  });
+
   it("turns a database error into a plain answer and writes nothing half-way", async () => {
     sqlite.exec("DROP TABLE task_labels");
     const text = await refused(

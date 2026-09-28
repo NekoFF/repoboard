@@ -85,6 +85,9 @@ export interface ParsedDocument {
   doing: number;
   review: number;
   cancelled: number;
+  /** Lines with text, and tables: a document with these and no items is not empty. */
+  textLines?: number;
+  tables?: number;
 }
 
 type Counts = { total: number; done: number; doing: number; review: number; cancelled: number };
@@ -205,7 +208,15 @@ export function parseDocument(raw: string, fallbackTitle = "Untitled"): ParsedDo
 
   const totals: Counts = { total: 0, done: 0, doing: 0, review: 0, cancelled: 0 };
   for (const item of items) count(totals, item.state);
-  return { title: title ?? fallbackTitle, sections, items, links: wikiLinks(content), ...totals };
+  return {
+    title: title ?? fallbackTitle,
+    sections,
+    items,
+    links: wikiLinks(content),
+    ...totals,
+    textLines: lines.filter((l) => l.trim()).length,
+    tables: tree.children.filter((n) => n.type === "table").length,
+  };
 }
 
 /**
@@ -239,6 +250,8 @@ export function toSnapshot(parsed: ParsedDocument): DocSnapshot {
     doing: parsed.doing,
     review: parsed.review,
     cancelled: parsed.cancelled,
+    textLines: parsed.textLines,
+    tables: parsed.tables,
     sections: parsed.sections.map((s) => ({
       heading: s.heading,
       depth: s.depth,
@@ -274,7 +287,8 @@ export type DocEdit =
   /** `title` is the item's text as written (DocItem.text). */
   | { type: "state"; line: number; title: string; id?: string | null; state: ItemState }
   | { type: "toggle"; line: number; title: string; id?: string | null; done: boolean }
-  | { type: "add"; section: string | null; title: string }
+  /** A new item; `details` become its sub-bullets ("Verify: …", "Source: …"), `cards` its RB-n. */
+  | { type: "add"; section: string | null; title: string; details?: string[]; cards?: number[] }
   /** The card doing the work for this item: `RB-n` written on its line. */
   | { type: "card"; line: number; title: string; id?: string | null; card: number }
   /** A review note under an item: "> author date: text". */
@@ -450,7 +464,10 @@ function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
       const index = edit.section
         ? parsed.sections.findIndex((s) => s.heading === edit.section)
         : -1;
-      const item = `- [ ] ${text}`;
+      const one = (line: string) => line.trim().replace(/\s+/g, " ");
+      const cards = (edit.cards ?? []).filter((n) => Number.isInteger(n) && n > 0).map((n) => ` RB-${n}`).join("");
+      const item = `- [ ] ${text}${cards}`;
+      const block = [item, ...(edit.details ?? []).map(one).filter(Boolean).map((d) => `  - ${d}`)];
       if (index > 0) {
         const section = parsed.sections[index];
         const nextHeading = parsed.sections[index + 1];
@@ -462,16 +479,17 @@ function applyDocEditsLF(content: string, edits: DocEdit[]): EditResult {
           // After the last item and any indented lines that belong to it.
           let at = lastItem.line + 1;
           while (at <= end && /^\s+\S/.test(lines[at] ?? "")) at += 1;
-          lines.splice(at, 0, item);
+          lines.splice(at, 0, ...block);
         } else {
-          lines.splice(section.line + 1, 0, "", item);
+          lines.splice(section.line + 1, 0, "", ...block);
         }
       } else {
         const hadTrailing = lines[lines.length - 1] === "";
         let end = lines.length;
         while (end > 0 && lines[end - 1].trim() === "") end -= 1;
-        const block = parseTaskLine(lines[end - 1] ?? "") ? [item] : ["", item];
-        lines = [...lines.slice(0, end), ...block, ...(hadTrailing ? [""] : [])];
+        // Right after an item or its sub-bullets, no blank line; after prose, one.
+        const afterItem = parseTaskLine(lines[end - 1] ?? "") || /^\s+[-*+]\s/.test(lines[end - 1] ?? "");
+        lines = [...lines.slice(0, end), ...(afterItem ? block : ["", ...block]), ...(hadTrailing ? [""] : [])];
       }
       applied += 1;
       added += 1;

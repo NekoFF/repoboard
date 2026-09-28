@@ -85,6 +85,13 @@
       "when": 1790600000000,
       "tag": "0011_docs_watch",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790700000000,
+      "tag": "0012_doc_proposals",
+      "breakpoints": true
     }
   ]
 }

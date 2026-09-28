@@ -6,6 +6,7 @@ import {
   boards,
   columns,
   markdownSources,
+  docProposals,
   markdownTaskMappings,
   milestones,
   repositories,
@@ -572,7 +573,12 @@ export function liveVersion(): string {
     .from(markdownSources)
     .where(eq(markdownSources.repositoryId, repository.id))
     .get();
-  return [repository.id, ids.length, boardsAt, cards?.n ?? 0, cards?.at ?? 0, events?.at ?? 0, docs?.n ?? 0, docs?.at ?? 0].join(":");
+  const proposed = db
+    .select({ at: sql<number>`coalesce(max(${docProposals.createdAt}), 0)`, n: sql<number>`count(*)` })
+    .from(docProposals)
+    .where(eq(docProposals.repositoryId, repository.id))
+    .get();
+  return [repository.id, ids.length, boardsAt, cards?.n ?? 0, cards?.at ?? 0, events?.at ?? 0, docs?.n ?? 0, docs?.at ?? 0, proposed?.n ?? 0, proposed?.at ?? 0].join(":");
 }
 
 /** A person settles what an agent closed: confirming keeps it done and makes it theirs. */
