@@ -382,6 +382,27 @@ describe("MCP server arguments", () => {
     expect(mark[0]).toMatchObject({ type: "state", line: 2, state: "review" });
     expect(mark[1]).toMatchObject({ type: "note", author: "Claude", text: "Proof: Opened Settings → About → Legal on the TV: two presses" });
 
+    // With a screenshot, the files and a link: evidence the person can open.
+    const shot = path.join(scratch, "tv.png");
+    fs.writeFileSync(shot, Buffer.from("89504e470d0a1a0a", "hex"));
+    await client.call("mark_check", {
+      document: "privacy",
+      check: "impressum",
+      proof: "Opened the legal page on the TV with the remote: two presses, name and address shown",
+      screenshots: [shot],
+      files: [{ path: "src/legal.ts", from: 3, to: 9 }],
+      links: [{ url: "https://example.com/imprint", label: "Imprint on the site" }],
+    });
+    const withShot = sqlite.prepare("SELECT edits, attachments FROM doc_proposals ORDER BY created_at DESC LIMIT 1").get() as { edits: string; attachments: string };
+    const shotEdits = JSON.parse(withShot.edits);
+    expect(shotEdits[0]).toMatchObject({ type: "note", text: "Opened the legal page on the TV with the remote: two presses, name and address shown" });
+    expect(shotEdits[1]).toMatchObject({ type: "proof", state: "review", checked: false, by: "Claude" });
+    expect(shotEdits[1].proofs.map((p: { kind: string }) => p.kind)).toEqual(["image", "place", "link"]);
+    const [attached] = JSON.parse(withShot.attachments);
+    expect(attached.path).toMatch(/^\.repoboard\/evidence\/privacy-.+\.png$/);
+    expect(shotEdits[1].proofs[0].path).toBe(`../evidence/${attached.path.split("/").pop()}`);
+    await refused("mark_check", { document: "privacy", check: "impressum", proof: "A picture that is not there", screenshots: [path.join(scratch, "none.png")] }, "no file");
+
     // Closing the card says which checks it works for.
     const before = sqlite.prepare("SELECT board_id, column_id FROM tasks WHERE card_number = 1").get() as { board_id: string; column_id: string };
     sqlite.prepare("UPDATE tasks SET board_id = ? WHERE card_number = 1").run(MAIN);

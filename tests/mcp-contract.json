@@ -356,6 +356,15 @@
       },
       "proof": {
         "type": "string"
+      },
+      "screenshots": {
+        "type": "array"
+      },
+      "files": {
+        "type": "array"
+      },
+      "links": {
+        "type": "array"
       }
     },
     "required": [

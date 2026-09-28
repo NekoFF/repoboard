@@ -547,6 +547,8 @@ export interface DocProposal {
   edits: DocEdit[] | null;
   /** …or the whole text of a new one. */
   content: string | null;
+  /** Screenshots that go into the same commit (repository paths). */
+  attachments: Attachment[];
   author: string;
   summary: string;
   createdAt: number;
@@ -561,7 +563,16 @@ export function listProposals(path?: string | null): DocProposal[] {
     .where(path ? and(eq(docProposals.repositoryId, repository.id), eq(docProposals.path, path)) : eq(docProposals.repositoryId, repository.id))
     .orderBy(asc(docProposals.createdAt))
     .all()
-    .map((p) => ({ id: p.id, path: p.path, edits: p.edits ?? null, content: p.content ?? null, author: p.author, summary: p.summary, createdAt: p.createdAt.getTime() }));
+    .map((p) => ({
+      id: p.id,
+      path: p.path,
+      edits: p.edits ?? null,
+      content: p.content ?? null,
+      attachments: p.attachments ?? [],
+      author: p.author,
+      summary: p.summary,
+      createdAt: p.createdAt.getTime(),
+    }));
 }
 
 /** New documents agents proposed, as they would be created: what is new, and what exists already. */
@@ -661,7 +672,8 @@ export async function applyProposals(clientFactory: ClientFactory = defaultClien
           kept += proposals.length; // the file moved under them: the person decides
           continue;
         }
-        await commitDocEdit({ path: docPath, edits, expectedSha: file.sha }, clientFactory);
+        const attachments = proposals.flatMap((p) => p.attachments);
+        await commitDocEdit({ path: docPath, edits, expectedSha: file.sha, attachments }, clientFactory);
         clearProposals(proposals.map((p) => p.id));
         applied += proposals.length;
         const authors = Array.from(new Set(proposals.map((p) => p.author))).join(", ");

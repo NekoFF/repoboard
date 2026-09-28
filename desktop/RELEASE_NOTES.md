@@ -1,5 +1,10 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.11
+
+- **Proof you can see.** An agent that marks a check ready now attaches evidence: screenshots, shown in the document, the files and lines where the work is done, and links. It explains in plain words what it checked and what it saw.
+- **Proofs open.** Files named in a proof link to the code on GitHub, and the paperclip opens the item to show its proof.
+
 ## What's new in 0.6.10
 
 - **Cards drop where you drop them.** A card dragged onto Review now lands in Review. Before, it could jump to In Progress or Done.

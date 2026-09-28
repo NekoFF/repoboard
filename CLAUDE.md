@@ -62,8 +62,12 @@ Project (a GitHub repository)
   proposed 2 changes · Take into my changes / Discard"); taken ones join the
   person's uncommitted edits and are cleared once committed. New documents
   appear under "Proposed by agents" in Documents with *Review and create*.
-  `mark_check` proposes `[?]` plus a `Proof:` note — never `[x]` or
-  `Checked:`. Every DocEdit type must be in `lib/doc-edit-schema.ts`, or the
+  `mark_check` proposes `[?]` with the agent's plain-words explanation (a
+  note) and evidence: screenshots (committed to `.repoboard/evidence/`,
+  kept in `doc_proposals.attachments`, shown in the proposal before it is
+  taken), files with lines (permalinks), links — a proof edit with
+  `checked: false`, so never `[x]` or `Checked:`. Files named in proofs open
+  on the web (`fileUrl`, documents branch); the paperclip opens the item. Every DocEdit type must be in `lib/doc-edit-schema.ts`, or the
   API refuses it (`tests/doc-edit-schema.test.ts`).
 - Open pages stay current on their own: `components/shell/LiveRefresh.tsx`
   asks `/api/board?live=1` (`liveVersion`, a fingerprint of cards, boards

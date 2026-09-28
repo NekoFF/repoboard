@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { CheckCheck, ChevronRight, MessageSquareText, Paperclip, Plus, SquarePlus } from "lucide-react";
 import type { DocItem, ParsedDocument } from "@/lib/markdown/document";
 import type { ItemNote, ItemState } from "@/lib/markdown/format";
@@ -38,7 +38,31 @@ function resolveFrom(docPath: string, target: string): string {
  * One piece of evidence: a screenshot as a picture that opens full size, a
  * link, or the quoted words — whatever the `Proof:` line holds.
  */
-function ProofText({ text, docPath }: { text: string; docPath: string }) {
+/** A file of the repository named in a proof, with an optional :line or :from-to. */
+const FILE_IN_TEXT = /((?:[\w.@\[\]()-]+\/)+[\w.@\[\]()-]+\.[a-z0-9]{1,8})(?::(\d+)(?:-(\d+))?)?/gi;
+
+/** Proof in words, with each file it names opening on GitHub. */
+function ProofWithFiles({ text, fileUrl }: { text: string; fileUrl?: (path: string, from?: number, to?: number) => string | undefined }) {
+  if (!fileUrl) return <DetailText text={text} />;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(FILE_IN_TEXT)) {
+    const at = m.index ?? 0;
+    const url = fileUrl(m[1], m[2] ? Number(m[2]) : undefined, m[3] ? Number(m[3]) : undefined);
+    if (!url) continue;
+    if (at > last) parts.push(<DetailText key={`t${at}`} text={text.slice(last, at)} />);
+    parts.push(
+      <a key={`f${at}`} href={url} target="_blank" rel="noreferrer noopener" className="font-mono text-xs text-ink underline decoration-ink/25 underline-offset-2 hover:decoration-ink">
+        {m[0]}
+      </a>,
+    );
+    last = at + m[0].length;
+  }
+  if (last < text.length) parts.push(<DetailText key="end" text={text.slice(last)} />);
+  return <>{parts}</>;
+}
+
+function ProofText({ text, docPath, fileUrl }: { text: string; docPath: string; fileUrl?: (path: string, from?: number, to?: number) => string | undefined }) {
   const image = text.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
   if (image) {
     const src = /^https?:\/\//.test(image[2]) ? image[2] : api.rawUrl(resolveFrom(docPath, image[2]));
@@ -53,7 +77,7 @@ function ProofText({ text, docPath }: { text: string; docPath: string }) {
   if (quote) {
     return <blockquote className="border-l-2 border-state-done/50 pl-2.5 italic text-ink">{quote[1]}</blockquote>;
   }
-  return <DetailText text={text} />;
+  return <ProofWithFiles text={text} fileUrl={fileUrl} />;
 }
 
 const STATES: ItemState[] = ["todo", "doing", "review", "done", "cancelled"];
@@ -107,8 +131,10 @@ function ItemRow({
   author,
   depth,
   cards,
+  fileUrl,
 }: {
   cards: LinkedCard[];
+  fileUrl?: (path: string, from?: number, to?: number) => string | undefined;
   item: DocItem;
   children: DocItem[];
   state: ItemState;
@@ -218,10 +244,10 @@ function ItemRow({
             </span>
           )}
           {item.details.some((d) => d.key === "proof") && (
-            <span className="inline-flex items-center gap-0.5 text-state-done" title="Has proof">
+            <button type="button" className="inline-flex items-center gap-0.5 rounded text-state-done hover:underline" title="Show the proof" onClick={onToggle}>
               <Paperclip className="size-3" />
               {item.details.filter((d) => d.key === "proof").length}
-            </span>
+            </button>
           )}
           {item.notes.length + pendingNotes.length > 0 && (
             <span className="inline-flex items-center gap-0.5" title="Notes">
@@ -247,7 +273,7 @@ function ItemRow({
                 <div key={index} className="contents">
                   <dt className="pt-px text-xs font-medium text-faint">{detail.key ? DETAIL_LABEL[detail.key] : ""}</dt>
                   <dd className={`leading-relaxed ${detail.key === "verify" ? "text-ink" : "text-muted"}`}>
-                    {detail.key === "proof" ? <ProofText text={detail.text} docPath={docPath} /> : <DetailText text={detail.text} />}
+                    {detail.key === "proof" ? <ProofText text={detail.text} docPath={docPath} fileUrl={fileUrl} /> : <DetailText text={detail.text} />}
                   </dd>
                 </div>
               ))}
@@ -337,7 +363,10 @@ export function DocChecklist({
   docPath,
   pendingProofs,
   cards = new Map(),
+  fileUrl,
 }: {
+  /** Where a file named in a proof opens (the documents' branch on GitHub). */
+  fileUrl?: (path: string, from?: number, to?: number) => string | undefined;
   /** The project's cards by number, to show the ones items name. */
   cards?: Map<number, LinkedCard>;
   doc: ParsedDocument;
@@ -421,6 +450,7 @@ export function DocChecklist({
           onNote={(text) => onNote(item, text)}
           onCreateCard={onCreateCard ? () => onCreateCard(item) : undefined}
           cards={item.cards.map((n) => cards.get(n)).filter((c): c is LinkedCard => Boolean(c))}
+          fileUrl={fileUrl}
           onProof={onProof ? () => onProof(item) : undefined}
           docPath={docPath}
           pendingProofs={pendingProofs.get(item.line) ?? 0}
