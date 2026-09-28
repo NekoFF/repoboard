@@ -1,6 +1,6 @@
 {
   "name": "repoboard",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "private": true,
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
