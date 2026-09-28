@@ -37,6 +37,8 @@ export const repositories = sqliteTable("repositories", {
   // What happens to documents an agent proposes: they wait for the person
   // ("review"), or the app commits them itself, inside .repoboard/ ("direct").
   agentDocs: text("agent_docs", { enum: ["review", "direct"] }).notNull().default("review"),
+  // When the Inbox was last looked at, on this computer, whichever window looked.
+  inboxSeenAt: integer("inbox_seen_at", { mode: "timestamp_ms" }),
 });
 
 // A project (repository) has several boards: one per person ("Dima",

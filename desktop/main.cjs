@@ -46,14 +46,22 @@ function serverDir() {
   return app.isPackaged ? path.join(process.resourcesPath, "server") : path.join(__dirname, "app", "server");
 }
 
-function freePort() {
+/**
+ * The same port every launch, when it is free: the window's address is then
+ * the same, and so is what the page keeps in its storage — the theme, pins,
+ * what was read in the Inbox. A new port each time lost all of it on every
+ * restart. Another free port only when that one is taken.
+ */
+const PREFERRED_PORT = 47821;
+
+function freePort(port = PREFERRED_PORT) {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.unref();
-    probe.on("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
+    probe.on("error", (error) => (port ? freePort(0).then(resolve, reject) : reject(error)));
+    probe.listen(port, "127.0.0.1", () => {
+      const { port: got } = probe.address();
+      probe.close(() => resolve(got));
     });
   });
 }

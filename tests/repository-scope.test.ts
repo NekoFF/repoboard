@@ -273,6 +273,19 @@ describe("settings that need a verified role", () => {
   });
 });
 
+describe("the Inbox remembers what was read", () => {
+  it("keeps the time on the server, for every window", async () => {
+    access.valid = true;
+    const route = await import("@/app/api/activity/route");
+    const read = async () => (await (await route.GET(new Request("http://localhost/api/activity?limit=1"))).json()) as { seenAt: number | null };
+    expect((await read()).seenAt).toBeNull();
+    const before = Date.now();
+    const marked = await route.POST(new Request("http://localhost/api/activity", { method: "POST", body: JSON.stringify({ seen: true }) }));
+    expect(marked.status).toBe(200);
+    expect((await read()).seenAt).toBeGreaterThanOrEqual(before);
+  });
+});
+
 function sqlite2() {
   return new Database(databaseFile);
 }

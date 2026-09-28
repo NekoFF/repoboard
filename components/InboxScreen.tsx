@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, CircleDot, GitMerge, GitPullRequest, Inbox, Sparkles, X } from "lucide-react";
 import type { BoardData, BoardSummary, BoardTask } from "@/lib/board-service";
@@ -102,15 +102,37 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
   const [importing, setImporting] = useState<number | null>(null);
 
   // What was new when the page opened stays marked for this visit; the
-  // Inbox counts as read from now on.
+  // Inbox counts as read from now on. The server keeps when it was last
+  // looked at, so every window agrees and a restart forgets nothing.
+  const serverSeen = activity.data?.seenAt;
+  const opened = useRef<string | null>(null);
   useEffect(() => {
-    setSeenAt(readNumber(seenKey(repo)));
+    if (!activity.data || opened.current === repo) return;
+    opened.current = repo;
+    const local = (() => {
+      try {
+        return Number(localStorage.getItem(seenKey(repo)) ?? 0) || 0;
+      } catch {
+        return 0;
+      }
+    })();
+    const known = Math.max(serverSeen ?? 0, local);
+    setSeenAt(known || Date.now() - 3 * 86_400_000);
+    void api
+      .markInboxSeen()
+      .then(() => window.dispatchEvent(new CustomEvent("rb:inbox-seen")))
+      .catch(() => null);
+    try {
+      localStorage.setItem(seenKey(repo), String(Date.now()));
+    } catch {
+      /* not kept here; the server has it */
+    }
+  }, [activity.data, serverSeen, repo]);
+  useEffect(() => {
     try {
       setDismissed(new Set(JSON.parse(localStorage.getItem(dismissedKey(repo)) ?? "[]")));
-      localStorage.setItem(seenKey(repo), String(Date.now()));
-      window.dispatchEvent(new CustomEvent("rb:inbox-seen"));
     } catch {
-      /* private mode: nothing is remembered, everything still shows */
+      /* private mode: nothing is remembered */
     }
   }, [repo]);
 
@@ -351,13 +373,19 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
 export function useInboxCount(): number {
   const { repo, viewer, connected } = useShell();
   const activity = useResource(() => api.activity(100), [repo], { enabled: connected, pollMs: 60_000, live: true });
-  const [seenAt, setSeenAt] = useState<number | null>(null);
+  const [local, setLocal] = useState<number | null>(null);
+  const { reload } = activity;
   useEffect(() => {
-    const read = () => setSeenAt(readNumber(seenKey(repo)));
+    const read = () => {
+      setLocal(readNumber(seenKey(repo)));
+      reload();
+    };
     read();
     window.addEventListener("rb:inbox-seen", read);
     return () => window.removeEventListener("rb:inbox-seen", read);
-  }, [repo]);
+  }, [repo, reload]);
+  // The server's time wins; this window's own is only for projects it has not seen there yet.
+  const seenAt = activity.data?.seenAt ?? local;
   if (seenAt == null) return 0;
   // Entries, not events: sixty changes in one sitting are one thing to look at.
   return groupEvents(

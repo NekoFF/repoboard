@@ -296,7 +296,10 @@ export const api = {
         actorKind: "person" | "agent" | null;
         createdAt: number;
       }[];
+      /** When the Inbox was last looked at (the server keeps it). */
+      seenAt?: number | null;
     }>(`/api/activity?limit=${limit}${taskId ? `&task=${encodeURIComponent(taskId)}` : ""}`),
+  markInboxSeen: () => post<{ ok: true; seenAt: number }>("/api/activity", { seen: true }),
 
   markdownState: () =>
     request<{
