@@ -293,3 +293,18 @@ describe("linking a check to the card that does the work", () => {
     expect(applyDocEdits(once.content, [edit]).applied).toBe(0);
   });
 });
+
+describe("a check proposed with how to verify it", () => {
+  it("writes the item with its Verify and Source lines and its cards", () => {
+    const raw = "# Release 1.0\n\n## Store\n\n- [ ] Screenshots uploaded\n";
+    const out = applyDocEdits(raw, [
+      { type: "add", section: "Store", title: "Privacy policy URL in the listing", details: ["Verify: open the listing, follow the link", "Source: Play policy"], cards: [7] },
+    ]);
+    expect(out.content).toBe(
+      "# Release 1.0\n\n## Store\n\n- [ ] Screenshots uploaded\n- [ ] Privacy policy URL in the listing RB-7\n  - Verify: open the listing, follow the link\n  - Source: Play policy\n",
+    );
+    const item = parseDocument(out.content).items[1];
+    expect(item.cards).toEqual([7]);
+    expect(item.details.map((d) => d.key)).toEqual(["verify", "source"]);
+  });
+});

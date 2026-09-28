@@ -25,6 +25,7 @@ import type { DocItem } from "@/lib/markdown/document";
 import type { DocEdit } from "@/lib/markdown/document";
 import type { ItemNote, ItemState } from "@/lib/markdown/format";
 import { api, useResource } from "@/lib/client/api";
+import type { DocProposal } from "@/lib/docs-service";
 import { useHotkeys } from "@/lib/client/hotkeys";
 import { useShell } from "@/components/shell/ShellContext";
 import { PageHeader } from "@/components/PageHeader";
@@ -51,6 +52,7 @@ import { kindOfPath } from "@/lib/templates";
 import { copyText } from "@/lib/client/clipboard";
 import { statusOfColumn } from "@/lib/status";
 import { DocsSource } from "@/components/docs/DocsSource";
+import { ActorAvatar } from "@/components/Actor";
 
 type Mode = "checklist" | "read" | "edit";
 
@@ -61,6 +63,37 @@ function Stat({ status, count, label }: { status: "done" | "review" | "doing" | 
       <StatusIcon status={status} size={13} />
       <span className="tabular-nums text-ink">{count}</span> {label}
     </span>
+  );
+}
+
+/** An agent's proposed changes to this document: take them into yours to review and commit, or discard them. */
+function AgentProposals({ proposals, onTake, onDiscard }: { proposals: DocProposal[]; onTake: () => void; onDiscard: () => Promise<void> }) {
+  const authors = Array.from(new Set(proposals.map((p) => p.author)));
+  return (
+    <div className="mt-4 flex flex-col gap-2 rounded-xl bg-surface px-4 py-3 ring-1 ring-border">
+      <p className="flex items-center gap-2 text-sm text-ink">
+        <ActorAvatar name={authors[0]} kind="agent" size={16} />
+        <span>
+          <span className="font-medium">{authors.join(", ")}</span> (AI) proposed {proposals.length === 1 ? "a change" : `${proposals.length} changes`} to this document
+        </span>
+      </p>
+      <ul className="flex flex-col gap-0.5 pl-6 text-sm text-muted">
+        {proposals.slice(0, 8).map((p) => (
+          <li key={p.id} className="truncate">
+            {p.summary}
+          </li>
+        ))}
+        {proposals.length > 8 && <li>and {proposals.length - 8} more</li>}
+      </ul>
+      <div className="flex items-center gap-1.5 pl-6">
+        <button className="rb-btn-primary rb-btn-sm" onClick={onTake}>
+          Take into my changes
+        </button>
+        <button className="rb-btn-ghost rb-btn-sm" onClick={() => void onDiscard()}>
+          Discard
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -80,6 +113,26 @@ export function DocScreen({ path }: { path: string }) {
         .map((t) => [t.number!, { number: t.number!, title: t.title, status: status.get(t.columnId) ?? "todo" }]),
     );
   }, [project.data]);
+  // What agents proposed for this document; taken ones ride with the person's own changes.
+  const proposals = useResource(() => api.proposals(path), [path], { live: true });
+  // Kept with the uncommitted edits they went into, so a reload does not take them twice.
+  const [taken, setTaken] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      setTaken(JSON.parse(sessionStorage.getItem(`rb-doc-taken:${path}`) ?? "[]"));
+    } catch {
+      setTaken([]);
+    }
+  }, [path]);
+  useEffect(() => {
+    try {
+      if (taken.length) sessionStorage.setItem(`rb-doc-taken:${path}`, JSON.stringify(taken));
+      else sessionStorage.removeItem(`rb-doc-taken:${path}`);
+    } catch {
+      /* not kept: a reload shows the proposals again */
+    }
+  }, [taken, path]);
+  const waiting = (proposals.data?.proposals ?? []).filter((p) => p.edits && !taken.includes(p.id));
   const [mode, setMode] = useState<Mode>("checklist");
   const [filter, setFilter] = useState<ChecklistFilter>("all");
   const [edits, setEdits] = useState<DocEdit[]>([]);
@@ -465,6 +518,19 @@ export function DocScreen({ path }: { path: string }) {
                     <Stat status="todo" count={parsed.total - parsed.done - parsed.review - parsed.doing} label="to do" />
                   </div>
                   <DocsSource />
+                  {waiting.length > 0 && (
+                    <AgentProposals
+                      proposals={waiting}
+                      onTake={() => {
+                        setEdits((prev) => [...prev, ...waiting.flatMap((p) => p.edits ?? [])]);
+                        setTaken((prev) => [...prev, ...waiting.map((p) => p.id)]);
+                      }}
+                      onDiscard={async () => {
+                        await api.clearProposals(waiting.map((p) => p.id));
+                        proposals.reload();
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -517,6 +583,8 @@ export function DocScreen({ path }: { path: string }) {
               onClick={() => {
                 setEdits([]);
                 setAttachments([]);
+                // Proposals taken in go back to waiting, not away.
+                setTaken([]);
                 if (data) setRaw(data.content);
               }}
             >
@@ -556,6 +624,9 @@ export function DocScreen({ path }: { path: string }) {
           onClose={() => setReviewing(false)}
           onDone={() => {
             setReviewing(false);
+            // Committed: the proposals that went in no longer wait.
+            if (taken.length) void api.clearProposals(taken).then(() => proposals.reload());
+            setTaken([]);
             setEdits([]);
             setAttachments([]);
             setRaw(null);

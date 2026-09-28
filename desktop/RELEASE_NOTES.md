@@ -1,5 +1,12 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.7
+
+- **Agents write documents through RepoBoard.** An agent can propose a new document, add a check (what must be true, how to verify it, why), or mark a check ready with its proof. The proposal shows in the app at once. *Take into my changes* lets you review it and commit, or you discard it. Agents never write to GitHub themselves.
+- **Closing a card names the checks it served.** The agent is told which document checks it can verify now.
+- **A document with tables is not "empty".** Agents are told when a document has text but no checks yet.
+- **Fixed:** the card number that *Make a card* adds to a document item was refused when committed.
+
 ## What's new in 0.6.6
 
 - **Documents keep up with GitHub by themselves.** RepoBoard checks for a new commit every minute and whenever you come back to the app, and reads the documents again when there is one.

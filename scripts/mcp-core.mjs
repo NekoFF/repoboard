@@ -505,6 +505,13 @@ function tidyUp(repoId) {
       `${row.path} ("${snap.title ?? row.path}", ${snap.total} items) is a plan of work kept as a checklist document. Work belongs on boards: make a card per item on the board of its area — its details as the card's items — with a milestone per section (${headings.slice(0, 3).join(", ") || "one per phase"}). Close with proof what you can show is done, leave the rest open or in Review, then remove the file in your checkout and tell the person.`,
     );
   }
+  for (const { row, snap } of documents(repoId)) {
+    if (row.role === "board" || !snap || (snap.total ?? 0) > 0 || (snap.textLines ?? 0) <= 8) continue;
+    if (!row.path.startsWith(".repoboard/checklists/")) continue;
+    out.push(
+      `${row.path} is a checklist with ${snap.tables ? `${snap.tables} table(s) and ` : ""}${snap.textLines} lines of text but no checks: read it, and turn each requirement into a check (add_check: a statement, Verify, Source), or move it to .repoboard/notes/ if it is knowledge.`,
+    );
+  }
   const crowded = [];
   for (const board of boardsOf(repoId)) {
     for (const t of db.prepare("SELECT card_number, id, description, checklist FROM tasks WHERE board_id = ? AND deleted_at IS NULL").all(board.id)) {
@@ -610,6 +617,82 @@ function saveChecklist(taskId, list) {
 }
 
 /* ------------------------------------------------------------ documents -- */
+
+/* ------------------------------------------------ document proposals -- */
+
+const DOC_FOLDERS = { checklist: "checklists", note: "notes", decision: "decisions" };
+const slugOf = (title) =>
+  String(title)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "document";
+
+/** "RB-12", "12" or 12 → 12, for cards that exist in this project. */
+function cardNumbers(repoId, refs) {
+  return (refs ?? []).map((ref) => {
+    const n = Number(String(ref).replace(/^rb-/i, ""));
+    const exists =
+      Number.isInteger(n) &&
+      db.prepare("SELECT 1 FROM tasks WHERE card_number = ? AND board_id IN (SELECT id FROM boards WHERE repository_id = ?)").get(n, repoId);
+    if (!exists) throw new Error(`No card ${ref} in this project (cards are RB-n: create_card first, then name it here).`);
+    return n;
+  });
+}
+
+function pendingProposals(repoId) {
+  try {
+    return db.prepare("SELECT * FROM doc_proposals WHERE repository_id = ? ORDER BY created_at").all(repoId);
+  } catch {
+    throw new Error("This RepoBoard is too old to take document changes from agents: update the app (0.6.7 or later).");
+  }
+}
+
+/** A document by path, file name or title — a tracked one, or a new one still waiting for the person. */
+function findDocument(repoId, wanted) {
+  const w = String(wanted).trim().toLowerCase().replace(/^\/+/, "");
+  const tracked = documents(repoId).filter(({ row }) => row.role !== "board");
+  const hit =
+    tracked.find(({ row }) => row.path.toLowerCase() === w) ??
+    tracked.find(({ row }) => path.basename(row.path).toLowerCase() === w || path.basename(row.path, ".md").toLowerCase() === w) ??
+    tracked.find(({ snap }) => (snap?.title ?? "").toLowerCase() === w);
+  if (hit) return { kind: "tracked", path: hit.row.path, snap: hit.snap };
+  const proposed = pendingProposals(repoId).filter((p) => p.content != null);
+  const waiting =
+    proposed.find((p) => p.path.toLowerCase() === w) ??
+    proposed.find((p) => path.basename(p.path, ".md").toLowerCase() === w || (p.content.match(/^# (.+)$/m)?.[1] ?? "").toLowerCase() === w);
+  if (waiting) return { kind: "proposed", path: waiting.path, proposal: waiting };
+  const names = [...tracked.map(({ row }) => row.path), ...proposed.map((p) => `${p.path} (proposed)`)];
+  throw new Error(`No document "${wanted}". Documents: ${names.join(", ") || "none yet — create_document makes one"}.`);
+}
+
+function propose(repoId, docPath, { edits = null, content = null }, summary) {
+  pendingProposals(repoId); // says plainly when the database is too old
+  db.prepare("INSERT INTO doc_proposals (id, repository_id, path, edits, content, author, summary, created_at) VALUES (?,?,?,?,?,?,?,?)").run(
+    randomUUID(),
+    repoId,
+    docPath,
+    edits ? JSON.stringify(edits) : null,
+    content,
+    agentLabel(),
+    summary,
+    now(),
+  );
+}
+
+/** A check as markdown lines: the statement with its cards, then Verify and Source. */
+function checkLines(check, repoId) {
+  const cards = cardNumbers(repoId, check.cards).map((n) => ` RB-${n}`).join("");
+  return [
+    `- [ ] ${String(check.text).trim().replace(/\s+/g, " ")}${cards}`,
+    `  - Verify: ${String(check.verify).trim().replace(/\s+/g, " ")}`,
+    ...(check.source ? [`  - Source: ${String(check.source).trim().replace(/\s+/g, " ")}`] : []),
+  ];
+}
+
+const waitingNote = (repo, docPath) =>
+  `Proposed, not written yet: ${agentLabel()}'s change waits in RepoBoard until the person reviews it and commits it to ${docPath} on ${documentsBranch(repo)} (Documents). Do not report it as done until list_documents shows it without "proposed".`;
 
 function documents(repositoryId) {
   return db
@@ -849,6 +932,66 @@ const tools = [
     description:
       "Leave a note on a card. It appears in the card's history and the activity feed under your name — how agents tell each other and the person what they found or did.",
     inputSchema: { type: "object", properties: { card: text, message: text }, required: ["card", "message"] },
+  },
+  {
+    name: "create_document",
+    description:
+      "Propose a new document: a checklist of checks (things that must be true and be verified — the privacy policy, a release, store rules), a note, or a decision. For a release use kind checklist and a title like 'Release 1.0' (or 'Release next' until the version is decided). The person reviews and creates it; nothing is written to GitHub by you.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["checklist", "note", "decision"] },
+        title: { type: "string", minLength: 1, maxLength: 200 },
+        path: { type: "string", description: "Optional; default .repoboard/<checklists|notes|decisions>/<title>.md" },
+        checks: {
+          type: "array",
+          description: "For a checklist: its checks, each a statement with how to verify it",
+          items: {
+            type: "object",
+            properties: {
+              text: { type: "string", description: "What must be true, as a statement" },
+              verify: { type: "string", description: "How a person checks it" },
+              source: { type: "string", description: "Why it is required: a law, a store rule, a link" },
+              cards: { type: "array", items: { type: "string" }, description: "RB-n of the cards doing its work" },
+            },
+            required: ["text", "verify"],
+          },
+        },
+        text: { type: "string", maxLength: 40_000, description: "For a note or decision: its body, in markdown" },
+      },
+      required: ["kind", "title"],
+    },
+  },
+  {
+    name: "add_check",
+    description:
+      "Propose a check for a document: a statement that must hold, how to verify it, and why. Name the cards doing its work (RB-n). The person reviews and commits it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        document: { type: "string", description: "Path, file name or title (list_documents)" },
+        text: { type: "string", minLength: 1, maxLength: 2000, description: "What must be true, as a statement" },
+        verify: { type: "string", minLength: 1, maxLength: 2000, description: "How a person checks it" },
+        source: { type: "string", maxLength: 2000, description: "Why it is required" },
+        cards: { type: "array", items: { type: "string" }, description: "RB-n of the cards doing its work" },
+        section: { type: "string", description: "Heading to put it under (optional)" },
+      },
+      required: ["document", "text", "verify"],
+    },
+  },
+  {
+    name: "mark_check",
+    description:
+      "Propose that a check in a document is ready for the person's check ([?]), with the proof: what you checked and saw. Never [x] — the person ticks it after reviewing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        document: { type: "string", description: "Path, file name or title (list_documents)" },
+        check: { type: "string", description: "The check's text, or enough of it to find it" },
+        proof: { type: "string", minLength: 12, maxLength: 4000, description: "What you checked, how, and what you saw" },
+      },
+      required: ["document", "check", "proof"],
+    },
   },
   {
     name: "list_documents",
@@ -1110,9 +1253,22 @@ const handlers = {
         ? `moved ${task.title} to the board ${toBoard.name}, ${target.name}`
         : `moved ${task.title} from ${from?.name ?? "?"} to ${target.name}${doneBy ? ` (${WHY[doneBy.reason]}: ${doneBy.note})` : ""}`,
     );
+    // Closed: the checks in documents this card works for can be verified now.
+    const checksToVerify =
+      DONE_COLUMN.test(target.name.trim()) && task.card_number != null
+        ? documents(repo.id).flatMap(({ row, snap }) =>
+            (snap?.items ?? [])
+              .filter((i) => (i.cards ?? []).includes(task.card_number) && i.state !== "done" && i.state !== "review")
+              .map((i) => ({ document: row.path, line: i.line + 1, check: i.title })),
+          )
+        : [];
     return {
       ...serialiseCard(cardOf(task.id)),
+      ...(checksToVerify.length ? { checksToVerify } : {}),
       note: [
+        checksToVerify.length
+          ? `This card works for ${checksToVerify.length} check${checksToVerify.length === 1 ? "" : "s"} in documents: verify each against its Verify: line and mark_check with the proof.`
+          : null,
         sentToCheck ? `Moved to ${target.name} for a person's check. Say how to check it with comment_on_card.` : null,
         task.markdown_task_id
           ? "Moved on the board. This card comes from the markdown file, so the matching commit is not made here — the person reviews and commits it in RepoBoard."
@@ -1328,9 +1484,85 @@ const handlers = {
     return { ok: true, card: task.title, message };
   },
 
+  create_document({ kind, title, path: wanted, checks, text: body }) {
+    const { repo } = requireBoard();
+    const docPath = String(wanted ?? `.repoboard/${DOC_FOLDERS[kind]}/${slugOf(title)}.md`).trim().replace(/^\/+/, "");
+    if (!docPath.endsWith(".md") || docPath.split("/").some((part) => part === ".." || part === "")) {
+      throw new Error("path must be a .md file inside the repository, e.g. .repoboard/checklists/release-1.0.md");
+    }
+    if (documents(repo.id).some(({ row }) => row.path === docPath)) throw new Error(`${docPath} exists already: add_check adds checks to it.`);
+    if (pendingProposals(repo.id).some((p) => p.path === docPath && p.content != null)) throw new Error(`${docPath} is proposed already and waits for the person: add_check adds to it.`);
+    const lines = [`# ${String(title).trim()}`, ""];
+    if (kind === "checklist") {
+      for (const check of checks ?? []) lines.push(...checkLines(check, repo.id));
+      if (!checks?.length) lines.push("- [ ] First check", "  - Verify: how a person checks it");
+    } else if (body) {
+      lines.push(String(body).trim());
+    }
+    propose(repo.id, docPath, { content: `${lines.join("\n")}\n` }, `New ${kind}: ${String(title).trim()}${checks?.length ? ` with ${checks.length} check${checks.length === 1 ? "" : "s"}` : ""}`);
+    logActivity(repo.id, null, "doc_proposed", `proposed the ${kind} ${String(title).trim()} (${docPath})`);
+    return { proposed: true, document: docPath, note: waitingNote(repo, docPath) };
+  },
+
+  add_check({ document, text: checkText, verify, source, cards, section }) {
+    const { repo } = requireBoard();
+    const doc = findDocument(repo.id, document);
+    const check = { text: checkText, verify, source, cards };
+    if (doc.kind === "proposed") {
+      // Still waiting to be created: the check goes into the new file itself.
+      const content = `${doc.proposal.content.replace(/\s*$/, "")}\n${checkLines(check, repo.id).join("\n")}\n`;
+      db.prepare("UPDATE doc_proposals SET content = ? WHERE id = ?").run(content, doc.proposal.id);
+    } else {
+      const heading = section ? doc.snap?.sections?.find((x) => x.heading.toLowerCase() === String(section).toLowerCase())?.heading : null;
+      if (section && !heading) {
+        throw new Error(`No section "${section}" in ${doc.path}. Sections: ${(doc.snap?.sections ?? []).map((x) => x.heading).filter(Boolean).join(", ") || "none"}`);
+      }
+      const details = [`Verify: ${verify}`, ...(source ? [`Source: ${source}`] : [])];
+      propose(repo.id, doc.path, { edits: [{ type: "add", section: heading ?? null, title: checkText, details, cards: cardNumbers(repo.id, cards) }] }, `Add the check “${checkText}”`);
+    }
+    logActivity(repo.id, null, "doc_proposed", `proposed the check “${checkText}” for ${doc.path}`);
+    return { proposed: true, document: doc.path, note: waitingNote(repo, doc.path) };
+  },
+
+  mark_check({ document, check, proof }) {
+    const { repo } = requireBoard();
+    const doc = findDocument(repo.id, document);
+    if (doc.kind === "proposed") throw new Error(`${doc.path} is not created yet: the person creates it first.`);
+    const w = String(check).trim().toLowerCase();
+    const items = doc.snap?.items ?? [];
+    const item = items.find((i) => (i.text ?? i.title).toLowerCase() === w) ?? items.find((i) => (i.text ?? i.title).toLowerCase().includes(w));
+    if (!item) throw new Error(`No check "${check}" in ${doc.path}. Checks: ${items.map((i) => i.title).slice(0, 30).join("; ") || "none"}`);
+    if (item.state === "done") throw new Error(`“${item.title}” is ticked already.`);
+    const line = item.line;
+    const title = item.text ?? item.title;
+    propose(
+      repo.id,
+      doc.path,
+      {
+        edits: [
+          { type: "state", line, title, state: "review" },
+          { type: "note", line, title, author: agentLabel(), text: `Proof: ${String(proof).trim()}` },
+        ],
+      },
+      `“${item.title}” ready to check: ${String(proof).trim().slice(0, 120)}`,
+    );
+    logActivity(repo.id, null, "doc_proposed", `marked “${item.title}” in ${doc.path} for a check`);
+    return { proposed: true, document: doc.path, check: item.title, note: waitingNote(repo, doc.path) };
+  },
+
   list_documents() {
     const { repo } = requireBoard();
-    return documents(repo.id).map(({ row, snap }) => ({
+    let proposals = [];
+    try {
+      proposals = pendingProposals(repo.id);
+    } catch {
+      proposals = [];
+    }
+    const waitingFor = (p) => proposals.filter((x) => x.path === p && x.edits).length;
+    const newOnes = proposals
+      .filter((p) => p.content != null)
+      .map((p) => ({ path: p.path, title: p.content.match(/^# (.+)$/m)?.[1] ?? p.path, proposed: "new document, waiting for the person to create it" }));
+    return [...newOnes, ...documents(repo.id).map(({ row, snap }) => ({
       path: row.path,
       title: snap?.title ?? path.basename(row.path),
       kind: /^\.repoboard\/[^/]+\.md$/i.test(row.path)
@@ -1348,7 +1580,14 @@ const handlers = {
       total: snap?.total ?? 0,
       needsCheck: snap?.review ?? 0,
       readAt: row.snapshot_at ? new Date(row.snapshot_at).toISOString() : null,
-    }));
+      ...(waitingFor(row.path) ? { proposed: `${waitingFor(row.path)} change(s) waiting for the person` } : {}),
+      // Content without checkbox items reads as empty — it is not.
+      ...((snap?.total ?? 0) === 0 && (snap?.textLines ?? 0) > 8
+        ? {
+            hint: `${snap?.tables ? `${snap.tables} table(s) and ` : ""}${snap?.textLines} lines of text, but no checkbox items: its requirements are not checks yet. Read it (read_document) before assuming it is empty; to track them, add each as a check (add_check) or leave it as a note.`,
+          }
+        : {}),
+    }))];
   },
 
   async read_document({ path: filePath }) {
@@ -1611,7 +1850,8 @@ Two kinds of things — choose by what it is, not by habit:
   Title; a sentence or two on what it is for; every step as an item (create_card items, add_checklist_item), sub-items for the parts of a step, and notes on how to do and how to check each. Never the steps in the description.
   A board per large area (Design, Security, Release…) once it has several cards: create_board, and move_card(board) to sort a crowded main board. Not a board per card.
 - A check, something that must be true and be verified — often again, before every release → an item in a document under .repoboard/checklists/: privacy and legal requirements, a release gate, store rules, licences. Write it as a statement ("Impressum reachable in two taps"), with Verify: (how to check) and Source: (why it is required). It stays after the work is done: that is its point. Knowledge goes in .repoboard/notes/, decisions and their reasons in .repoboard/decisions/.
-- Join them. When a check needs work, make the card and write its RB-n on the check's line in the document. The card page then shows which check it serves, the document shows the card and its state, and when the card is done the check appears in needs_check as "work done — check it".
+  Use the tools for documents: create_document, add_check, mark_check. They wait for the person to review and commit them, and show in the app at once. Editing .repoboard/ files in your checkout works too, but RepoBoard only sees them once they are on its documents branch.
+- Join them. When a check needs work, make the card and name it on the check (add_check cards: ["RB-12"]). The card page then shows which check it serves, the document shows the card and its state, and when the card is done the check appears in needs_check as "work done — check it".
   If you would write "Day 1" or "Step 3" into a document, it is work: cards, a milestone per phase.
 - A release is a document too: .repoboard/checklists/release-<version>.md — everything that must be true before that version ships (tests pass, store listing, privacy policy current, licences, what changed). When you learn of something important for a release — a requirement, a risk, a thing not to forget — add it there as a check, not only in a card or a chat.
 
@@ -1622,11 +1862,11 @@ Finishing work — close it when you can prove it is done, send it to a person w
   already_done — it was done before (the commit, pull request or file);
   cannot_be_checked — there is nothing to look at (say why).
 - Writing the code is not proof. Without proof, leave out reason: the card goes to Review (the item is marked for a check) — say in a comment how to check it.
-- A check in a document is never ticked [x] by you: when its work is done, check it against Verify:, then set it to [?] with Proof: lines (where, what you saw). A person ticks it.
+- A check in a document is never ticked [x] by you: when its work is done, check it against Verify:, then mark_check with the proof (where, what you saw). A person ticks it. Closing a card tells you which checks it works for.
 - Look at needs_check now and then: close with person_confirmed what a person has since said works, and take up checks whose work is done.
 - Your proof shows on the card; a person can reopen it.
 
-You cannot commit to GitHub from here: edit .repoboard/ files in your own checkout and commit them with the work, mentioning RB-n. RepoBoard reads documents from one branch — documentsBranch in whoami — and only sees them once they are there; check list_documents before you say a document is done.`;
+You cannot commit to GitHub from here. Documents change through the tools above (the person commits them), or through .repoboard/ files you commit yourself — RepoBoard reads documents from one branch, documentsBranch in whoami, and only sees them once they are there. A proposed change is not done until list_documents shows it without "proposed". A document with text but no checks is not empty: read it.`;
 
 /** Changes whenever the rules change: the process around this tells connected agents. */
 export const RULES_VERSION = createHash("sha1").update(INSTRUCTIONS).digest("hex").slice(0, 12);

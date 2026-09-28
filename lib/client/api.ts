@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardData, BoardSummary, PendingChange } from "@/lib/board-service";
-import type { DocChange, DocsStatus, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
+import type { DocChange, DocProposal, DocsStatus, DocView, TrackedDoc, WorkspaceFile } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type {
   AppRepo,
@@ -182,6 +182,9 @@ export const api = {
   pinDoc: (id: string, pinned: boolean) => post<{ ok: true }>("/api/docs", { action: "pin", id, pinned }),
   refreshDocs: () => post<{ refreshed: number; failed: string[] }>("/api/docs", { action: "refresh" }),
   docsStatus: () => request<{ status: DocsStatus | null }>("/api/docs?status=1"),
+  proposals: (path?: string) =>
+    request<{ proposals: DocProposal[] }>(`/api/docs?proposals=1${path ? `&for=${encodeURIComponent(path)}` : ""}`),
+  clearProposals: (ids: string[]) => post<{ ok: true }>("/api/docs", { action: "proposals-clear", ids }),
   watchDocs: (force = false) =>
     request<DocsStatus & { changed: boolean; added: string[]; removed: string[]; refreshed: number }>(`/api/docs?watch=1${force ? "&force=1" : ""}`),
   syncWorkspace: () =>

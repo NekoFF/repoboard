@@ -171,6 +171,9 @@ export interface DocSnapshot {
   doing?: number;
   review?: number;
   cancelled?: number;
+  /** Lines with text and tables: content without items is not an empty document. */
+  textLines?: number;
+  tables?: number;
   sections: { heading: string; depth: number; total: number; done: number; doing?: number; review?: number }[];
   /** Compact per-item state for the overview's item map and "due soon". */
   items: {
@@ -193,6 +196,24 @@ export const markdownTaskMappings = sqliteTable("markdown_task_mappings", {
   markdownTaskId: text("markdown_task_id").notNull(), // rb:task_xxx
   taskId: text("task_id").notNull(),
   headingPath: text("heading_path").notNull(), // e.g. "In Progress"
+});
+
+/**
+ * Document changes an AI agent proposed through the MCP server: edits to a
+ * document, or a whole new one. They wait here until the person reviews and
+ * commits them in Documents (or discards them); agents never write to GitHub.
+ */
+export const docProposals = sqliteTable("doc_proposals", {
+  id: text("id").primaryKey(),
+  repositoryId: text("repository_id").notNull(),
+  path: text("path").notNull(),
+  // Edits to apply to the document (DocEdit[]), or null for a new document…
+  edits: text("edits", { mode: "json" }).$type<import("@/lib/markdown/document").DocEdit[] | null>(),
+  // …whose whole text this is.
+  content: text("content"),
+  author: text("author").notNull(),
+  summary: text("summary").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
 export const activityEvents = sqliteTable("activity_events", {

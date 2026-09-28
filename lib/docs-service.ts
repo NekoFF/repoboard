@@ -1,8 +1,8 @@
 import { activeHost } from "@/lib/github/auth-provider";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
-import { markdownSources, repositories, type DocSnapshot } from "@/db/schema";
+import { docProposals, markdownSources, repositories, type DocSnapshot } from "@/db/schema";
 import { GitHubClient } from "@/lib/github/client";
 import { activeRepository, logActivity, type MarkdownGitHub } from "@/lib/board-service";
 import {
@@ -537,6 +537,40 @@ export async function syncWorkspace(
   }
   if (added.length) await refreshDocs(clientFactory);
   return { exists: files.length > 0, added, removed };
+}
+
+/** What an agent proposed for a document, waiting for the person (db/schema.ts docProposals). */
+export interface DocProposal {
+  id: string;
+  path: string;
+  /** Edits to an existing document… */
+  edits: DocEdit[] | null;
+  /** …or the whole text of a new one. */
+  content: string | null;
+  author: string;
+  summary: string;
+  createdAt: number;
+}
+
+export function listProposals(path?: string | null): DocProposal[] {
+  const repository = activeRepository();
+  if (!repository) return [];
+  return db
+    .select()
+    .from(docProposals)
+    .where(path ? and(eq(docProposals.repositoryId, repository.id), eq(docProposals.path, path)) : eq(docProposals.repositoryId, repository.id))
+    .orderBy(asc(docProposals.createdAt))
+    .all()
+    .map((p) => ({ id: p.id, path: p.path, edits: p.edits ?? null, content: p.content ?? null, author: p.author, summary: p.summary, createdAt: p.createdAt.getTime() }));
+}
+
+/** Committed with the document, or discarded: either way they no longer wait. */
+export function clearProposals(ids: string[]): void {
+  const repository = requireRepository();
+  if (!ids.length) return;
+  db.delete(docProposals)
+    .where(and(eq(docProposals.repositoryId, repository.id), inArray(docProposals.id, ids)))
+    .run();
 }
 
 /** Where the documents come from, and when that was last looked at. */

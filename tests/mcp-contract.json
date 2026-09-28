@@ -291,6 +291,79 @@
       "message"
     ]
   },
+  "create_document": {
+    "params": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "checklist",
+          "note",
+          "decision"
+        ]
+      },
+      "title": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "checks": {
+        "type": "array"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "kind",
+      "title"
+    ]
+  },
+  "add_check": {
+    "params": {
+      "document": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "verify": {
+        "type": "string"
+      },
+      "source": {
+        "type": "string"
+      },
+      "cards": {
+        "type": "array"
+      },
+      "section": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "document",
+      "text",
+      "verify"
+    ]
+  },
+  "mark_check": {
+    "params": {
+      "document": {
+        "type": "string"
+      },
+      "check": {
+        "type": "string"
+      },
+      "proof": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "document",
+      "check",
+      "proof"
+    ]
+  },
   "list_documents": {
     "params": {},
     "required": []

@@ -38,6 +38,8 @@ import { DocsGraph } from "@/components/docs/DocsGraph";
 import { DOCUMENT_TEMPLATES, KIND_FOLDER, TEMPLATES, WORKSPACE_DIR, templatePath, type DocKind } from "@/lib/templates";
 import { DocsSource } from "@/components/docs/DocsSource";
 import { checkDocs } from "@/components/shell/DocsWatch";
+import type { DocProposal } from "@/lib/docs-service";
+import { ActorAvatar } from "@/components/Actor";
 
 const GROUPS: { kind: DocKind; title: string; blurb: string; icon: React.ReactNode }[] = [
   {
@@ -422,6 +424,10 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
   const params = useSearchParams();
   const [docs, setDocs] = useState(initial);
   const [dialog, setDialog] = useState<null | "new" | "track">(null);
+  // New documents agents proposed: created once the person has seen them.
+  const proposals = useResource(() => api.proposals(), [], { live: true });
+  const proposedNew = (proposals.data?.proposals ?? []).filter((p) => p.content != null);
+  const [creating, setCreating] = useState<DocProposal | null>(null);
   const [view, setView] = useState<"list" | "graph">("list");
   const [syncing, setSyncing] = useState(true);
   const [workspaceExists, setWorkspaceExists] = useState(initial.some((d) => d.path.startsWith(`${WORKSPACE_DIR}/`)));
@@ -496,6 +502,45 @@ export function DocsIndex({ docs: initial }: { docs: TrackedDoc[] }) {
         {/* The graph is a work surface and takes the width; the list is for reading. */}
         <div className={`mx-auto flex flex-col gap-10 ${view === "graph" ? "max-w-none px-4 pb-4 pt-4" : "max-w-[960px] px-6 pb-20 pt-9 sm:px-10"}`}>
           {view === "list" && <DocsSource className="-mb-6" />}
+          {view === "list" && proposedNew.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-sm font-semibold text-ink">Proposed by agents</h2>
+              <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+                {proposedNew.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                    <ActorAvatar name={p.author} kind="agent" size={18} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-ink">{p.summary}</p>
+                      <p className="truncate font-mono text-xs text-faint">{p.path}</p>
+                    </div>
+                    <button className="rb-btn rb-btn-sm" onClick={() => setCreating(p)}>
+                      Review and create
+                    </button>
+                    <button
+                      className="rb-btn-ghost rb-btn-sm"
+                      onClick={() => void api.clearProposals([p.id]).then(() => proposals.reload())}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {creating && (
+            <DocWriteDialog
+              path={creating.path}
+              create={creating.content ?? ""}
+              onClose={() => setCreating(null)}
+              onDone={({ path }) => {
+                // Proposals made for the new file (its checks) go on with it.
+                void api.clearProposals([creating.id]).then(() => proposals.reload());
+                setCreating(null);
+                router.refresh();
+                router.push(`/docs?path=${encodeURIComponent(path)}`);
+              }}
+            />
+          )}
           {!workspaceExists && !syncing && <WorkspaceSetup onCreated={sync} />}
 
           {view === "graph" && docs.length > 0 && (
