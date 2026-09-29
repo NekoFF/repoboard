@@ -286,6 +286,69 @@ describe("the Inbox remembers what was read", () => {
   });
 });
 
+describe("a new computer takes the boards by itself", () => {
+  it("syncs automatically when another computer keeps the boards on the repoboard branch", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    // What another computer saved on the sync branch: one card this one does not have.
+    const theirs = JSON.parse(JSON.stringify({ version: 1, columns: main.columns.map((c) => c.name), cards: [] })) as Record<string, unknown>;
+    theirs.cards = [
+      { id: "from-laptop", number: 900, column: main.columns[0].name, position: 0, title: "Made on the laptop", description: null, assignee: null, dueDate: null, checklist: [], labels: [], branches: [], pullRequests: [], issues: [], markdownTaskId: null, updatedAt: Date.now(), deletedAt: null },
+    ];
+    const files = new Map<string, { content: string; sha: string }>([["repoboard", { content: JSON.stringify(theirs), sha: "s1" }]]);
+    const github = {
+      getFile: async (_p: string, ref?: string) => {
+        const f = files.get(ref ?? "main");
+        if (!f) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return f;
+      },
+      ensureBranch: async () => {},
+      putFile: async ({ content, branch }: { content: string; branch?: string }) => {
+        files.set(branch ?? "main", { content, sha: `s${files.size + 1}` });
+        return { commitSha: "c", contentSha: "x" };
+      },
+    };
+    const db = sqlite2();
+    db.prepare("UPDATE repositories SET auto_sync = 0").run();
+    db.close();
+    const result = await service.adoptBoards(async () => github as never);
+    expect(result.autoSync).toBe(true);
+    expect(service.syncSettings().autoSync).toBe(true);
+    expect(service.getBoardData().tasks.some((t) => t.id === "from-laptop")).toBe(true);
+    // Nothing went to the default branch.
+    expect(files.has("main")).toBe(false);
+  });
+});
+
+describe("saving the boards leaves nothing behind", () => {
+  it("does not see an unchanged card as edited after a save", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const card = service.createTask({ boardId: main.boardId!, columnId: main.columns[0].id, title: "Short items", repositoryId: main.repository!.id });
+    // Items as an agent writes them: without the fields the file adds when read back.
+    const db = sqlite2();
+    db.prepare("UPDATE tasks SET checklist = ? WHERE id = ?").run(JSON.stringify([{ id: "x", text: "One", done: false }]), card);
+    db.prepare("UPDATE repositories SET auto_sync = 0").run();
+    db.close();
+    let file: { content: string; sha: string } | null = null;
+    const github = {
+      getFile: async () => {
+        if (!file) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return file;
+      },
+      putFile: async ({ content }: { content: string }) => {
+        file = { content, sha: `s${Date.now()}` };
+        return { commitSha: "c", contentSha: file.sha };
+      },
+    };
+    await service.pushBoardState(async () => github as never);
+    const after = await service.boardStateStatus(async () => github as never);
+    expect(after.changes).toEqual([]);
+  });
+});
+
 function sqlite2() {
   return new Database(databaseFile);
 }

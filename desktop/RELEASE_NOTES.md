@@ -1,5 +1,14 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.12
+
+- **A second computer shows the boards.** RepoBoard now takes the boards from GitHub by itself when it opens. If another computer syncs them automatically, this one does too, and no button is needed.
+- **The Inbox and Activity are the same on every computer.** They now travel with the boards.
+- **One button saves everything.** The cloud button saves the boards, your document edits and the agents' documents and screenshots together. You see every change first, then it goes out in one commit.
+- **No more changes that never go away.** Some cards looked edited again after every save, so the count never reached zero.
+- **Agents can tick document checks done** when they can prove it. In checklists they need evidence you can open: a screenshot, a file or a link.
+- The unsaved count updates right after a save.
+
 ## What's new in 0.6.11
 
 - **Proof you can see.** An agent that marks a check ready now attaches evidence: screenshots, shown in the document, the files and lines where the work is done, and links. It explains in plain words what it checked and what it saw.

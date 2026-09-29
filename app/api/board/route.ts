@@ -27,6 +27,7 @@ import {
   taskBelongsToBoard,
   boardStateStatus,
   pullBoardState,
+  adoptBoards,
   pushBoardState,
   linkTask,
   logActivity,
@@ -200,6 +201,7 @@ const boardStatusSchema = z.object({ action: z.literal("board-status") });
 const boardPullSchema = z.object({ action: z.literal("board-pull") });
 const boardPushSchema = z.object({ action: z.literal("board-push"), expectedSha: z.string().nullable().optional() });
 const syncNowSchema = z.object({ action: z.literal("sync-now") });
+const boardAdoptSchema = z.object({ action: z.literal("board-adopt") });
 const confirmDoneSchema = z.object({ action: z.literal("confirm-done"), taskId: z.string() });
 const moveBoardSchema = z.object({ action: z.literal("move-board"), taskId: z.string(), toBoardId: z.string() });
 const syncSettingsSchema = z.object({ action: z.literal("sync-settings"), autoSync: z.boolean() });
@@ -247,6 +249,7 @@ const bodySchema = z.discriminatedUnion("action", [
   boardPullSchema,
   boardPushSchema,
   syncNowSchema,
+  boardAdoptSchema,
   syncSettingsSchema,
   confirmDoneSchema,
   moveBoardSchema,
@@ -266,7 +269,7 @@ async function handlePost(request: Request) {
   const who = (await currentWho()) ?? { login: null, role: "viewer" as const };
 
   // Roles come from GitHub (lib/roles.ts): read-only people change nothing here.
-  const readOnly = ["board-status", "board-pull", "sync-now"];
+  const readOnly = ["board-status", "board-pull", "sync-now", "board-adopt"];
   if (!canWrite(who) && !(typeof raw?.action === "string" && readOnly.includes(raw.action))) {
     return NextResponse.json(
       { error: "You can view this project but not change it. An admin can give you Write access on GitHub.", forbidden: true },
@@ -474,6 +477,8 @@ async function handlePost(request: Request) {
       });
       return NextResponse.json({ ok: true });
     }
+    case "board-adopt":
+      return NextResponse.json(await adoptBoards());
     case "sync-now":
       return NextResponse.json(await syncBoards());
     case "sync-settings":

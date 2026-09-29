@@ -83,6 +83,51 @@ export interface BoardState {
   milestones?: BoardStateMilestone[];
   board?: BoardStateMeta;
   boards?: BoardStateBoard[];
+  /** The latest activity, so the Inbox and Activity read the same on every computer. */
+  activity?: BoardStateEvent[];
+}
+
+/** One activity event as the file carries it. */
+export interface BoardStateEvent {
+  id: string;
+  type: string;
+  message: string;
+  taskId: string | null;
+  actor: string | null;
+  actorKind: "person" | "agent" | null;
+  at: number;
+}
+
+/** How many events travel in the file: the newest, enough for the Inbox and a good while of Activity. */
+export const SHARED_ACTIVITY = 400;
+
+function cleanEvents(value: unknown): BoardStateEvent[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((e): e is Record<string, unknown> => Boolean(e) && typeof (e as { id?: unknown }).id === "string" && typeof (e as { message?: unknown }).message === "string")
+    .map((e) => ({
+      id: String(e.id).slice(0, 64),
+      type: typeof e.type === "string" ? e.type.slice(0, 40) : "note",
+      message: String(e.message).slice(0, 2000),
+      taskId: typeof e.taskId === "string" ? e.taskId : null,
+      actor: typeof e.actor === "string" ? e.actor.slice(0, 100) : null,
+      actorKind: e.actorKind === "agent" ? "agent" : e.actorKind === "person" ? "person" : null,
+      at: latest(e.at),
+    }));
+}
+
+/** Both copies' events, each once, newest first. */
+export function unionActivity(a: BoardStateEvent[] = [], b: BoardStateEvent[] = []): BoardStateEvent[] {
+  const byId = new Map<string, BoardStateEvent>();
+  for (const e of [...a, ...b]) if (!byId.has(e.id)) byId.set(e.id, e);
+  return [...byId.values()].sort((x, y) => y.at - x.at || x.id.localeCompare(y.id)).slice(0, SHARED_ACTIVITY);
+}
+
+/** Whether this copy has events the other lacks — a reason to write the file even with no card changed. */
+export function hasActivityToShare(local: BoardState, remote: BoardState | null): boolean {
+  const theirs = new Set((remote?.activity ?? []).map((e) => e.id));
+  const oldest = remote?.activity?.length ? Math.min(...remote.activity.map((e) => e.at)) : 0;
+  return (local.activity ?? []).some((e) => !theirs.has(e.id) && (e.at >= oldest || (remote?.activity?.length ?? 0) < SHARED_ACTIVITY));
 }
 
 export const BOARD_STATE_PATH = ".repoboard/board.json";
@@ -92,7 +137,8 @@ export function serialiseBoardState(state: BoardState): string {
   // byte-identical file — otherwise every push would look like a change.
   const byId = <T extends { id: string }>(list: T[]) => [...list].sort((a, b) => a.id.localeCompare(b.id));
   const boards = state.boards?.map((b) => ({ ...b, cards: byId(b.cards) }));
-  return `${JSON.stringify({ ...state, cards: byId(state.cards), ...(boards ? { boards: byId(boards) } : {}) }, null, 2)}\n`;
+  const activity = state.activity ? unionActivity(state.activity) : undefined;
+  return `${JSON.stringify({ ...state, cards: byId(state.cards), ...(boards ? { boards: byId(boards) } : {}), ...(activity ? { activity } : {}) }, null, 2)}\n`;
 }
 
 /** A clock ahead of the others must not make its edits win every merge. */
@@ -191,7 +237,9 @@ export function parseBoardState(content: string): BoardState | null {
         })
         .filter((b): b is BoardStateBoard => Boolean(b))
     : undefined;
+  const activity = cleanEvents(parsed.activity);
   return {
+    ...(activity.length ? { activity } : {}),
     version: 1,
     columns: strings(parsed.columns),
     cards,
@@ -393,6 +441,7 @@ export function mergeBoardFile(local: BoardState, remote: BoardState | null): Fi
     state: {
       ...local,
       milestones: unionMilestones(local.milestones, remote.milestones),
+      ...(local.activity || remote.activity ? { activity: unionActivity(local.activity, remote.activity) } : {}),
       cards: placed.main,
       ...(board ? { board } : {}),
       boards: placed.boards,

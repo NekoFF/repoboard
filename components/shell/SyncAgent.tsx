@@ -17,6 +17,29 @@ export function SyncAgent({ enabled, syncedAt }: { enabled: boolean; syncedAt: n
   const running = useRef(false);
   const again = useRef(false);
 
+  // Not syncing on its own yet: take the boards from GitHub — and start syncing
+  // when another computer already does (lib/board-service.ts adoptBoards).
+  useEffect(() => {
+    if (enabled) return;
+    let last = 0;
+    const adopt = async () => {
+      if (Date.now() - last < 5 * 60_000 || document.visibilityState !== "visible") return;
+      last = Date.now();
+      try {
+        const result = await api.boardAdopt();
+        if (result.autoSync || result.pulled > 0) {
+          router.refresh();
+          window.dispatchEvent(new Event("rb-live"));
+        }
+      } catch {
+        // Offline or no access: the page says so elsewhere.
+      }
+    };
+    void adopt();
+    window.addEventListener("focus", adopt);
+    return () => window.removeEventListener("focus", adopt);
+  }, [enabled, router]);
+
   useEffect(() => {
     if (!enabled) {
       setSyncStatus({ state: "off", error: null });

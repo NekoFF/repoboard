@@ -44,6 +44,9 @@ import {
   type BoardStateMeta,
   type BoardStateMilestone,
   doneByField,
+  hasActivityToShare,
+  SHARED_ACTIVITY,
+  type BoardStateEvent,
 } from "@/lib/board-state";
 import {
   buildDiff,
@@ -1539,7 +1542,8 @@ function cardsOf(boardId: string): BoardStateCard[] {
     description: t.description,
     assignee: t.assignee,
     dueDate: t.dueDate?.getTime() ?? null,
-    checklist: t.checklist ?? [],
+    // The shape the file reads back (lib/checklist.ts normalise), or the card would look edited forever.
+    checklist: normalise(t.checklist),
     labels: links.labels.get(t.id) ?? [],
     branches: links.branches.get(t.id) ?? [],
     pullRequests: links.pullRequests.get(t.id) ?? [],
@@ -1589,7 +1593,39 @@ function localBoardState(): BoardState {
         milestones: milestonesOfState(b.id),
         cards: cardsOf(b.id),
       })),
+    activity: sharedActivity(repository.id),
   };
+}
+
+/** Bookkeeping of the sync itself: every computer writes its own, so they do not travel. */
+const LOCAL_ONLY_EVENTS = new Set(["board_pulled", "board_pushed", "github_synced", "conflict_detected"]);
+
+/** The newest events of the project, as the file carries them to the other computers. */
+function sharedActivity(repositoryId: string): BoardStateEvent[] {
+  return db
+    .select()
+    .from(activityEvents)
+    .where(eq(activityEvents.repositoryId, repositoryId))
+    .orderBy(desc(activityEvents.createdAt))
+    .limit(SHARED_ACTIVITY * 2)
+    .all()
+    .filter((e) => !LOCAL_ONLY_EVENTS.has(e.type))
+    .slice(0, SHARED_ACTIVITY)
+    .map((e) => ({ id: e.id, type: e.type, message: e.message, taskId: e.taskId, actor: e.actor, actorKind: e.actorKind ?? null, at: e.createdAt.getTime() }));
+}
+
+/** Events another computer had and this one did not: added, each once. */
+function writeActivity(repositoryId: string, events: BoardStateEvent[] = []): void {
+  if (!events.length) return;
+  const known = new Set(
+    db.select({ id: activityEvents.id }).from(activityEvents).where(inArray(activityEvents.id, events.map((e) => e.id))).all().map((e) => e.id),
+  );
+  for (const e of events) {
+    if (known.has(e.id) || LOCAL_ONLY_EVENTS.has(e.type)) continue;
+    db.insert(activityEvents)
+      .values({ id: e.id, repositoryId, taskId: e.taskId, type: e.type, message: e.message, actor: e.actor, actorKind: e.actorKind, createdAt: new Date(e.at) })
+      .run();
+  }
 }
 
 function writeCards(boardId: string, cards: BoardStateCard[]): void {
@@ -1687,6 +1723,7 @@ function applyBoardFile(repositoryId: string, state: BoardState): void {
 }
 
 function applyBoardFileNow(repositoryId: string, state: BoardState): void {
+  writeActivity(repositoryId, state.activity);
   const mainId = primaryBoardId(repositoryId);
   const main = db.select().from(boards).where(eq(boards.id, mainId)).get();
   const sameMeta = (a: BoardStateMeta, b: BoardStateMeta) =>
@@ -1885,14 +1922,15 @@ export async function syncBoards(
       }
     }
     const changes = describeFileChanges(localBoardState(), remote);
-    if (changes.length === 0) break;
+    // Nothing changed on a card, but new activity here: it travels too, so the Inbox reads the same.
+    if (changes.length === 0 && !hasActivityToShare(localBoardState(), remote)) break;
     try {
       await gh.putFile({
         path: BOARD_STATE_PATH,
         content: serialiseBoardState(localBoardState()),
         expectedSha: sha ?? undefined,
         branch: SYNC_BRANCH,
-        message: `RepoBoard: sync boards (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+        message: changes.length ? `RepoBoard: sync boards (${changes.length} change${changes.length === 1 ? "" : "s"})` : "RepoBoard: sync activity",
       });
       pushed = changes.length;
       break;
@@ -1906,6 +1944,35 @@ export async function syncBoards(
   const syncedAt = Date.now();
   db.update(repositories).set({ syncedAt: new Date(syncedAt) }).where(eq(repositories.id, repository.id)).run();
   return { pulled, pushed, syncedAt };
+}
+
+/**
+ * A computer that does not sync this project on its own yet takes the boards
+ * from wherever they are: when they live on SYNC_BRANCH — automatic sync was
+ * turned on from another computer — this one syncs automatically from now on
+ * too; otherwise they are pulled from the default branch. Asked by the open
+ * app (components/shell/SyncAgent.tsx), so a new computer shows the boards
+ * without anyone pressing a button.
+ */
+export async function adoptBoards(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ autoSync: boolean; pulled: number }> {
+  const repository = activeRepository();
+  if (!repository) return { autoSync: false, pulled: 0 };
+  if (syncSettings().autoSync) return { autoSync: true, pulled: (await syncBoards(clientFactory)).pulled };
+  const gh = await clientFactory();
+  const onBranch = await readBoardFile(gh, SYNC_BRANCH).catch(() => ({ state: null, sha: null }));
+  if (onBranch.state) {
+    db.update(repositories).set({ autoSync: true }).where(eq(repositories.id, repository.id)).run();
+    logActivity({
+      repositoryId: repository.id,
+      type: "sync_settings",
+      message: `found the boards on the ${SYNC_BRANCH} branch: this computer syncs them automatically too`,
+    });
+    return { autoSync: true, pulled: (await syncBoards(clientFactory)).pulled };
+  }
+  const pulled = await pullBoardState(clientFactory);
+  return { autoSync: false, pulled: pulled ? pulled.added + pulled.updated : 0 };
 }
 
 /** Repository → this machine, every board. Newer edits win per card and per board. */
@@ -1932,6 +1999,25 @@ export async function pullBoardState(
   return { added: merged.added, updated: merged.updated };
 }
 
+/**
+ * What saving the boards to the default branch would write, merged first
+ * (newer edits from GitHub come in here too): for one commit with the
+ * documents (lib/save-all.ts). Null when there is nothing to save.
+ */
+export async function boardFileToSave(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ content: string; sha: string | null; changes: string[] } | null> {
+  const repository = activeRepository();
+  if (!repository) return null;
+  const { state: remote, sha } = await readBoardFile(await clientFactory());
+  const local = localBoardState();
+  const changes = describeFileChanges(local, remote);
+  if (changes.length === 0 && !hasActivityToShare(local, remote)) return null;
+  const merged = mergeBoardFile(local, remote);
+  applyBoardFile(repository.id, merged.state);
+  return { content: serialiseBoardState(localBoardState()), sha, changes };
+}
+
 /** This machine → repository, merging first so a colleague's newer edit survives. */
 export async function pushBoardState(
   clientFactory: ClientFactory = defaultClientFactory,
@@ -1950,7 +2036,7 @@ export async function pushBoardState(
   }
   const local = localBoardState();
   const changes = describeFileChanges(local, remote);
-  if (changes.length === 0) return { commitSha: "", changes: [] };
+  if (changes.length === 0 && !hasActivityToShare(local, remote)) return { commitSha: "", changes: [] };
 
   const merged = mergeBoardFile(local, remote);
   applyBoardFile(repository.id, merged.state);
@@ -1960,7 +2046,7 @@ export async function pushBoardState(
     // What this machine now has — merged, and with duplicate numbers resolved.
     content: serialiseBoardState(localBoardState()),
     expectedSha: sha ?? undefined,
-    message: `RepoBoard: update boards (${changes.length} change${changes.length === 1 ? "" : "s"})`,
+    message: changes.length ? `RepoBoard: update boards (${changes.length} change${changes.length === 1 ? "" : "s"})` : "RepoBoard: save activity",
   });
 
   logActivity({

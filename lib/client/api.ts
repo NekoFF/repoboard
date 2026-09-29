@@ -14,6 +14,7 @@ import type {
   IssueSummary,
   PullRequestSummary,
 } from "@/lib/github/client";
+import type { SavePlan } from "@/lib/save-all";
 
 export class ApiError extends Error {
   constructor(
@@ -186,6 +187,9 @@ export const api = {
   proposals: (path?: string) =>
     request<{ proposals: DocProposal[] }>(`/api/docs?proposals=1${path ? `&for=${encodeURIComponent(path)}` : ""}`),
   clearProposals: (ids: string[]) => post<{ ok: true }>("/api/docs", { action: "proposals-clear", ids }),
+  planSaveAll: (yours: { path: string; edits: DocEdit[] }[]) => post<SavePlan>("/api/docs", { action: "save-all-plan", yours }),
+  saveAll: (yours: { path: string; edits: DocEdit[] }[], seen: Record<string, string | null>) =>
+    post<{ commits: string[]; boards: number; documents: number }>("/api/docs", { action: "save-all", yours, seen }),
   previewProposedDocs: (ids: string[]) =>
     post<{ files: (WorkspaceFile & { id: string; author: string })[]; existing: string[] }>("/api/docs", { action: "proposals-preview", ids }),
   createProposedDocs: (ids: string[]) => post<{ commitSha: string; paths: string[] }>("/api/docs", { action: "proposals-create", ids }),
@@ -332,6 +336,7 @@ export const api = {
 
   /** Boards both ways through the repoboard branch (lib/board-service.ts syncBoards). */
   syncNow: () => post<{ pulled: number; pushed: number; syncedAt: number }>("/api/board", { action: "sync-now" }),
+  boardAdopt: () => post<{ autoSync: boolean; pulled: number }>("/api/board", { action: "board-adopt" }),
   setAutoSync: (autoSync: boolean) =>
     post<{ pulled: number; pushed: number; syncedAt: number | null }>("/api/board", { action: "sync-settings", autoSync }),
 

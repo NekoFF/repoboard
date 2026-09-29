@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CheckCheck, CloudOff, CloudUpload, FilePlus2, FileText, Keyboard, Moon, Pin as PinIcon, Plus, Sun, X } from "lucide-react";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode, useState } from "react";
 import { useShell } from "@/components/shell/ShellContext";
 import { useTheme } from "@/components/shell/ThemeProvider";
 import { Menu, MenuItem, MenuLabel, MenuSeparator, ProgressRing, StatusIcon, Tooltip } from "@/components/ui";
@@ -13,6 +13,7 @@ import { requestSync, useSyncStatus } from "@/lib/client/sync";
 import { statusOfColumn } from "@/lib/status";
 import { boardColor, boardHref } from "@/components/labelColor";
 import { waitingForCheck } from "@/lib/checklist";
+import { openSaveAll, yourDocEdits } from "@/components/shell/SaveAll";
 
 function RailButton({
   label,
@@ -68,7 +69,8 @@ export function ToolRail() {
 
   const cards = useResource(api.projectCards, [repo, pathname], { enabled: connected, live: true });
   const tracked = useResource(api.docs, [repo, pathname], { enabled: connected });
-  const boardState = useResource(api.boardStatus, [repo], { enabled: connected });
+  // Live: a save or a sync anywhere updates the count at once, not on the next focus.
+  const boardState = useResource(api.boardStatus, [repo], { enabled: connected, live: true });
 
   // Board changes not in the repository yet: look again when the window is looked at.
   const reloadBoardState = boardState.reload;
@@ -96,7 +98,22 @@ export function ToolRail() {
   }, [cards.data, tracked.data]);
   // With automatic sync on, nothing waits to be saved by hand; a failed sync is what waits.
   const sync = useSyncStatus();
-  const unsaved = boardState.data?.autoSync || sync.state !== "off" ? 0 : (boardState.data?.changes.length ?? 0);
+  // Everything not on GitHub yet: board changes (when they are saved by hand), what agents
+  // proposed for documents, and your own uncommitted document edits — one button saves it all.
+  const proposals = useResource(() => api.proposals(), [repo], { enabled: connected, live: true });
+  const [yours, setYours] = useState(0);
+  useEffect(() => {
+    const count = () => setYours(yourDocEdits().reduce((n, d) => n + d.edits.length, 0));
+    count();
+    const id = window.setInterval(count, 3000);
+    window.addEventListener("rb-doc-saved", count);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("rb-doc-saved", count);
+    };
+  }, []);
+  const boardUnsaved = boardState.data?.autoSync || sync.state !== "off" ? 0 : (boardState.data?.changes.length ?? 0);
+  const unsaved = boardUnsaved + (proposals.data?.proposals.length ?? 0) + yours;
 
   // What "pin this page" would pin, if this page can be pinned.
   const here = useMemo((): Pin | null => {
@@ -262,8 +279,8 @@ export function ToolRail() {
       )}
       {unsaved > 0 && (
         <RailButton
-          label={`${unsaved} board change${unsaved === 1 ? "" : "s"} not in the repository yet`}
-          onClick={() => router.push("/board?save=1")}
+          label={`${unsaved} change${unsaved === 1 ? "" : "s"} not on GitHub yet — save everything`}
+          onClick={openSaveAll}
         >
           <CloudUpload className="size-4" />
           <Count n={unsaved} tone="accent" />

@@ -136,6 +136,11 @@ into one paragraph. RepoBoard does this when it adds a note.
 
 ## The board file
 
+Besides the boards, `board.json` carries the project's latest activity
+(`activity`, the newest 400 events, not the sync's own bookkeeping), so the
+Inbox and Activity read the same on every computer. Events merge by id.
+
+
 A file whose headings are the board's columns (`## Todo`, `## In Progress`,
 `## Review`, `## Done`) can drive the board: its items become cards, and
 moving a card rewrites the file — always through a diff you review first.

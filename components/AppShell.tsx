@@ -22,6 +22,7 @@ import { ProjectUnavailable } from "@/components/connect/ProjectUnavailable";
 import { openProject } from "@/lib/client/project";
 import type { Role } from "@/lib/roles";
 import { useHotkeys } from "@/lib/client/hotkeys";
+import { SaveAllHost } from "@/components/shell/SaveAll";
 
 /** Phones and narrow windows: the sidebar becomes a drawer behind a menu button. */
 function MobileBar({ onSearch }: { onSearch: () => void }) {
@@ -238,6 +239,7 @@ export function AppShell({
               <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
               {unlocked && <LiveRefresh />}
               {unlocked && <DocsWatch />}
+              {unlocked && <SaveAllHost />}
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.
                 children

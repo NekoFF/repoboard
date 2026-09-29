@@ -6,6 +6,7 @@ import {
   parseBoardState,
   mergeBoardFile,
   describeFileChanges,
+  hasActivityToShare,
   type BoardState,
   type BoardStateBoard,
   type BoardStateCard,
@@ -245,5 +246,24 @@ describe("a card read back from the file", () => {
     const reordered = Object.fromEntries(Object.entries(back).reverse()) as BoardStateCard;
     expect(describeChanges([here], [reordered])).toEqual([]);
     expect(describeChanges([{ ...here, title: "Renamed" }], [reordered])).toEqual(["renamed: A card → Renamed"]);
+  });
+});
+
+describe("activity travels with the boards", () => {
+  const ev = (id: string, at: number, actor = "Claude") => ({ id, type: "card_moved", message: `moved ${id}`, taskId: null, actor, actorKind: "agent" as const, at });
+
+  it("merges both computers' events, each once, newest first", () => {
+    const mine = file({ activity: [ev("a", 3), ev("b", 1)] });
+    const theirs = file({ activity: [ev("b", 1), ev("c", 2)] });
+    const merged = mergeBoardFile(mine, theirs).state.activity!;
+    expect(merged.map((e) => e.id)).toEqual(["a", "c", "b"]);
+    // Written and read back the same.
+    expect(parseBoardState(serialiseBoardState(mergeBoardFile(mine, theirs).state))!.activity).toEqual(merged);
+  });
+
+  it("is a reason to write the file even when no card changed", () => {
+    expect(hasActivityToShare(file({ activity: [ev("new", 5)] }), file({ activity: [] }))).toBe(true);
+    expect(hasActivityToShare(file({ activity: [ev("x", 5)] }), file({ activity: [ev("x", 5)] }))).toBe(false);
+    expect(describeFileChanges(file({ activity: [ev("new", 5)] }), file())).toEqual([]);
   });
 });
