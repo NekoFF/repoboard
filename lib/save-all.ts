@@ -36,6 +36,8 @@ export interface SaveAllDocument {
   screenshots: number;
   /** Edits that no longer fit the file: left out, and said. */
   missed: string[];
+  /** It could not be prepared: shown with the reason, and not saved; the rest still is. */
+  error?: string;
 }
 
 export interface SavePlan {
@@ -68,10 +70,15 @@ async function documentsPlan(yours: YourEdits): Promise<{ documents: SaveAllDocu
   const documents: SaveAllDocument[] = [];
   const proposalIds: string[] = [];
   for (const [path, e] of byPath) {
-    const change = await previewDocEdit({ path, edits: e.edits, baseSha: null, attachments: e.attachments.map((a) => a.path) });
-    if (!change.changedSomething) continue;
-    documents.push({ path, summary: change.summary, creating: false, diff: change.diff, baseSha: change.baseSha, by: [...e.by], screenshots: e.attachments.length, missed: change.missed });
-    proposalIds.push(...e.ids);
+    try {
+      const change = await previewDocEdit({ path, edits: e.edits, baseSha: null, attachments: e.attachments.map((a) => a.path) });
+      if (!change.changedSomething) continue;
+      documents.push({ path, summary: change.summary, creating: false, diff: change.diff, baseSha: change.baseSha, by: [...e.by], screenshots: e.attachments.length, missed: change.missed });
+      proposalIds.push(...e.ids);
+    } catch (error) {
+      // One document that cannot be prepared does not stop the others.
+      documents.push({ path, summary: "Could not be prepared", creating: false, diff: [], baseSha: null, by: [...e.by], screenshots: e.attachments.length, missed: [], error: (error as Error).message });
+    }
   }
   const created = proposals.filter((p) => p.content != null);
   if (created.length) {
@@ -100,7 +107,9 @@ export async function saveAll(
 ): Promise<{ commits: string[]; boards: number; documents: number }> {
   const repository = activeRepository();
   if (!repository) throw new Error("Connect a repository first");
-  const { documents, proposalIds } = await documentsPlan(yours);
+  const planned = await documentsPlan(yours);
+  const documents = planned.documents.filter((d) => !d.error);
+  const { proposalIds } = planned;
   for (const d of documents) {
     if (d.path in seen && seen[d.path] !== d.baseSha) {
       const error = new Error(`${d.path} changed on GitHub since you looked. Look at the changes again.`);

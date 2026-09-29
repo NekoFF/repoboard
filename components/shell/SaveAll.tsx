@@ -70,7 +70,7 @@ function SaveAllDialog({ onClose }: { onClose: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, []);
 
-  const total = (plan?.boards.changes.length ?? 0) + (plan?.documents.length ?? 0);
+  const total = (plan?.boards.changes.length ?? 0) + (plan?.documents.filter((d) => !d.error).length ?? 0);
 
   const save = async () => {
     if (!plan) return;
@@ -175,6 +175,7 @@ function SaveAllDialog({ onClose }: { onClose: () => void }) {
                       </div>
                     )}
                     {d.missed.length > 0 && <p className="px-3 pb-2 text-xs text-danger">Left out, the file changed: {d.missed.join("; ")}</p>}
+                    {d.error && <p className="px-3 pb-2 text-xs text-danger">Not saved: {d.error}</p>}
                   </li>
                 ))}
               </ul>

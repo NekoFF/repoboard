@@ -135,4 +135,20 @@ describe("documents follow GitHub", () => {
     expect(docs.listProposals().map((p) => p.id)).toEqual(["o1"]);
     docs.setAgentDocsMode("review");
   });
+
+  it("renames a screenshot named in letters the checks refuse, and its proof follows", async () => {
+    const sqlite = new Database(path.join(scratch, "board.db"));
+    const repo = (sqlite.prepare("SELECT id FROM repositories LIMIT 1").get() as { id: string }).id;
+    sqlite.prepare("DELETE FROM doc_proposals").run();
+    const old = ".repoboard/evidence/licenses-в-apk-нет-логотипов-1.png";
+    const edits = [{ type: "proof", line: 3, title: "Нет логотипов", state: "review", by: "Claude", checked: false, proofs: [{ kind: "image", path: "../evidence/licenses-в-apk-нет-логотипов-1.png", alt: "Screenshot" }] }];
+    sqlite
+      .prepare("INSERT INTO doc_proposals (id, repository_id, path, edits, content, author, summary, created_at, attachments) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run("abcdef123456", repo, ".repoboard/checklists/licenses.md", JSON.stringify(edits), null, "Claude", "Mark", Date.now(), JSON.stringify([{ path: old, base64: "iVBORw0KGgo=" }]));
+    sqlite.close();
+    const [p] = docs.listProposals();
+    expect(p.attachments[0].path).toBe(".repoboard/evidence/licenses-abcdef12-1.png");
+    const proof = p.edits![0] as { proofs: { path: string }[] };
+    expect(proof.proofs[0].path).toBe("../evidence/licenses-abcdef12-1.png");
+  });
 });
