@@ -1,5 +1,10 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.14
+
+- **Fixed: documents with proofs from a work branch could not be saved.** An agent's proof can now name files that are not on the documents branch yet; they stay as the path and lines.
+- **The cloud counts like the save dialog does:** each board change, and each document once.
+
 ## What's new in 0.6.13
 
 - **Fixed: "Save everything" could not save.** Screenshots an agent had named in Russian stopped the whole save. They are now renamed by themselves. If one document still cannot be prepared, the dialog shows why and saves everything else.

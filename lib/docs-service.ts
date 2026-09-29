@@ -89,7 +89,9 @@ async function resolveProofs(edits: DocEdit[], gh: DocsGitHub): Promise<DocEdit[
           if (proof.kind !== "place") return proof;
           const path = proof.path.replace(/^\/+/, "");
           const file = await gh.getFile(path).catch(() => null);
-          if (!file) throw new Error(`${path} is not in the repository`);
+          // Not on the documents' branch (an agent's work branch, not merged yet): the proof
+          // stays as the path and lines, in words — it does not stop the save.
+          if (!file) return proof;
           const count = file.content.split("\n").length;
           const from = proof.from ? Math.min(Math.max(1, proof.from), count) : null;
           const to = from && proof.to ? Math.min(Math.max(from, proof.to), count) : from;

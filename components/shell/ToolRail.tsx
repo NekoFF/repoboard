@@ -101,9 +101,9 @@ export function ToolRail() {
   // Everything not on GitHub yet: board changes (when they are saved by hand), what agents
   // proposed for documents, and your own uncommitted document edits — one button saves it all.
   const proposals = useResource(() => api.proposals(), [repo], { enabled: connected, live: true });
-  const [yours, setYours] = useState(0);
+  const [yours, setYours] = useState<string[]>([]);
   useEffect(() => {
-    const count = () => setYours(yourDocEdits().reduce((n, d) => n + d.edits.length, 0));
+    const count = () => setYours(yourDocEdits().map((d) => d.path));
     count();
     const id = window.setInterval(count, 3000);
     window.addEventListener("rb-doc-saved", count);
@@ -113,7 +113,8 @@ export function ToolRail() {
     };
   }, []);
   const boardUnsaved = boardState.data?.autoSync || sync.state !== "off" ? 0 : (boardState.data?.changes.length ?? 0);
-  const unsaved = boardUnsaved + (proposals.data?.proposals.length ?? 0) + yours;
+  // As the save dialog counts them: each board change, and each document once.
+  const unsaved = boardUnsaved + new Set([...(proposals.data?.proposals ?? []).map((p) => p.path), ...yours]).size;
 
   // What "pin this page" would pin, if this page can be pinned.
   const here = useMemo((): Pin | null => {
