@@ -132,6 +132,19 @@ export function DocScreen({ path }: { path: string }) {
   const proposals = useResource(() => api.proposals(path), [path], { live: true });
   // Kept with the uncommitted edits they went into, so a reload does not take them twice.
   const [taken, setTaken] = useState<string[]>([]);
+  // Saved with everything else (the cloud in the tool rail): this page starts clean.
+  useEffect(() => {
+    const saved = () => {
+      setEdits([]);
+      setAttachments([]);
+      setTaken([]);
+      doc.reload();
+      proposals.reload();
+    };
+    window.addEventListener("rb-doc-saved", saved);
+    return () => window.removeEventListener("rb-doc-saved", saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     try {
       setTaken(JSON.parse(sessionStorage.getItem(`rb-doc-taken:${path}`) ?? "[]"));

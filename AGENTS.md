@@ -75,6 +75,15 @@ Project (a GitHub repository)
   `router.refresh()` and fires `rb-live` (resources with `live: true`
   reload) — not while the person drags or types. Agents' MCP writes reach
   the screen this way.
+- **One button saves everything**: the cloud in the tool rail (and "Save to
+  repo" on a board) opens `components/shell/SaveAll.tsx` — board changes,
+  agents' document proposals, new documents with their screenshots, and the
+  person's uncommitted document edits (sessionStorage `rb-doc-edits:*`),
+  each file with its diff, committed together by `lib/save-all.ts` (one
+  commit when documents live on the default branch). The count on it is all
+  of those together. A computer that does not sync on its own adopts the
+  boards when the app opens (`adoptBoards`: the repoboard branch — then it
+  syncs automatically too — else the default branch).
 - A card lives at `/board/card/<RB-n or id>` whatever its board;
   `findCardBoard` finds it. Card numbers come from `nextCardNumber`, which
   counts every board of the repository — never number per board.

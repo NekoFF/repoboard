@@ -1542,7 +1542,8 @@ function cardsOf(boardId: string): BoardStateCard[] {
     description: t.description,
     assignee: t.assignee,
     dueDate: t.dueDate?.getTime() ?? null,
-    checklist: t.checklist ?? [],
+    // The shape the file reads back (lib/checklist.ts normalise), or the card would look edited forever.
+    checklist: normalise(t.checklist),
     labels: links.labels.get(t.id) ?? [],
     branches: links.branches.get(t.id) ?? [],
     pullRequests: links.pullRequests.get(t.id) ?? [],
@@ -1996,6 +1997,25 @@ export async function pullBoardState(
     });
   }
   return { added: merged.added, updated: merged.updated };
+}
+
+/**
+ * What saving the boards to the default branch would write, merged first
+ * (newer edits from GitHub come in here too): for one commit with the
+ * documents (lib/save-all.ts). Null when there is nothing to save.
+ */
+export async function boardFileToSave(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ content: string; sha: string | null; changes: string[] } | null> {
+  const repository = activeRepository();
+  if (!repository) return null;
+  const { state: remote, sha } = await readBoardFile(await clientFactory());
+  const local = localBoardState();
+  const changes = describeFileChanges(local, remote);
+  if (changes.length === 0 && !hasActivityToShare(local, remote)) return null;
+  const merged = mergeBoardFile(local, remote);
+  applyBoardFile(repository.id, merged.state);
+  return { content: serialiseBoardState(localBoardState()), sha, changes };
 }
 
 /** This machine → repository, merging first so a colleague's newer edit survives. */

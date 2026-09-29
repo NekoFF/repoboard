@@ -29,6 +29,7 @@ import {
   trackDoc,
   untrackDoc,
 } from "@/lib/docs-service";
+import { planSaveAll, saveAll } from "@/lib/save-all";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +135,13 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("refresh") }),
   z.object({ action: z.literal("proposals-clear"), ids: z.array(z.string()).max(500) }),
   z.object({ action: z.literal("proposals-preview"), ids: z.array(z.string()).min(1).max(100) }),
+  // Everything at once (lib/save-all.ts): the plan to look at, then the save.
+  z.object({ action: z.literal("save-all-plan"), yours: z.array(z.object({ path: docPath, edits: z.array(edit).max(500) })).max(100) }),
+  z.object({
+    action: z.literal("save-all"),
+    yours: z.array(z.object({ path: docPath, edits: z.array(edit).max(500) })).max(100),
+    seen: z.record(z.string(), z.string().nullable()),
+  }),
   z.object({ action: z.literal("proposals-create"), ids: z.array(z.string()).min(1).max(100) }),
   z.object({ action: z.literal("sync-workspace") }),
   z.object({
@@ -201,6 +209,10 @@ async function handlePost(request: Request, login: string | null) {
       case "proposals-clear":
         clearProposals(body.ids);
         return NextResponse.json({ ok: true });
+      case "save-all-plan":
+        return NextResponse.json(await planSaveAll(body.yours.map((y) => ({ path: y.path, edits: signed(y.edits, login) }))));
+      case "save-all":
+        return NextResponse.json(await saveAll(body.yours.map((y) => ({ path: y.path, edits: signed(y.edits, login) })), body.seen));
       case "proposals-preview":
         return NextResponse.json(await previewProposedDocs(body.ids));
       case "proposals-create":

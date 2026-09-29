@@ -36,6 +36,7 @@ import { setCurrentBoard } from "@/lib/client/current-board";
 import { statusOfColumn } from "@/lib/status";
 import { canManageBoard, canWrite } from "@/lib/roles";
 import { useShell } from "@/components/shell/ShellContext";
+import { openSaveAll } from "@/components/shell/SaveAll";
 
 const VIEW_KEY = "rb-board-view";
 
@@ -56,14 +57,13 @@ export function BoardScreen({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<BoardView>("board");
   const [syncing, setSyncing] = useState(false);
-  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "save" | "autosync">(null);
-  const [saving, setSaving] = useState(false);
+  const [dialog, setDialog] = useState<null | "import" | "commit" | "new" | "milestones" | "autosync">(null);
   const [ids, setIds] = useState<{ path: string; content: string; baseSha: string; count: number } | null>(null);
 
   // The tool rail's "not in the repository yet" opens the save dialog here.
   useEffect(() => {
     if (params.get("save") !== "1") return;
-    setDialog("save");
+    openSaveAll();
     const next = new URLSearchParams(params.toString());
     next.delete("save");
     router.replace(next.size ? `${pathname}?${next}` : pathname, { scroll: false });
@@ -189,24 +189,6 @@ export function BoardScreen({
     }
   };
 
-  const saveBoard = async () => {
-    setSaving(true);
-    try {
-      const result = await api.boardPush(boardState.data?.sha ?? null);
-      toast.push({ kind: "success", message: "Boards saved to the repository", detail: `${result.changes.length} changes in .repoboard/board.json` });
-      boardState.reload();
-      // Everything else counting unsaved changes (the tool rail) looks again.
-      window.dispatchEvent(new Event("rb-live"));
-      setDialog(null);
-    } catch (error) {
-      toast.push({ kind: "error", message: "Could not save the board", detail: (error as Error).message });
-      // Changed on GitHub meanwhile: show what saving would do now.
-      boardState.reload();
-    } finally {
-      setSaving(false);
-    }
-  };
-
   useHotkeys({
     "/": () => filterRef.current?.focus(),
     s: () => !syncing && sync(),
@@ -244,7 +226,7 @@ export function BoardScreen({
             {autoSync && <SyncChip />}
             {!autoSync && boardChanges > 0 && (
               <Tooltip content="Boards, card order, checklists and links are kept in .repoboard/board.json so teammates see them">
-                <button className="rb-btn rb-btn-sm" onClick={() => setDialog("save")}>
+                <button className="rb-btn rb-btn-sm" onClick={openSaveAll}>
                   <CloudUpload className="size-3.5" /> Save to repo
                   <span className="tabular-nums text-faint">{boardChanges}</span>
                 </button>
@@ -358,36 +340,6 @@ export function BoardScreen({
             router.refresh();
           }}
         />
-      )}
-
-      {dialog === "save" && (
-        <Modal
-          title="Save the boards to the repository"
-          description="Commits .repoboard/board.json, so anyone who connects this repository sees the same boards, cards, order and checklists."
-          onClose={() => setDialog(null)}
-          footer={
-            <>
-              <button className="rb-btn" onClick={() => setDialog(null)}>
-                Not now
-              </button>
-              <div className="flex-1" />
-              <button className="rb-btn-primary" onClick={saveBoard} disabled={saving}>
-                {saving && <Spinner />} Commit {boardChanges} change{boardChanges === 1 ? "" : "s"}
-              </button>
-            </>
-          }
-        >
-          <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
-            {(boardState.data?.changes ?? []).map((change, index) => (
-              <li key={index} className="px-3 py-2 text-ink">
-                {change}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-muted">
-            Newer edits from the repository are merged in first, card by card, so nobody else’s work is overwritten.
-          </p>
-        </Modal>
       )}
 
       {dialog === "autosync" && (

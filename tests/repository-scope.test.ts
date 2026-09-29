@@ -321,6 +321,34 @@ describe("a new computer takes the boards by itself", () => {
   });
 });
 
+describe("saving the boards leaves nothing behind", () => {
+  it("does not see an unchanged card as edited after a save", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const card = service.createTask({ boardId: main.boardId!, columnId: main.columns[0].id, title: "Short items", repositoryId: main.repository!.id });
+    // Items as an agent writes them: without the fields the file adds when read back.
+    const db = sqlite2();
+    db.prepare("UPDATE tasks SET checklist = ? WHERE id = ?").run(JSON.stringify([{ id: "x", text: "One", done: false }]), card);
+    db.prepare("UPDATE repositories SET auto_sync = 0").run();
+    db.close();
+    let file: { content: string; sha: string } | null = null;
+    const github = {
+      getFile: async () => {
+        if (!file) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return file;
+      },
+      putFile: async ({ content }: { content: string }) => {
+        file = { content, sha: `s${Date.now()}` };
+        return { commitSha: "c", contentSha: file.sha };
+      },
+    };
+    await service.pushBoardState(async () => github as never);
+    const after = await service.boardStateStatus(async () => github as never);
+    expect(after.changes).toEqual([]);
+  });
+});
+
 function sqlite2() {
   return new Database(databaseFile);
 }

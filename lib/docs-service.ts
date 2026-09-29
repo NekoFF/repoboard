@@ -234,6 +234,12 @@ function findRow(repositoryId: string, path: string) {
     .get();
 }
 
+/** After a commit made elsewhere (lib/save-all.ts): the document as it now is. */
+export function rememberDocument(path: string, content: string): void {
+  const repository = requireRepository();
+  saveSnapshot(repository.id, path, parseDocument(content, fileName(path)), blobShaOf(content));
+}
+
 function saveSnapshot(repositoryId: string, path: string, parsed: ParsedDocument, sha: string) {
   const row = findRow(repositoryId, path);
   if (!row) return;
