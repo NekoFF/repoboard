@@ -1,5 +1,9 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.13
+
+- **Fixed: "Save everything" could not save.** Screenshots an agent had named in Russian stopped the whole save. They are now renamed by themselves. If one document still cannot be prepared, the dialog shows why and saves everything else.
+
 ## What's new in 0.6.12
 
 - **A second computer shows the boards.** RepoBoard now takes the boards from GitHub by itself when it opens. If another computer syncs them automatically, this one does too, and no button is needed.

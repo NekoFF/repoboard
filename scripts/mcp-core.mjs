@@ -1578,7 +1578,9 @@ const handlers = {
         throw new Error(`screenshots[${index + 1}]: no file ${file}`);
       }
       if (bytes.length > 5 * 1024 * 1024) throw new Error(`screenshots[${index + 1}]: ${given} is over 5 MB — make it smaller`);
-      const where = `.repoboard/evidence/${slugOf(path.basename(doc.path, ".md"))}-${slugOf(item.title).slice(0, 40)}-${stamp}-${index + 1}${ext === ".jpeg" ? ".jpg" : ext}`;
+      // Plain letters in the file name: GitHub paths and the app's checks take no others.
+      const ascii = (text) => slugOf(text).replace(/[^a-z0-9-]+/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
+      const where = `.repoboard/evidence/${ascii(path.basename(doc.path, ".md")) || "doc"}-${ascii(item.title).slice(0, 40) || "check"}-${stamp}-${index + 1}${ext === ".jpeg" ? ".jpg" : ext}`;
       attachments.push({ path: where, base64: bytes.toString("base64") });
       proofs.push({ kind: "image", path: path.posix.relative(path.posix.dirname(doc.path), where), alt: `Screenshot by ${agentLabel()}` });
     });

@@ -560,6 +560,33 @@ export interface DocProposal {
   createdAt: number;
 }
 
+const EVIDENCE_NAME = /^[\w./-]+\.(png|jpe?g|webp)$/i;
+
+/**
+ * A screenshot named with letters the checks refuse (an agent before 0.6.13
+ * named them after the check, in any script): renamed, and the proofs that
+ * show it follow.
+ */
+function saneAttachments(p: { id: string; path: string; edits: DocEdit[] | null; attachments: Attachment[] }): { edits: DocEdit[] | null; attachments: Attachment[] } {
+  let edits = p.edits;
+  const attachments = p.attachments.map((a, index) => {
+    if (a.path.startsWith(`${EVIDENCE_DIR}/`) && !a.path.includes("..") && EVIDENCE_NAME.test(a.path)) return a;
+    const ext = (a.path.match(/\.(png|jpe?g|webp)$/i)?.[0] ?? ".png").toLowerCase().replace(".jpeg", ".jpg");
+    const doc = fileName(p.path).replace(/\.md$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "doc";
+    const renamed = `${EVIDENCE_DIR}/${doc}-${p.id.slice(0, 8)}-${index + 1}${ext}`;
+    const oldName = a.path.split("/").pop()!;
+    const newName = renamed.split("/").pop()!;
+    edits =
+      edits?.map((e) =>
+        e.type === "proof"
+          ? { ...e, proofs: e.proofs.map((q) => (q.kind === "image" && q.path.endsWith(oldName) ? { ...q, path: q.path.slice(0, -oldName.length) + newName } : q)) }
+          : e,
+      ) ?? null;
+    return { ...a, path: renamed };
+  });
+  return { edits, attachments };
+}
+
 export function listProposals(path?: string | null): DocProposal[] {
   const repository = activeRepository();
   if (!repository) return [];
@@ -569,6 +596,7 @@ export function listProposals(path?: string | null): DocProposal[] {
     .where(path ? and(eq(docProposals.repositoryId, repository.id), eq(docProposals.path, path)) : eq(docProposals.repositoryId, repository.id))
     .orderBy(asc(docProposals.createdAt))
     .all()
+    .map((p) => ({ ...p, ...saneAttachments({ id: p.id, path: p.path, edits: p.edits ?? null, attachments: p.attachments ?? [] }) }))
     .map((p) => ({
       id: p.id,
       path: p.path,
