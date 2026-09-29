@@ -332,6 +332,7 @@ export const api = {
 
   /** Boards both ways through the repoboard branch (lib/board-service.ts syncBoards). */
   syncNow: () => post<{ pulled: number; pushed: number; syncedAt: number }>("/api/board", { action: "sync-now" }),
+  boardAdopt: () => post<{ autoSync: boolean; pulled: number }>("/api/board", { action: "board-adopt" }),
   setAutoSync: (autoSync: boolean) =>
     post<{ pulled: number; pushed: number; syncedAt: number | null }>("/api/board", { action: "sync-settings", autoSync }),
 

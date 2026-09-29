@@ -68,7 +68,8 @@ export function ToolRail() {
 
   const cards = useResource(api.projectCards, [repo, pathname], { enabled: connected, live: true });
   const tracked = useResource(api.docs, [repo, pathname], { enabled: connected });
-  const boardState = useResource(api.boardStatus, [repo], { enabled: connected });
+  // Live: a save or a sync anywhere updates the count at once, not on the next focus.
+  const boardState = useResource(api.boardStatus, [repo], { enabled: connected, live: true });
 
   // Board changes not in the repository yet: look again when the window is looked at.
   const reloadBoardState = boardState.reload;

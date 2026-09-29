@@ -195,6 +195,8 @@ export function BoardScreen({
       const result = await api.boardPush(boardState.data?.sha ?? null);
       toast.push({ kind: "success", message: "Boards saved to the repository", detail: `${result.changes.length} changes in .repoboard/board.json` });
       boardState.reload();
+      // Everything else counting unsaved changes (the tool rail) looks again.
+      window.dispatchEvent(new Event("rb-live"));
       setDialog(null);
     } catch (error) {
       toast.push({ kind: "error", message: "Could not save the board", detail: (error as Error).message });

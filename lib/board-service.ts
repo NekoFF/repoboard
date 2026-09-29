@@ -1908,6 +1908,35 @@ export async function syncBoards(
   return { pulled, pushed, syncedAt };
 }
 
+/**
+ * A computer that does not sync this project on its own yet takes the boards
+ * from wherever they are: when they live on SYNC_BRANCH — automatic sync was
+ * turned on from another computer — this one syncs automatically from now on
+ * too; otherwise they are pulled from the default branch. Asked by the open
+ * app (components/shell/SyncAgent.tsx), so a new computer shows the boards
+ * without anyone pressing a button.
+ */
+export async function adoptBoards(
+  clientFactory: ClientFactory = defaultClientFactory,
+): Promise<{ autoSync: boolean; pulled: number }> {
+  const repository = activeRepository();
+  if (!repository) return { autoSync: false, pulled: 0 };
+  if (syncSettings().autoSync) return { autoSync: true, pulled: (await syncBoards(clientFactory)).pulled };
+  const gh = await clientFactory();
+  const onBranch = await readBoardFile(gh, SYNC_BRANCH).catch(() => ({ state: null, sha: null }));
+  if (onBranch.state) {
+    db.update(repositories).set({ autoSync: true }).where(eq(repositories.id, repository.id)).run();
+    logActivity({
+      repositoryId: repository.id,
+      type: "sync_settings",
+      message: `found the boards on the ${SYNC_BRANCH} branch: this computer syncs them automatically too`,
+    });
+    return { autoSync: true, pulled: (await syncBoards(clientFactory)).pulled };
+  }
+  const pulled = await pullBoardState(clientFactory);
+  return { autoSync: false, pulled: pulled ? pulled.added + pulled.updated : 0 };
+}
+
 /** Repository → this machine, every board. Newer edits win per card and per board. */
 export async function pullBoardState(
   clientFactory: ClientFactory = defaultClientFactory,
