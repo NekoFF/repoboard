@@ -151,4 +151,18 @@ describe("documents follow GitHub", () => {
     const proof = p.edits![0] as { proofs: { path: string }[] };
     expect(proof.proofs[0].path).toBe("../evidence/licenses-abcdef12-1.png");
   });
+
+  it("keeps a proof naming a file of another branch in words, and does not stop the save", async () => {
+    const hub = fakeGitHub();
+    const change = await docs.previewDocEdit(
+      {
+        path: ".repoboard/checklists/release-1.0.md",
+        baseSha: null,
+        edits: [{ type: "proof", line: 2, title: "Tests pass", state: "review", by: "Claude", checked: false, proofs: [{ kind: "place", path: "app/src/test/OnlyOnFeature.kt", from: 3, to: 9 }] }],
+      },
+      async () => hub.gh as never,
+    );
+    expect(change.after).toContain("- [?] Tests pass");
+    expect(change.after).toContain("Proof: app/src/test/OnlyOnFeature.kt, line 3–9");
+  });
 });
