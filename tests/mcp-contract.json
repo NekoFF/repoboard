@@ -357,6 +357,18 @@
       "proof": {
         "type": "string"
       },
+      "done": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "person_confirmed",
+          "already_done",
+          "cannot_be_checked"
+        ]
+      },
       "screenshots": {
         "type": "array"
       },

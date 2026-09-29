@@ -403,6 +403,24 @@ describe("MCP server arguments", () => {
     expect(shotEdits[1].proofs[0].path).toBe(`../evidence/${attached.path.split("/").pop()}`);
     await refused("mark_check", { document: "privacy", check: "impressum", proof: "A picture that is not there", screenshots: [path.join(scratch, "none.png")] }, "no file");
 
+    // Ticking it done: a reason, and in a checklist evidence to open — never words alone.
+    await refused("mark_check", { document: "privacy", check: "impressum", proof: "It works, I looked at it", done: true }, "To tick it done, give reason");
+    await refused("mark_check", { document: "privacy", check: "impressum", proof: "It works, I looked at it", done: true, reason: "verified" }, "only with evidence to open");
+    await client.call("mark_check", {
+      document: "privacy",
+      check: "impressum",
+      proof: "The legal page is linked from every screen's menu",
+      done: true,
+      reason: "verified",
+      links: [{ url: "https://example.com/build/42", label: "CI run with the menu test" }],
+    });
+    const ticked = JSON.parse((sqlite.prepare("SELECT edits FROM doc_proposals ORDER BY created_at DESC LIMIT 1").get() as { edits: string }).edits);
+    expect(ticked[0].text).toBe("Done by Claude (AI), checked: The legal page is linked from every screen's menu");
+    expect(ticked[1]).toMatchObject({ type: "proof", state: "done", checked: false });
+    sqlite.prepare("UPDATE repositories SET agent_policy = 'propose'").run();
+    await refused("mark_check", { document: "privacy", check: "impressum", proof: "The legal page is linked from every screen", done: true, reason: "verified", links: [{ url: "https://example.com/x" }] }, "only people mark work done");
+    sqlite.prepare("UPDATE repositories SET agent_policy = 'reason'").run();
+
     // Closing the card says which checks it works for.
     const before = sqlite.prepare("SELECT board_id, column_id FROM tasks WHERE card_number = 1").get() as { board_id: string; column_id: string };
     sqlite.prepare("UPDATE tasks SET board_id = ? WHERE card_number = 1").run(MAIN);

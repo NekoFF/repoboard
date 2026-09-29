@@ -993,13 +993,15 @@ const tools = [
   {
     name: "mark_check",
     description:
-      "Mark a check in a document ready for the person's check ([?]) with evidence they can follow. proof: in plain words for the person, not for a developer — what you checked, how, and what you saw. Add what shows it: screenshots (image files you took, e.g. of the app or the TV — shown in the document), files with lines (they open in the repository), links. Never [x]: the person ticks it after looking.",
+      "Mark a check in a document ready for the person's check ([?]) with evidence they can follow — or, with done: true and a reason, tick it done yourself when you can prove it (in .repoboard/checklists/ only with evidence to open: screenshots, files or links). proof: in plain words for the person, not for a developer — what you checked, how, and what you saw. Add what shows it: screenshots (image files you took, e.g. of the app or the TV — shown in the document), files with lines (they open in the repository), links. Without done the person ticks it after looking.",
     inputSchema: {
       type: "object",
       properties: {
         document: { type: "string", description: "Path, file name or title (list_documents)" },
         check: { type: "string", description: "The check's text, or enough of it to find it" },
         proof: { type: "string", minLength: 12, maxLength: 4000, description: "Plain words for the person: what you checked, how, and what you saw" },
+        done: { type: "boolean", description: "true to tick it done yourself ([x]) instead of sending it to the person — needs reason, and in checklists evidence (screenshots, files or links)" },
+        reason: { type: "string", enum: FINISH_REASONS, description: "With done: why you may close it" },
         screenshots: { type: "array", items: { type: "string" }, description: "Image files (png, jpg, webp; up to 5 MB each), a path in your checkout or absolute" },
         files: {
           type: "array",
@@ -1549,7 +1551,7 @@ const handlers = {
     return { proposed: true, document: doc.path, note: waitingNote(repo, doc.path) };
   },
 
-  mark_check({ document, check, proof, screenshots, files, links }) {
+  mark_check({ document, check, proof, screenshots, files, links, done = false, reason }) {
     const { repo } = requireBoard();
     const doc = findDocument(repo.id, document);
     if (doc.kind === "proposed") throw new Error(`${doc.path} is not created yet: the person creates it first.`);
@@ -1593,15 +1595,31 @@ const handlers = {
       if (!/^https:\/\//.test(String(l.url))) throw new Error("links: each url must start with https://");
       proofs.push({ kind: "link", url: String(l.url), label: String(l.label ?? l.url) });
     }
-    const said = { type: "note", line, title, author: agentLabel(), text: String(proof).trim() };
+    // Ticking it done yourself: the same rule as closing a card — a reason, and the project allowing it.
+    // The documents that matter most (checklists) need evidence a person can open, not words alone.
+    if (done) {
+      if (!reason) throw new Error(`To tick it done, give reason: ${PROOF_TEXT}. Or leave out done and it goes to the person's check.`);
+      closing(repo.id, reason, proof);
+      if (doc.path.startsWith(".repoboard/checklists/") && !proofs.length && reason !== "cannot_be_checked") {
+        throw new Error("A checklist item is ticked done only with evidence to open: add screenshots, files or links — or leave out done and it goes to the person's check.");
+      }
+    }
+    const state = done ? "done" : "review";
+    const said = {
+      type: "note",
+      line,
+      title,
+      author: agentLabel(),
+      text: done ? `Done by ${agentLabel()} (AI), ${WHY[reason]}: ${String(proof).trim()}` : String(proof).trim(),
+    };
     const edits = proofs.length
-      ? [said, { type: "proof", line, title, state: "review", proofs, by: agentLabel(), checked: false }]
-      : [{ type: "state", line, title, state: "review" }, { ...said, text: `Proof: ${said.text}` }];
+      ? [said, { type: "proof", line, title, state, proofs, by: agentLabel(), checked: false }]
+      : [{ type: "state", line, title, state }, { ...said, text: done ? said.text : `Proof: ${said.text}` }];
     propose(
       repo.id,
       doc.path,
       { edits, attachments },
-      `“${item.title}” ready to check${proofs.length ? `, with ${proofs.length} proof${proofs.length === 1 ? "" : "s"}` : ""}: ${String(proof).trim().slice(0, 120)}`,
+      `“${item.title}” ${done ? "done" : "ready to check"}${proofs.length ? `, with ${proofs.length} proof${proofs.length === 1 ? "" : "s"}` : ""}: ${String(proof).trim().slice(0, 120)}`,
     );
     logActivity(repo.id, null, "doc_proposed", `marked “${item.title}” in ${doc.path} for a check`);
     return { proposed: true, document: doc.path, check: item.title, note: waitingNote(repo, doc.path) };
@@ -1919,7 +1937,7 @@ Finishing work — close it when you can prove it is done, send it to a person w
   already_done — it was done before (the commit, pull request or file);
   cannot_be_checked — there is nothing to look at (say why).
 - Writing the code is not proof. Without proof, leave out reason: the card goes to Review (the item is marked for a check) — say in a comment how to check it.
-- A check in a document is never ticked [x] by you: when its work is done, check it against Verify:, then mark_check. Write the proof for the person, in plain words (what you checked, how, what you saw), and attach what shows it: a screenshot when there is something to see (the app, the TV, a page), the files and lines where it is done, links. A person ticks it after looking. Closing a card tells you which checks it works for.
+- A check in a document: when its work is done, check it against Verify:, then mark_check. Write the proof for the person, in plain words (what you checked, how, what you saw), and attach what shows it: a screenshot when there is something to see (the app, the TV, a page), the files and lines where it is done, links. By default it goes to the person's check ([?]). You may tick it done yourself (done: true) with the same reasons as closing a card — in .repoboard/checklists/ only with evidence to open (screenshots, files or links), never with words alone. Unsure → leave it for the person. Closing a card tells you which checks it works for.
 - Look at needs_check now and then: close with person_confirmed what a person has since said works, and take up checks whose work is done.
 - Your proof shows on the card; a person can reopen it.
 

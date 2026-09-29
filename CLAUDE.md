@@ -149,9 +149,12 @@ Project (a GitHub repository)
    `lib/github/access.ts`).
 8. **One nav entry per destination.** The Code screen owns its tabs (graph,
    branches, commits, pull requests, issues); the sidebar does not repeat them.
-9. **Agents propose, people verify.** Nothing an agent does may set a
-   document item to `[x]` or write `Checked:`; the MCP server has no GitHub
-   write tool. On boards an agent closes a card or item when it gives proof:
+9. **Agents close only with proof, people verify.** An agent never writes
+   `Checked:` (that is a person's line), and the MCP server has no GitHub
+   write tool. A document item goes to `[x]` from an agent only through
+   `mark_check(done: true)` with a reason and — in `.repoboard/checklists/`
+   — evidence to open (screenshots, files, links), when the project allows
+   agents to close work; otherwise it goes to `[?]`. On boards an agent closes a card or item when it gives proof:
    a `reason` (`DONE_REASONS` in `lib/checklist.ts`: `verified` — it
    checked itself, `person_confirmed` — a person told it they did,
    `already_done`, `cannot_be_checked`) and a note saying how it knows,
