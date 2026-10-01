@@ -226,7 +226,7 @@ export async function planAware(code: Client, location: PlanLocation, docsBranch
 export function describePlace(location: PlanLocation): string {
   if (location.mode === "repo") return location.repo ?? "another repository";
   if (location.mode === "branch") return `the ${PLAN_BRANCH} branch`;
-  return "the default branch";
+  return "main";
 }
 
 /** Where board.json is read and written when the boards sync on their own. */

@@ -159,8 +159,8 @@ export async function previewPlanMove(to: PlanLocation): Promise<PlanMovePreview
   return {
     from,
     to,
-    fromPlace: describePlace(from),
-    toPlace: describePlace(to),
+    fromPlace: from.mode === "main" ? (documentsBranch() ?? repository.defaultBranch) : describePlace(from),
+    toPlace: to.mode === "main" ? repository.defaultBranch : describePlace(to),
     files,
     oldFiles: sourceFiles,
     problem,

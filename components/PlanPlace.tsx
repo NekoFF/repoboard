@@ -103,7 +103,9 @@ export function PlanPlaceCard() {
         <span className="text-muted">Kept</span>
         <span className="font-medium">
           {s.location.mode === "repo" ? (
-            <span className="font-mono text-xs">{s.location.repo}</span>
+            <>
+              in its own repository, <span className="font-mono text-xs">{s.location.repo}</span>
+            </>
           ) : s.location.mode === "branch" ? (
             <>
               in this repository, on the <span className="font-mono text-xs">repoboard</span> branch
