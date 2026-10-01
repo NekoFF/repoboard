@@ -15,6 +15,8 @@ import type {
   PullRequestSummary,
 } from "@/lib/github/client";
 import type { SavePlan } from "@/lib/save-all";
+import type { PlanLocation } from "@/lib/plan";
+import type { PlanMovePreview, PlanPeople, PlanStatus } from "@/lib/plan-move";
 
 export class ApiError extends Error {
   constructor(
@@ -144,6 +146,15 @@ export const api = {
     post<{ ok: true }>("/api/repo", { action: "look", repo, ...look }),
   setAgentDocs: (mode: "review" | "direct") => post<{ ok: true }>("/api/repo", { action: "agent-docs", mode }),
   setDocsBranch: (branch: string | null) => post<{ ok: true }>("/api/repo", { action: "docs-branch", branch }),
+
+  /* where the plan is kept (app/api/plan) */
+  planStatus: () => request<{ status: PlanStatus | null }>("/api/plan"),
+  planPeople: () => request<PlanPeople>("/api/plan?people=1"),
+  previewPlanMove: (to: PlanLocation) => post<{ preview: PlanMovePreview }>("/api/plan", { action: "preview", to }),
+  movePlan: (to: PlanLocation, options: { leaveNote: boolean; removeOld: boolean }) =>
+    post<{ copied: number; commits: string[]; place: string; status: PlanStatus | null }>("/api/plan", { action: "move", to, ...options }),
+  closePlanOffer: () => post<{ ok: true }>("/api/plan", { action: "offer-seen" }),
+  createPlanRepo: (name: string) => post<{ repo: string }>("/api/plan", { action: "create", name }),
   setAgentPolicy: (policy: "propose" | "reason") =>
     post<{ ok: true; policy: "propose" | "reason" }>("/api/repo", { action: "agent-policy", policy }),
 

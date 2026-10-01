@@ -263,7 +263,8 @@ export class GitLabClient {
       this.req<{ iid: number; updated_at: string }[]>("GET", "/merge_requests", { query: { order_by: "updated_at", sort: "desc", per_page: 1, state: "all" } }).catch(() => []),
       this.req<{ iid: number; updated_at: string }[]>("GET", "/issues", { query: { order_by: "updated_at", sort: "desc", per_page: 1, state: "all" } }).catch(() => []),
     ]);
-    const heads = branches.map((b) => `${b.name}@${b.commit.id}`).sort().join(",");
+    // RepoBoard's own branch moves with every board sync: not news about the code.
+    const heads = branches.filter((b) => b.name !== "repoboard").map((b) => `${b.name}@${b.commit.id}`).sort().join(",");
     return `${heads}|${mrs[0] ? `!${mrs[0].iid}@${mrs[0].updated_at}` : "-"}|${issues[0] ? `#${issues[0].iid}@${issues[0].updated_at}` : "-"}`;
   }
 
@@ -280,7 +281,7 @@ export class GitLabClient {
         .then((r) => r.commits.length)
         .catch(() => 0);
     return Promise.all(
-      branches.map(async (b) => ({
+      branches.filter((b) => b.name !== "repoboard").map(async (b) => ({
         name: b.name,
         protected: b.protected,
         lastCommit: { sha: b.commit.id, message: b.commit.title, author: b.commit.author_name, date: b.commit.committed_date },
@@ -429,7 +430,7 @@ export class GitLabClient {
   async commitGraph(limitPerBranch = 40, maxBranches = 12, mainLimit = limitPerBranch): Promise<GraphCommit[]> {
     const main = await this.branch();
     const branches = await this.list<{ name: string; commit: GLCommit }>("/repository/branches", {}, 2).catch(() => []);
-    const ordered = [...branches.filter((b) => b.name === main), ...branches.filter((b) => b.name !== main)].slice(0, maxBranches);
+    const ordered = [...branches.filter((b) => b.name === main), ...branches.filter((b) => b.name !== main && b.name !== "repoboard")].slice(0, maxBranches);
     const bySha = new Map<string, GraphCommit>();
     await Promise.all(
       ordered.map(async (b) => {
@@ -490,8 +491,8 @@ export class GitLabClient {
     return (await this.tree(branch)).filter((p) => p.endsWith(".md"));
   }
 
-  async listFiles(): Promise<string[]> {
-    return this.tree();
+  async listFiles(branch?: string): Promise<string[]> {
+    return this.tree(branch);
   }
 
   private async file(path: string, ref?: string) {
@@ -541,6 +542,7 @@ export class GitLabClient {
     message: string;
     edits: { path: string; content: string; expectedSha: string }[];
     adds: { path: string; base64: string }[];
+    deletes?: string[];
     branch?: string;
   }): Promise<{ commitSha: string }> {
     const branch = args.branch ?? (await this.branch());
@@ -560,7 +562,11 @@ export class GitLabClient {
       body: {
         branch,
         commit_message: args.message,
-        actions: [...edits, ...args.adds.map((a) => ({ action: "create", file_path: a.path, content: a.base64, encoding: "base64" }))],
+        actions: [
+          ...edits,
+          ...args.adds.map((a) => ({ action: "create", file_path: a.path, content: a.base64, encoding: "base64" })),
+          ...(args.deletes ?? []).map((path) => ({ action: "delete", file_path: path })),
+        ],
       },
     });
     return { commitSha: commit.id };
@@ -579,6 +585,42 @@ export class GitLabClient {
       // Another computer made it a moment ago.
       if ((error as GitLabError).status !== 400) throw error;
     });
+  }
+
+  /**
+   * GitLab's API cannot start a branch without history, so RepoBoard's plan
+   * branch is cut from the default branch and the plan's files committed on
+   * it. Does nothing if it exists.
+   */
+  async createOrphanBranch(name: string, files: { path: string; base64: string }[], message: string): Promise<boolean> {
+    const found = await this.req("GET", `/repository/branches/${encodeURIComponent(name)}`).then(
+      () => true,
+      (error) => {
+        if ((error as GitLabError).status === 404) return false;
+        throw error;
+      },
+    );
+    if (found) return false;
+    await this.ensureBranch(name);
+    const missing: { path: string; base64: string }[] = [];
+    for (const f of files) if (!(await this.exists(f.path, name))) missing.push(f);
+    if (missing.length) await this.commitChanges({ message, edits: [], adds: missing, branch: name });
+    return true;
+  }
+
+  /** A namespace's id from its path (a person's or a group's), for making a project in it. */
+  static async namespaceId(token: string, base: string, path: string): Promise<number | null> {
+    return call<{ id: number }>(gitlabApi(base), token, "GET", `/namespaces/${encodeURIComponent(path)}`)
+      .then((r) => r.data.id)
+      .catch(() => null);
+  }
+
+  /** A new private project for a plan, in the person's own namespace or a group's (namespace id). */
+  static async createProject(token: string, base: string, name: string, namespaceId?: number): Promise<{ slug: string }> {
+    const { data } = await call<{ path_with_namespace: string }>(gitlabApi(base), token, "POST", "/projects", {
+      body: { name, path: name, visibility: "private", initialize_with_readme: false, ...(namespaceId ? { namespace_id: namespaceId } : {}) },
+    });
+    return { slug: data.path_with_namespace };
   }
 
   /**

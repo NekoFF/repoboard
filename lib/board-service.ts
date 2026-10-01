@@ -2084,6 +2084,18 @@ export async function boardFileToSave(
   return { content: serialiseBoardState(localBoardState()), sha, changes };
 }
 
+/**
+ * The boards as board.json for a place they are moving to (lib/plan-move.ts):
+ * whatever is there already merged in first, so nothing of it is lost.
+ */
+export async function boardFileFor(gh: MarkdownGitHub, ref?: string): Promise<{ content: string; sha: string | null }> {
+  const repository = activeRepository();
+  if (!repository) throw new Error("Not connected");
+  const { state: remote, sha } = await readBoardFile(gh, ref);
+  if (remote) applyBoardFile(repository.id, mergeBoardFile(localBoardState(), remote).state);
+  return { content: serialiseBoardState(localBoardState()), sha };
+}
+
 /** This machine → repository, merging first so a colleague's newer edit survives. */
 export async function pushBoardState(
   clientFactory: ClientFactory = defaultClientFactory,
@@ -2112,7 +2124,7 @@ export async function pushBoardState(
     // What this machine now has — merged, and with duplicate numbers resolved.
     content: serialiseBoardState(localBoardState()),
     expectedSha: sha ?? undefined,
-    message: changes.length ? `RepoBoard: update boards (${changes.length} change${changes.length === 1 ? "" : "s"})` : "RepoBoard: save activity",
+    message: `${changes.length ? `RepoBoard: update boards (${changes.length} change${changes.length === 1 ? "" : "s"})` : "RepoBoard: save activity"} ${SKIP_CI}`,
   });
 
   logActivity({
