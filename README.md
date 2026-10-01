@@ -1,78 +1,178 @@
-# RepoBoard
+<p align="center">
+  <img src="docs/media/desk.jpg" alt="RepoBoard open on a monitor on a light wooden desk: the overview of a project, with its history drawn as branches" width="100%">
+</p>
 
-**Plan your project inside its repository.**
+<h1 align="center">
+  <img src="public/icon.svg" width="34" height="34" alt=""><br>
+  RepoBoard
+</h1>
 
-RepoBoard is a board, a set of checklists and a project memory that live next
-to your code — as plain markdown in your GitHub repository. It runs on your
-own computer, talks only to github.com, and shows at a glance what is done,
-what is left, and what still needs your own eyes before it counts.
+<p align="center">
+  <b>Plan your project inside its repository.</b><br>
+  Boards, checklists and a project memory that live next to your code,<br>
+  shared with every person and every AI agent who works on it.
+</p>
 
-![Overview: the project's cover, its life as a timeline of branches, and every checklist at a glance](docs/screenshots/overview.png)
+<p align="center">
+  <a href="https://github.com/NekoFF/repoboard/releases/latest"><img src="https://img.shields.io/github/v/release/NekoFF/repoboard?style=flat-square&label=version&color=4b5cf0" alt="Latest version"></a>
+  <img src="https://img.shields.io/badge/macOS%20·%20Windows-desktop%20app-555?style=flat-square" alt="macOS and Windows">
+  <img src="https://img.shields.io/badge/MCP-Claude%20·%20Codex%20·%20Cursor-555?style=flat-square" alt="Works with MCP agents">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-source--available-555?style=flat-square" alt="Source-available licence"></a>
+</p>
 
-- **Boards** — one per person (Dima, Max, the intern) or per area (Design,
-  Core), all in one project. On a board, each card is a topic; inside a card,
-  numbered items (1, 1.1, 1.2…) are the steps, each with notes, an assignee
-  and comments. Each board gets a picture of its own — 24 slowly moving
-  motifs or a plain colour. Columns, a list and a calendar, filters like
-  `label:bug @me !high due:week`, keyboard for everything, milestones.
-- **My work** — everything assigned to you, from every board, card and
-  checklist, by when it is due. Open a teammate's list the same way.
-- **Checklists that do not get lost** — a release, the privacy policy, the
-  Impressum, font and dependency licences. Each item can say *why*, *what to
-  do* and *how to verify* it, and carries notes from people and AI agents.
-- **Needs your check** — agents mark finished work as `[?]`; only you tick it
-  off. One queue shows everything waiting for you.
-- **Done with proof** — tick an item and say why: the file and lines where it
-  is written (saved as a permalink to that exact version), the words
-  themselves, a screenshot. It all goes under the item, with your name and the
-  date, in one commit.
-- **Texts for people** — write the privacy policy or the Impressum itself
-  from a template, keep it wherever your project keeps it, edit it here, and
-  export it as a PDF.
-- **Overview** — one square per item across the board and every checklist,
-  so nothing hides behind a percentage.
-- **Code** — the repository's history drawn as lines that branch and merge;
-  commits, pull requests and issues that mention `RB-12` show up on card 12.
-- **Shared through the repository** — every board travels in
-  `.repoboard/board.json`, so whoever connects the same repository sees the
-  same boards, cards and checklists. Turn on automatic sync and it happens
-  on its own, through a `repoboard` branch that never touches your code.
-- **Roles from GitHub** — Admin and Maintain manage every board and make
-  boards for people, Write works on cards and their own boards, Read looks.
-  Nothing to set up: add people to the repository on GitHub.
-- **Several projects** — switch between repositories like in Linear; each has
-  its own boards, checklists and token.
-- **For AI agents** — an MCP server lets Claude, Codex or any other agent read
-  and work the same board and checklists, under its own name (marked AI).
-  Assign it a card; it finds its work with `my_work`. Agents propose; they
-  cannot commit. They close work when they can prove it is done — they ran
-  it and saw it work, you told them you checked it, it was done before — and
-  the proof shows on the card; without proof it waits in Review for you
-  (Settings → AI agents can make every close wait for you).
+<p align="center">
+  <a href="https://github.com/NekoFF/repoboard/releases/latest"><b>Download for macOS</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/NekoFF/repoboard/releases/latest"><b>Download for Windows</b></a>
+  &nbsp;·&nbsp;
+  <a href="#try-it-in-one-minute">Try the demo</a>
+</p>
 
-Everything RepoBoard writes to your repository goes through a diff you review
-first, and it refuses to overwrite a file that changed on GitHub meanwhile.
+<br>
+
+RepoBoard keeps a project's plan where its code already is: as plain files in
+`.repoboard/` in your GitHub repository. The app runs on your own computer and
+talks only to GitHub — no account, no server of ours, nothing to host. Open it
+on a second computer, or give a teammate access to the repository, and the
+same boards are there.
+
+It was made for working with AI agents. Claude, Codex or any other MCP client
+reads the same boards you do, takes cards, and closes them only with proof —
+and what is left for you to check waits in one place.
+
+<br>
+
+## Boards for the work
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/board-dark.png">
+  <img src="docs/screenshots/board-light.png" alt="A board with Todo, In Progress, Review and Done columns; cards carry a number, labels and small indicators">
+</picture>
+
+One board per person or per area — Design, Release, Core — all in one project.
+Each card is a topic with a number (`RB-12`) that is unique across the
+project; inside it, numbered items (1, 1.1, 1.2) are the steps, each with
+notes, an assignee, a due date and comments. Columns, a list and a calendar,
+filters like `label:bug @me !high due:week`, milestones, and a keyboard
+shortcut for everything.
 
 | | |
 |---|---|
-| ![A board: columns, cards with numbers, labels and progress](docs/screenshots/board.png) | ![Boards, each with a picture of its own](docs/screenshots/boards.png) |
-| ![A checklist: sections with progress, items waiting for a person's check](docs/screenshots/checklist.png) | ![Connecting: sign in with GitHub and pick your repositories](docs/screenshots/connect.png) |
+| ![Every board of a project as a tile with a slowly moving picture of its own](docs/screenshots/boards-light.png) | ![A card: items as a tree with sub-steps, status, priority and labels on the side](docs/screenshots/card-light.png) |
 
----
+## Checklists that must hold
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/checklist-dark.png">
+  <img src="docs/screenshots/checklist-light.png" alt="A privacy policy checklist: sections with progress, items waiting for a person's check">
+</picture>
+
+Some things are not tasks but statements that have to stay true: the privacy
+policy says what the app collects, every font has a licence, the release
+build passed. RepoBoard keeps those as checklists — each item can say *why*,
+*what to do* and *how to verify* — and the card doing the work is named on the
+item. When a card is done, the item asks you to check it.
+
+Tick an item with proof: the file and lines where it is written (kept as a
+permalink to that exact version), the words themselves, a screenshot. It goes
+under the item with your name and the date.
+
+## Proof, not "done"
+
+<img src="docs/screenshots/proof-light.png" alt="A finished card showing how the agent knows it is done: it killed the app twice with 12 tabs open and every tab came back">
+
+An agent closes a card only when it can say how it knows: it ran it and saw it
+work, you told it you checked, or it was done before. That reason stays on the
+card for everyone to read. Without proof the card goes to Review and the item
+to *needs your check* — one queue for everything waiting for your eyes.
+Settings → AI agents can make every close wait for you.
+
+## One project at a glance
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
+  <img src="docs/screenshots/overview-light.png" alt="The overview: a cover picture, the project's life as a timeline of branches leaving and merging, and progress across boards and checklists">
+</picture>
+
+The overview opens with the project's life: the main line, branches leaving
+and coming back, the ones still open. Under it, one square per item across
+every board and checklist, so nothing hides behind a percentage. Commits, pull
+requests and issues that mention `RB-12` show up on card 12, and the Inbox
+tells you what others — people and agents — did since you last looked.
+
+| | |
+|---|---|
+| ![The Inbox: pull requests and issues from GitHub to put on a board, and what Claude and Codex did since you last looked](docs/screenshots/inbox-light.png) | ![Documents: checklists, notes and decisions read from the repository, with the branch and commit they come from](docs/screenshots/docs-light.png) |
+
+<p align="center">
+  <img src="docs/media/night.jpg" alt="RepoBoard in its dark theme on a monitor in a dim room, lit by a warm lamp" width="100%">
+</p>
+
+## Made for AI agents
+
+RepoBoard brings an MCP server. Connect it once and an agent sees the overview,
+every board, the documents and the queue of things to check; it creates,
+moves and comments on cards on any board, under its own name, marked AI.
+Assign it a card and it finds its work with `my_work`.
+
+- **Work on boards, checks in documents.** The server's rules tell agents how
+  to organise: steps go in a card's items, a pile of related cards gets its
+  own board, a checklist item names the card that does its work.
+- **Documents through RepoBoard.** Agents propose new documents, checks and
+  ticks; you see each change with its diff and take it or leave it. Or let
+  them write directly (Settings → AI agents) — then only files in
+  `.repoboard/` are committed, on the documents' branch.
+- **Evidence you can open.** With a tick, an agent attaches what shows it
+  holds — screenshots, files with lines, links — and you open them from the
+  item.
+- **Always today's rules.** When RepoBoard updates, connected agents get the
+  new tools and rules on their next step, without a restart.
+
+Changes agents make appear on your screen within seconds. Anything that goes
+to GitHub — boards, documents, agents' proposals, your own edits — goes with
+the one cloud button, each file with its diff, saved together.
+
+<p align="center">
+  <img src="docs/media/minimal.jpg" alt="A laptop on a white surface with a RepoBoard board open" width="100%">
+</p>
 
 ## The desktop app
 
 Download RepoBoard for **macOS** (Apple silicon or Intel) or **Windows** from
-[Releases](https://github.com/NekoFF/repoboard/releases). It is the same app,
-in its own translucent window, with no Node.js to install. It keeps its data
-in `~/.repoboard`, like the web version, and brings its own MCP server for
-agents (Settings shows the command). The first start asks once, because the
-app is not signed yet: on macOS right-click → **Open**, on Windows **More info
-→ Run anyway**.
+[Releases](https://github.com/NekoFF/repoboard/releases/latest). It is the
+whole app in its own window: no Node.js, no terminal. It keeps its data in
+`~/.repoboard`, brings its own MCP server for agents (Settings → AI agents
+shows the line to paste), and tells you when a new version is out — Settings
+→ About also offers a beta channel.
 
-To build it yourself: `npm ci`, `cd desktop && npm ci`, then
-`node desktop/prepare.mjs` and `npx electron-builder --mac` (or `--win`) in
-`desktop/`.
+The app is not signed by Apple or Microsoft yet, so the first start asks once:
+
+- **macOS:** open the .dmg and drag RepoBoard to Applications. The first time,
+  macOS says it cannot check the developer — open **System Settings → Privacy
+  & Security**, scroll down and press **Open Anyway**.
+- **Windows:** in the blue window press **More info → Run anyway**.
+
+Then press **Sign in with GitHub**: GitHub shows a short code, you approve
+RepoBoard there and pick the repositories it may open. You stay signed in;
+RepoBoard renews the sign-in by itself. Repositories where you are only a
+collaborator work too. Prefer a key? The connect screen opens GitHub's page
+for a fine-grained token with everything filled in. GitLab (gitlab.com or a
+company's own server) connects with a personal access token.
+
+<details>
+<summary><b>Using a fine-grained token instead of signing in</b></summary>
+
+1. <https://github.com/settings/personal-access-tokens/new>
+2. **Resource owner:** you, or the organisation that owns the repository (an
+   organisation may have to approve the token first).
+3. **Expiration:** as long as you are comfortable with — when it runs out,
+   RepoBoard asks for a new one.
+4. **Repository access:** *Only select repositories* → the repository.
+5. **Permissions** (*+ Add permissions*): Contents *read and write*; Pull
+   requests and Issues *read-only*. GitHub adds Metadata by itself.
+6. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
+
+</details>
 
 ## Try it in one minute
 
@@ -85,55 +185,34 @@ npm run demo
 
 Open <http://localhost:3100>. The demo is a made-up project ("Lumen", a
 browser for TVs) served by a small fake GitHub, so no token and no real
-repository are involved. `npm run demo -- --reset` starts it over.
+repository are involved. `npm run demo -- --reset` starts it over. Every
+picture on this page comes from it.
 
-## Use it on your own repository
+## Gallery
 
-```bash
-npm run dev
-```
+| | |
+|---|---|
+| ![The project's history in the dark theme: commits as lines that branch and merge](docs/screenshots/graph-dark.png) | ![Connecting: sign in with GitHub and pick your repositories](docs/screenshots/connect.png) |
+| ![The overview in the dark theme](docs/screenshots/overview-dark.png) | ![A checklist in the dark theme](docs/screenshots/checklist-dark.png) |
 
-Open <http://localhost:3000> and press **Sign in with GitHub**: GitHub shows
-a short code, you approve RepoBoard there, and pick the repositories it may
-open (GitHub asks this once — *Only select repositories*, tick yours,
-*Install*). That also works for repositories where you are only a
-collaborator.
-
-Or use a key instead — a fine-grained token (the connect screen opens
-GitHub's page for it already filled in):
-
-1. <https://github.com/settings/personal-access-tokens/new>
-2. **Resource owner:** you, or the organisation that owns the repository
-   (an organisation may have to approve the token first).
-3. **Expiration:** as long as you are comfortable with — when it runs out,
-   RepoBoard asks for a new one.
-4. **Repository access:** *Only select repositories* → the repository.
-5. **Permissions** (*+ Add permissions*): Contents *read and write*;
-   Pull requests and Issues *read-only*. GitHub adds Metadata by itself.
-6. Generate, copy (it starts with `github_pat_`), paste into RepoBoard.
-
-Then open **Documents** and create the `.repoboard/` folder from the
-templates you want. Connect more repositories from the project switcher in the
-top-left corner.
-
-On macOS you can also double-click **`RepoBoard — Start.command`**.
+---
 
 ## The `.repoboard/` folder
 
 ```
 .repoboard/
   README.md        the rules, for people and agents
-  checklists/      what must be done and checked
+  checklists/      what must be true and checked
   notes/           how to run things, where they live
   decisions/       what was decided and why, with sources
   evidence/        screenshots that prove checklist items
-  board.json       every board, its cards, order and checklists (written by RepoBoard)
+  board.json       every board, its cards, order and items (written by RepoBoard)
 ```
 
 A checklist item looks like this:
 
 ```markdown
-- [?] Impressum reachable from every screen !high @alex due:2026-10-01 #legal
+- [?] Impressum reachable from every screen !high @alex due:2026-10-01 #legal RB-14
   - Why: the provider must be easy to identify.
   - Verify: from a fresh install, reach it in two presses of the remote.
   > codex 2026-09-25: a contact form counts as the second contact channel.
@@ -143,26 +222,29 @@ A checklist item looks like this:
 The full format is in [docs/FORMAT.md](docs/FORMAT.md). It reads fine on
 GitHub and the folder opens as an Obsidian vault.
 
-## AI agents
+Boards travel in `.repoboard/board.json`. Press the cloud button to save them
+with everything else, or turn on automatic sync: RepoBoard then keeps them on
+a `repoboard` branch by itself and never touches your code. A computer that
+opens the project for the first time takes the boards from there.
 
-Connect the MCP server to Claude Code:
+## Connecting an agent
+
+Settings → AI agents shows the exact line for your installation and for each
+client. For Claude Code it looks like this:
 
 ```bash
 claude mcp add repoboard -- node /path/to/repoboard/scripts/mcp-server.mjs
 ```
 
-(Settings shows the exact command for your installation.) Agents get the
-overview, every board, the documents and the needs-check queue, and can
-create, move and comment on cards on any board. To change a checklist they edit the file in their
-own checkout and push — and they follow the rules in `.repoboard/README.md`:
-never tick an item themselves, set `[?]` and say how to verify.
+The tools are a stable contract: new ones are added, none are renamed or
+removed, so an agent set up today keeps working after updates.
 
 ## Keyboard
 
 | Keys | Does |
 | ---- | ---- |
 | `⌘K` / `Ctrl K` | search everything, run any command |
-| `G` then `O` `M` `B` `D` `C` `A` | overview, my work, boards, documents, code, activity |
+| `G` then `I` `O` `M` `B` `D` `C` `A` | inbox, overview, my work, boards, documents, code, activity |
 | `C` | new card |
 | `/` | filter the board |
 | arrows, `J` `K`, `Enter` | move the selection, open |
@@ -174,8 +256,8 @@ never tick an item themselves, set `[?]` and say how to verify.
 
 | What | Where |
 | ---- | ----- |
-| Boards, cards, history | `~/.repoboard/repoboard.db`, and `.repoboard/board.json` in your repository once you press *Save to repo* |
-| Tokens | `~/.repoboard/credentials.json` (readable only by you) |
+| Boards, cards, history | `~/.repoboard/repoboard.db`, and `.repoboard/board.json` in your repository once saved |
+| Sign-in and keys | `~/.repoboard/credentials.json` (readable only by you) |
 | Checklists, notes, decisions | your repository, `.repoboard/` |
 
 Back up the `~/.repoboard` folder to keep everything local. Updating the app
@@ -183,28 +265,30 @@ never touches it.
 
 ## Is this safe?
 
-- Tokens stay on your computer and are only ever sent to github.com. They
-  never reach the browser.
+- Tokens stay on your computer and are only ever sent to GitHub (or your
+  GitLab). They never reach the browser.
 - The app listens on `127.0.0.1` only; other devices on your network cannot
-  reach it. It has no login of its own, so that is what keeps the token yours.
-  Its API answers only its own pages: other websites open in the same browser
-  cannot call it, and requests for another host name are refused. Do not run
-  `npm run dev:lan` unless you understand that it removes the first part (it
-  also needs `REPOBOARD_ALLOW_HOSTS=<your host>`).
+  reach it. Its API answers only its own pages: other websites open in the
+  same browser cannot call it, and requests for another host name are refused.
+  The desktop app also shares a secret with its own server at every start, so
+  other programs on the computer cannot use it.
+- Nothing is written to your repository without a diff you approved, and a
+  file that changed on GitHub since you opened it is never overwritten. The
+  two exceptions are ones you turn on yourself: automatic sync (only
+  `board.json`, only on the `repoboard` branch) and agents writing documents
+  directly (only `.repoboard/`).
 - A program running on your computer as you — an AI agent with a shell, for
   instance — can still read `~/.repoboard`, as it can read any of your files.
-  The rules agents follow (never tick, never write `Checked:`) are enforced in
-  the MCP server; give agents a token of their own if you want GitHub itself
-  to tell them apart.
-- Nothing is written to your repository without a diff you approved, and a
-  file that changed on GitHub since you opened it is never overwritten.
+  The rules agents follow are enforced in the MCP server, which has no tool
+  that writes to GitHub.
 - The legal checklists are reminders, not legal advice.
 
 ---
 
-# Installation, step by step
+<details>
+<summary><b>Running it from source, step by step</b> — never used a terminal? About ten minutes.</summary>
 
-Never used a terminal? Follow this top to bottom; it takes about ten minutes.
+<br>
 
 **1. Install Node.js.** Open <https://nodejs.org>, download the **LTS**
 version and install it with the default options. On Windows, restart the
@@ -227,6 +311,7 @@ npm install
 npm run dev
 ```
 Leave the window open; closing it stops the app. Open <http://localhost:3000>.
+On macOS you can also double-click **`RepoBoard — Start.command`**.
 
 **Stopping and starting again:** `Ctrl+C` stops it; `npm run dev` starts it
 again. `npm run stop` stops one that is still running in the background. You
@@ -236,7 +321,12 @@ never repeat `npm install` unless you update.
 not in it), then `npm install` and `npm run dev`. Database changes apply
 themselves on start.
 
-## Troubleshooting
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+<br>
 
 **Run the built-in check first:** `npm run doctor` — it explains problems in
 plain words. If it reports the database engine, `npm run fix` usually solves it.
@@ -263,9 +353,15 @@ window, or use another port: `npm run dev -- -p 3001`.
 **"Bad credentials" or "Not Found" when connecting** — the token is wrong,
 expired, or was not given access to that repository.
 
----
+**macOS: "RepoBoard is damaged"** — an old download from before 0.6.5. Get the
+current one from Releases.
 
-# For developers
+</details>
+
+<details>
+<summary><b>For developers</b></summary>
+
+<br>
 
 ```bash
 npm run dev          # http://localhost:3000, bound to 127.0.0.1
@@ -279,8 +375,14 @@ npm run mcp          # the MCP server on stdio
 
 Next.js 14 (app router) · React 18 · Tailwind with CSS-variable tokens ·
 SQLite through Drizzle · Octokit · dnd-kit · Radix primitives · cmdk ·
-remark. See [CLAUDE.md](CLAUDE.md) for the architecture, the rules the code
-keeps, and where everything lives.
+remark · Electron for the desktop app. See [CLAUDE.md](CLAUDE.md) for the
+architecture, the rules the code keeps, and where everything lives.
+
+To build the desktop app yourself: `npm ci`, `cd desktop && npm ci`, then
+`node desktop/prepare.mjs` and `npx electron-builder --mac` (or `--win`) in
+`desktop/`.
+
+</details>
 
 ## Licence
 
