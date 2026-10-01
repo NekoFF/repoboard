@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { repositories } from "@/db/schema";
@@ -121,6 +122,7 @@ export function onBranch<T extends object>(gh: T, branch: string | null): T {
       if (prop === "getFileBytes" && fn("getFileBytes")) return (path: string, ref?: string) => fn("getFileBytes")!.call(target, path, ref ?? branch);
       if (prop === "listMarkdownFiles" && fn("listMarkdownFiles")) return () => fn("listMarkdownFiles")!.call(target, branch);
       if (prop === "listFiles" && fn("listFiles")) return () => fn("listFiles")!.call(target, branch);
+      if (prop === "fileShas" && fn("fileShas")) return () => fn("fileShas")!.call(target, branch);
       if (prop === "headCommit" && fn("headCommit")) return () => fn("headCommit")!.call(target, branch);
       if (prop === "putFile") return (args: { branch?: string }) => fn("putFile")!.call(target, { ...args, branch: args.branch ?? branch });
       if (prop === "commitChanges" && fn("commitChanges")) return (args: object) => fn("commitChanges")!.call(target, { branch, ...args });
@@ -167,13 +169,20 @@ export function splitClient(code: Client, plan: Client, describe: string): Clien
           return () => code.headCommit();
         case "watchKey":
           return async () => {
-            // Only an empty repository has no head; anything else is an error to report, not a change.
-            const head = (gh: Client) => gh.headCommit().catch((error: { status?: number }) => {
+            // The plan's documents by their blob SHAs, so a board sync (board.json) is not a change
+            // that reads every document again; the code by its head.
+            const head = code.headCommit().catch((error: { status?: number }) => {
               if (error?.status === 409) return "empty";
               throw error;
             });
-            const [a, b] = await Promise.all([head(plan), head(code)]);
-            return `${a}+${b}`;
+            const shas = await plan.fileShas();
+            const docs = [...shas]
+              .filter(([p]) => isPlanPath(p) && p.endsWith(".md"))
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([p, sha]) => `${p}:${sha}`)
+              .join("\n");
+            const digest = createHash("sha1").update(docs).digest("hex");
+            return `${digest}+${await head}`;
           };
         case "commitChanges":
           return async (args: { message: string; edits: Edit[]; adds: Add[]; branch?: string }) => {

@@ -32,6 +32,7 @@ function fake(name: string, files: Files, calls: string[]) {
     listMarkdownFiles: async () => [...files.keys()].filter((p) => p.endsWith(".md")),
     listFiles: async () => [...files.keys()],
     headCommit: async () => `${name}-head`,
+    fileShas: async () => new Map([...files].map(([p, c]) => [p, `sha-${c.length}`])),
     commitChanges: async (args: { edits: { path: string }[]; adds: { path: string }[] }) => {
       calls.push(`${name} commit ${[...args.edits, ...args.adds].map((f) => f.path).join(",")}`);
       return { commitSha: `${name}-commit` };
@@ -63,7 +64,8 @@ describe("where the plan is kept", () => {
   it("sends .repoboard/ to the plan and everything else to the code", async () => {
     const calls: string[] = [];
     const code = fake("code", new Map([["PRIVACY.md", "code text"], [".repoboard/old.md", "left behind"]]), calls);
-    const place = fake("plan", new Map([[".repoboard/checklists/a.md", "plan text"]]), calls);
+    const planFiles = new Map([[".repoboard/checklists/a.md", "plan text"]]);
+    const place = fake("plan", planFiles, calls);
     const gh = plan.splitClient(code as never, place as never, "o/plan");
     expect((await gh.getFile(".repoboard/checklists/a.md")).content).toBe("plan text");
     expect((await gh.getFile("PRIVACY.md")).content).toBe("code text");
@@ -72,7 +74,13 @@ describe("where the plan is kept", () => {
     await gh.commitChanges({ message: "m", edits: [{ path: ".repoboard/checklists/a.md", content: "", expectedSha: "" }, { path: "PRIVACY.md", content: "", expectedSha: "" }], adds: [] });
     expect(calls.filter((c) => c.includes("commit"))).toEqual(["plan commit .repoboard/checklists/a.md", "code commit PRIVACY.md"]);
     expect(await gh.headCommit()).toBe("code-head");
-    expect(await gh.watchKey()).toBe("plan-head+code-head");
+    const key = await gh.watchKey();
+    expect(key.endsWith("+code-head")).toBe(true);
+    // A board sync (board.json) does not change it; a document does.
+    planFiles.set(".repoboard/board.json", "{}");
+    expect(await gh.watchKey()).toBe(key);
+    planFiles.set(".repoboard/checklists/a.md", "plan text, edited");
+    expect(await gh.watchKey()).not.toBe(key);
   });
 
   it("parses location notes, and ignores broken ones", () => {

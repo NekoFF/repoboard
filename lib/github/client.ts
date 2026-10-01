@@ -215,6 +215,7 @@ export type RepoClient = Pick<
   | "commitChanges"
   | "ensureBranch"
   | "createOrphanBranch"
+  | "fileShas"
   | "putFile"
 >;
 
@@ -885,6 +886,19 @@ export class GitHubClient {
       force: false,
     });
     return { commitSha: commit.sha };
+  }
+
+  /** Every file's blob SHA on a branch: what changed, without reading any file. */
+  async fileShas(branch?: string): Promise<Map<string, string>> {
+    const repo = await this.getRepo();
+    const data = await this.octokit.rest.git
+      .getTree({ owner: this.owner, repo: this.repo, tree_sha: branch ?? repo.defaultBranch, recursive: "1" })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error) || (error as { status?: number }).status === 404) return { tree: [] };
+        throw error;
+      });
+    return new Map(data.tree.filter((n) => n.type === "blob" && n.path && n.sha).map((n) => [n.path!, n.sha!]));
   }
 
   /** The commit the default branch points at now — what a permalink should name. */

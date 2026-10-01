@@ -71,11 +71,6 @@ export function DocsSource({ className = "" }: { className?: string }) {
           <Link href="/settings" className="font-mono text-muted hover:text-ink">
             {status.plan.mode === "repo" ? status.plan.repo : "the repoboard branch"}
           </Link>
-          {status.commit && (
-            <>
-              {" "}at <span className="font-mono text-muted">{status.commit.slice(0, 7)}</span>
-            </>
-          )}
           {status.checkedAt ? (
             <>
               , checked <RelativeTime value={status.checkedAt} />

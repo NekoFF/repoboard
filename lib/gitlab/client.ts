@@ -487,6 +487,16 @@ export class GitLabClient {
       });
   }
 
+  /** Every file's blob SHA on a branch: what changed, without reading any file. */
+  async fileShas(branch?: string): Promise<Map<string, string>> {
+    const ref = branch ?? (await this.branch());
+    const tree = await this.list<{ path: string; type: string; id: string }>("/repository/tree", { recursive: true, ref }, 50).catch((error) => {
+      if ((error as GitLabError).status === 404) return [];
+      throw error;
+    });
+    return new Map(tree.filter((n) => n.type === "blob").map((n) => [n.path, n.id]));
+  }
+
   async listMarkdownFiles(branch?: string): Promise<string[]> {
     return (await this.tree(branch)).filter((p) => p.endsWith(".md"));
   }
