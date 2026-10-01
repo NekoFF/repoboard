@@ -199,11 +199,11 @@ export function RepositoryScreen({
     router.replace(`/repository?tab=${next}${nextBranch ? `&branch=${encodeURIComponent(nextBranch)}` : ""}`, { scroll: false });
   };
 
-  const graph = useResource(api.graph, [], { enabled: connected && tab === "graph" });
-  const branches = useResource(api.branches, [], { enabled: connected && (tab === "branches" || tab === "commits") });
-  const commits = useResource(() => api.commits(branch ?? undefined), [branch], { enabled: connected && tab === "commits" });
-  const pulls = useResource(api.pulls, [], { enabled: connected && tab === "pulls" });
-  const issues = useResource(api.issues, [], { enabled: connected && tab === "issues" });
+  const graph = useResource(api.graph, [], { enabled: connected && tab === "graph", github: true });
+  const branches = useResource(api.branches, [], { enabled: connected && (tab === "branches" || tab === "commits"), github: true });
+  const commits = useResource(() => api.commits(branch ?? undefined), [branch], { enabled: connected && tab === "commits", github: true });
+  const pulls = useResource(api.pulls, [], { enabled: connected && tab === "pulls", github: true });
+  const issues = useResource(api.issues, [], { enabled: connected && tab === "issues", github: true });
 
   const cardsByNumber = useMemo(
     () => new Map(data.tasks.filter((t) => t.number != null).map((t) => [t.number!, t])),

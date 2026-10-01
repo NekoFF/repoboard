@@ -12,6 +12,7 @@ import { DesktopBar } from "@/components/shell/DesktopBar";
 import { SyncAgent } from "@/components/shell/SyncAgent";
 import { LiveRefresh } from "@/components/shell/LiveRefresh";
 import { DocsWatch } from "@/components/shell/DocsWatch";
+import { GitHubPulse } from "@/components/shell/GitHubPulse";
 import { ShellContext, type SidebarBoard, type SidebarDoc } from "@/components/shell/ShellContext";
 import { ThemeProvider } from "@/components/shell/ThemeProvider";
 import { ConnectionContext, type ConnectionStatus } from "@/components/ConnectionState";
@@ -239,6 +240,7 @@ export function AppShell({
               <SyncAgent enabled={unlocked && sync.autoSync} syncedAt={sync.syncedAt} />
               {unlocked && <LiveRefresh />}
               {unlocked && <DocsWatch />}
+              {unlocked && <GitHubPulse />}
               {unlocked && <SaveAllHost />}
               {showingConnect ? (
                 // Connecting stands before the app, whether a project is open or not.

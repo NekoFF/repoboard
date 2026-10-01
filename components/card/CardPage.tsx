@@ -176,12 +176,13 @@ export function CardPage({
   const milestone = data.milestones.find((m) => m.id === draft.milestoneId) ?? null;
 
   const activity = useResource(() => api.activity(200, task.id), [task.id, task.updatedAt], { live: true });
-  const branches = useResource(api.branches, [], { enabled: connected });
-  const pulls = useResource(api.pulls, [], { enabled: connected });
-  const issues = useResource(api.issues, [], { enabled: connected });
-  const refs = useResource(api.refs, [], { enabled: connected && draft.number != null });
+  const branches = useResource(api.branches, [], { enabled: connected, github: true });
+  const pulls = useResource(api.pulls, [], { enabled: connected, github: true });
+  const issues = useResource(api.issues, [], { enabled: connected, github: true });
+  const refs = useResource(api.refs, [], { enabled: connected && draft.number != null, github: true });
   const commits = useResource(() => api.commits(branch ?? undefined), [branch], {
     enabled: Boolean(branch) && connected,
+    github: true,
   });
 
   const branchInfo = branches.data?.branches.find((b) => b.name === branch);

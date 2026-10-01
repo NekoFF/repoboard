@@ -203,6 +203,7 @@ export type RepoClient = Pick<
   | "storyGraph"
   | "listPeople"
   | "listMarkdownFiles"
+  | "pulse"
   | "getFile"
   | "createFiles"
   | "headCommit"
@@ -391,6 +392,25 @@ export class GitHubClient {
       pushedAt: data.pushed_at ?? null,
       role: roleOf(data.permissions),
     };
+  }
+
+  /**
+   * A cheap fingerprint of what moves on GitHub: every branch's newest commit,
+   * and the issue or pull request changed last — two requests. Open pages ask
+   * for it every minute and load their GitHub data again when it changes
+   * (components/shell/GitHubPulse.tsx).
+   */
+  async pulse(): Promise<string> {
+    const [branches, latest] = await Promise.all([
+      this.octokit.rest.repos.listBranches({ owner: this.owner, repo: this.repo, per_page: 100 }).then((r) => r.data),
+      // The issues list holds pull requests too; sorted by update, the first says when anything changed.
+      this.octokit.rest.issues
+        .listForRepo({ owner: this.owner, repo: this.repo, state: "all", sort: "updated", direction: "desc", per_page: 1 })
+        .then((r) => r.data)
+        .catch(() => []),
+    ]);
+    const heads = branches.map((b) => `${b.name}@${b.commit.sha}`).sort().join(",");
+    return `${heads}|${latest[0] ? `${latest[0].number}@${latest[0].updated_at}` : "-"}`;
   }
 
   async listBranches(): Promise<BranchSummary[]> {

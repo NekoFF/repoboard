@@ -117,9 +117,9 @@ export function OverviewScreen({
   // "I checked it" asks for proof first (optional), then shows the change.
   const [checking, setChecking] = useState<{ doc: TrackedDoc; item: TrackedDoc["items"][number] } | null>(null);
 
-  const commits = useResource(() => api.commits(), [], { enabled: connected });
-  const pulls = useResource(api.pulls, [], { enabled: connected });
-  const issues = useResource(api.issues, [], { enabled: connected });
+  const commits = useResource(() => api.commits(), [], { enabled: connected, github: true });
+  const pulls = useResource(api.pulls, [], { enabled: connected, github: true });
+  const issues = useResource(api.issues, [], { enabled: connected, github: true });
   const activity = useResource(() => api.activity(14), []);
 
   // Documents are kept in step with GitHub by DocsWatch (components/shell/DocsWatch.tsx).
