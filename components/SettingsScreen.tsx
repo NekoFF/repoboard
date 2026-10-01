@@ -215,7 +215,7 @@ function AgentDocs({ initial, canChange }: { initial: "review" | "direct"; canCh
       />
       <p className="text-sm text-muted">
         {mode === "direct"
-          ? "RepoBoard commits agents' documents and checks to .repoboard/ on the documents' branch by itself, a few seconds after they propose them, while RepoBoard is open. Agents still never tick a check done. Anything outside .repoboard/, or a change that no longer fits the file, waits for you."
+          ? "RepoBoard commits agents' documents and checks to .repoboard/ on the documents' branch by itself, a few seconds after they propose them, while RepoBoard is open. Agents tick a check done only with a reason and evidence, and only when the project lets agents close work. Anything outside .repoboard/, or a change that no longer fits the file, waits for you."
           : "Agents' new documents and checks wait in Documents until you review and commit them."}
         {!canChange && " Only a project admin can change this."}
       </p>

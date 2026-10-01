@@ -140,7 +140,7 @@ RepoBoard as a desktop app for macOS and Windows: the same app as in the browser
 
 The app is not signed with a paid Apple or Microsoft certificate yet, so the system asks once:
 
-- **macOS:** open the .dmg and drag RepoBoard to Applications. The first time, right-click RepoBoard → **Open** → **Open**. (If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/RepoBoard.app` in Terminal once.)
+- **macOS:** open the .dmg and drag RepoBoard to Applications. The first time, macOS says it cannot check the developer: open **System Settings → Privacy & Security**, scroll down and press **Open Anyway**.
 - **Windows:** if SmartScreen appears, click **More info** → **Run anyway**.
 
 ## Good to know
