@@ -154,6 +154,7 @@ export const api = {
   movePlan: (to: PlanLocation, options: { leaveNote: boolean; removeOld: boolean }) =>
     post<{ copied: number; commits: string[]; place: string; status: PlanStatus | null }>("/api/plan", { action: "move", to, ...options }),
   closePlanOffer: () => post<{ ok: true }>("/api/plan", { action: "offer-seen" }),
+  openPlan: (to: PlanLocation) => post<{ place: string; status: PlanStatus | null }>("/api/plan", { action: "use", to }),
   createPlanRepo: (name: string) => post<{ repo: string }>("/api/plan", { action: "create", name }),
   setAgentPolicy: (policy: "propose" | "reason") =>
     post<{ ok: true; policy: "propose" | "reason" }>("/api/repo", { action: "agent-policy", policy }),
@@ -341,7 +342,7 @@ export const api = {
     }),
 
   boardStatus: () =>
-    request<{ tracked: boolean; changes: string[]; sha: string | null; autoSync: boolean; syncedAt: number | null }>(
+    request<{ tracked: boolean; changes: string[]; sha: string | null; autoSync: boolean; syncedAt: number | null; planMode?: "main" | "branch" | "repo" }>(
       "/api/board",
       { method: "POST", body: JSON.stringify({ action: "board-status" }) },
     ),

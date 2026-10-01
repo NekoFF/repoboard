@@ -1843,6 +1843,8 @@ export interface BoardStateStatus {
   /** Kept in step on their own, through SYNC_BRANCH. */
   autoSync: boolean;
   syncedAt: number | null;
+  /** Where the plan is kept (lib/plan.ts); apart from main the boards always sync on their own. */
+  planMode: PlanLocation["mode"];
 }
 
 /**
@@ -1910,7 +1912,13 @@ export async function boardStateStatus(
       ? await readBoardFile(gh, place.branch).catch(() => readBoardFile(gh))
       : await readBoardFile(gh)
     : await readBoardFile(gh);
-  return { tracked: sha !== null, sha, changes: describeFileChanges(localBoardState(), state), ...settings };
+  return {
+    tracked: sha !== null,
+    sha,
+    changes: describeFileChanges(localBoardState(), state),
+    ...settings,
+    planMode: planLocationFor(activeRepository()?.id).mode,
+  };
 }
 
 /**

@@ -10,6 +10,7 @@ import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { ToolRail } from "@/components/shell/ToolRail";
 import { DesktopBar } from "@/components/shell/DesktopBar";
 import { SyncAgent } from "@/components/shell/SyncAgent";
+import { PlanBlocked } from "@/components/PlanPlace";
 import { LiveRefresh } from "@/components/shell/LiveRefresh";
 import { DocsWatch } from "@/components/shell/DocsWatch";
 import { GitHubPulse } from "@/components/shell/GitHubPulse";
@@ -260,6 +261,7 @@ export function AppShell({
 <div className="relative z-10 flex min-w-0 flex-1 overflow-hidden bg-surface md:rb-panel-main md:-ml-[60px]">
                     <main className="rb-page relative flex min-w-0 flex-1 flex-col overflow-hidden">
                       {children}
+                      <PlanBlocked />
                       <ToolRail />
                     </main>
                   </div>

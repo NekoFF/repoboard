@@ -5,7 +5,7 @@ import { currentWho, getVerifiedRepository, getViewer, invalidateAccessCache } f
 import { activeHost, getAuthProvider, listProjects } from "@/lib/github/auth-provider";
 import { installUrl } from "@/lib/github/app";
 import { GitLabClient } from "@/lib/gitlab/client";
-import { closePlanOffer, movePlan, planPeople, planStatus, previewPlanMove } from "@/lib/plan-move";
+import { closePlanOffer, movePlan, planPeople, planStatus, previewPlanMove, openPlanAt } from "@/lib/plan-move";
 import { repoSlug } from "@/lib/github/slug";
 import type { PlanLocation } from "@/lib/plan";
 
@@ -47,6 +47,7 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("preview"), to: location }),
   z.object({ action: z.literal("move"), to: location, leaveNote: z.boolean(), removeOld: z.boolean() }),
   z.object({ action: z.literal("offer-seen") }),
+  z.object({ action: z.literal("use"), to: location }),
   z.object({ action: z.literal("create"), name: z.string().regex(/^[\w.-]{1,100}$/, "Use letters, numbers, dots, dashes") }),
 ]);
 
@@ -70,6 +71,11 @@ async function handlePost(request: Request) {
   }
   try {
     if (body.action === "preview") return NextResponse.json({ preview: await previewPlanMove(body.to) });
+    if (body.action === "use") {
+      const used = await openPlanAt(body.to);
+      invalidateAccessCache();
+      return NextResponse.json({ ...used, status: status() });
+    }
     if (body.action === "create") {
       // GitLab only: the key may make projects. On GitHub the person makes it on github.com.
       const host = activeHost();

@@ -543,11 +543,43 @@ function documentsBranch(repo) {
 }
 
 /**
+ * Where the project keeps its plan (.repoboard/) — lib/plan.ts: "main" (the
+ * repository, as always), "branch" (RepoBoard's own branch, repoboard), or
+ * "repo" (a repository of its own). The code is always the project's.
+ */
+function planOf(repo) {
+  try {
+    const row = db.prepare("SELECT plan_mode AS mode, plan_repo AS planRepo FROM repositories WHERE id = ?").get(repo.id);
+    if (row?.mode === "repo" && row.planRepo) return { mode: "repo", repo: row.planRepo };
+    if (row?.mode === "branch") return { mode: "branch", repo: null };
+  } catch {
+    // A database from before the setting existed.
+  }
+  return { mode: "main", repo: null };
+}
+
+const isPlanPath = (p) => p === ".repoboard" || String(p).startsWith(".repoboard/");
+
+/** Where the documents are, in the words whoami gives. */
+function documentsPlace(repo) {
+  const plan = planOf(repo);
+  if (plan.mode === "repo") return `${plan.repo} (the plan's own repository; the code stays in ${repo.owner}/${repo.name})`;
+  if (plan.mode === "branch") return "the repoboard branch (RepoBoard's own; the code's branches do not carry .repoboard/)";
+  return documentsBranch(repo);
+}
+
+/**
  * Files in the agent's own .repoboard/ that RepoBoard does not know: they are
  * on another branch than the one it reads, or not pushed yet. Said plainly —
  * otherwise the agent believes it is done and the person sees nothing.
  */
 function unseenLocalDocs(repo) {
+  const plan = planOf(repo);
+  if (plan.mode !== "main") {
+    const here = checkout();
+    if (!here || !fs.existsSync(path.join(here.root, ".repoboard"))) return null;
+    return `This project keeps its plan in ${documentsPlace(repo)}, not in the code's .repoboard/ folder — files there are not read. Change documents through the tools (create_document, add_check, mark_check); do not commit .repoboard/ files to the code.`;
+  }
   const here = checkout();
   if (!here || (checkoutRepo() ?? "").toLowerCase() !== `${repo.owner}/${repo.name}`.toLowerCase()) return null;
   const local = [];
@@ -702,8 +734,8 @@ function agentDocsMode(repo) {
 
 const waitingNote = (repo, docPath) =>
   agentDocsMode(repo) === "direct" && docPath.startsWith(".repoboard/")
-    ? `Queued: RepoBoard commits it to ${docPath} on ${documentsBranch(repo)} by itself within seconds, while the app is open. Confirm with list_documents (no "proposed" left) before you report it as done.`
-    : `Proposed, not written yet: ${agentLabel()}'s change waits in RepoBoard until the person reviews it and commits it to ${docPath} on ${documentsBranch(repo)} (Documents). Do not report it as done until list_documents shows it without "proposed".`;
+    ? `Queued: RepoBoard commits it to ${docPath} in ${documentsPlace(repo)} by itself within seconds, while the app is open. Confirm with list_documents (no "proposed" left) before you report it as done.`
+    : `Proposed, not written yet: ${agentLabel()}'s change waits in RepoBoard until the person reviews it and commits it to ${docPath} in ${documentsPlace(repo)} (Documents). Do not report it as done until list_documents shows it without "proposed".`;
 
 function documents(repositoryId) {
   return db
@@ -715,8 +747,15 @@ function documents(repositoryId) {
     });
 }
 
-async function readFromGitHub(project, filePath) {
+async function readFromGitHub(project, filePath, repo) {
   if (!project.token) throw new Error("No token available to read the repository.");
+  // A plan file is read where the plan is kept; the code's own files from the code.
+  if (repo && isPlanPath(String(filePath).replace(/^\/+/, ""))) {
+    const plan = planOf(repo);
+    if (plan.mode === "repo") project = { ...project, repo: plan.repo };
+    if (plan.mode === "branch") project = { ...project, ref: "repoboard" };
+    if (plan.mode === "main") project = { ...project, ref: documentsBranch(repo) };
+  }
   const segments = String(filePath).split("/").filter(Boolean);
   if (segments.some((seg) => seg === "." || seg === "..")) throw new Error("Paths are relative to the repository root, without . or ..");
   if (segments.length === 0) throw new Error("Name a file, e.g. .repoboard/checklists/release.md (list_documents shows the tracked ones).");
@@ -731,7 +770,7 @@ async function readFromGitHub(project, filePath) {
   // A project connected from GitLab reads through GitLab's API.
   if (project.host?.kind === "gitlab" && typeof project.host.url === "string") {
     const gitlab = String(project.host.url).replace(/\/+$/, "");
-    const url = `${gitlab}/api/v4/projects/${encodeURIComponent(project.repo)}/repository/files/${encodeURIComponent(segments.join("/"))}?ref=HEAD`;
+    const url = `${gitlab}/api/v4/projects/${encodeURIComponent(project.repo)}/repository/files/${encodeURIComponent(segments.join("/"))}?ref=${encodeURIComponent(project.ref ?? "HEAD")}`;
     const response = await get(url, { authorization: `Bearer ${project.token}`, accept: "application/json" }, "GitLab");
     if (response.status === 404) throw new Error(`${filePath} is not in ${project.repo}`);
     if (!response.ok) throw new Error(`GitLab answered ${response.status} for ${filePath}`);
@@ -740,7 +779,7 @@ async function readFromGitHub(project, filePath) {
     return Buffer.from(data.content, "base64").toString("utf8");
   }
   const base = process.env.GITHUB_API_URL || "https://api.github.com";
-  const url = `${base}/repos/${project.repo}/contents/${segments.map(encodeURIComponent).join("/")}`;
+  const url = `${base}/repos/${project.repo}/contents/${segments.map(encodeURIComponent).join("/")}${project.ref ? `?ref=${encodeURIComponent(project.ref)}` : ""}`;
   const response = await get(url, { authorization: `Bearer ${project.token}`, accept: "application/vnd.github+json" }, "GitHub");
   if (response.status === 404) throw new Error(`${filePath} is not in ${project.repo}`);
   if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${filePath}`);
@@ -1668,8 +1707,8 @@ const handlers = {
   },
 
   async read_document({ path: filePath }) {
-    const { project } = requireBoard();
-    const content = await readFromGitHub(project, String(filePath).replace(/^\/+/, ""));
+    const { project, repo } = requireBoard();
+    const content = await readFromGitHub(project, String(filePath).replace(/^\/+/, ""), repo);
     return { path: filePath, format: FORMAT_HINT, content };
   },
 
@@ -1683,6 +1722,8 @@ const handlers = {
       boards: boardsOf(repo.id).map((b) => b.name),
       // Documents live on this branch: files elsewhere are not seen (tidyUp says which).
       documentsBranch: documentsBranch(repo),
+      // Where .repoboard/ is kept: the repository itself, RepoBoard's branch, or a repository of its own.
+      plan: { ...planOf(repo), where: documentsPlace(repo) },
       // Put these right as part of your work, and tell the person what you moved.
       tidyUp: tidyUp(repo.id),
       note: `People assign work to you as "${agentLabel()}". Everything you change is shown under that name, marked AI.`,
@@ -1943,7 +1984,7 @@ Finishing work — close it when you can prove it is done, send it to a person w
 - Look at needs_check now and then: close with person_confirmed what a person has since said works, and take up checks whose work is done.
 - Your proof shows on the card; a person can reopen it.
 
-You cannot commit to GitHub from here. Documents change through the tools above (the person commits them), or through .repoboard/ files you commit yourself — RepoBoard reads documents from one branch, documentsBranch in whoami, and only sees them once they are there. A proposed change is not done until list_documents shows it without "proposed". A document with text but no checks is not empty: read it.`;
+You cannot commit to GitHub from here. Documents change through the tools above (the person commits them), or through .repoboard/ files you commit yourself — RepoBoard reads documents from one branch, documentsBranch in whoami, and only sees them once they are there. When whoami's plan says the plan is kept on the repoboard branch or in a repository of its own, the code's .repoboard/ is not read: change documents only through the tools. A proposed change is not done until list_documents shows it without "proposed". A document with text but no checks is not empty: read it.`;
 
 /** Changes whenever the rules change: the process around this tells connected agents. */
 export const RULES_VERSION = createHash("sha1").update(INSTRUCTIONS).digest("hex").slice(0, 12);

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { rememberPlanChoice } from "@/components/PlanPlace";
+import type { PlanMode } from "@/lib/plan";
 import { Check, ExternalLink, Globe, Lock } from "lucide-react";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { GitHubMark, GitLabMark, Segmented, Spinner } from "@/components/ui";
@@ -106,6 +108,7 @@ function KeyFlow({
   const [looking, setLooking] = useState(false);
   const [lookError, setLookError] = useState<Problem | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  const [plan, setPlan] = useState<PlanMode | null>(null);
   const [typed, setTyped] = useState(replacing ?? "");
   const [typing, setTyping] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -162,11 +165,13 @@ function KeyFlow({
     // connecting makes a project the open one.
     const order = [...targets.slice(1), targets[0]];
     let last = "";
+    const mode = listed ? planDefault(repos!, targets, plan) : plan ?? "main";
     for (const target of order) {
       setBusy(target);
       try {
         const body = await api.connectRepository(token, target, host);
         last = `${body.repo.owner}/${body.repo.name}`;
+        if (!replacing && !connectedRepos.includes(last.toLowerCase())) rememberPlanChoice(last, mode);
       } catch (err) {
         const problem = problemOf(err);
         setError(targets.length > 1 ? { ...problem, message: `${target}: ${problem.message}` } : problem);
@@ -258,6 +263,7 @@ function KeyFlow({
       {listed && !typing && (
         <>
           <RepoList repos={repos!} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />
+          {!replacing && <PlanChoice repos={repos!} picked={picked} connectedRepos={connectedRepos} value={plan} onChange={setPlan} />}
           {!gl && repos!.some((r) => !r.private) && (
             <p className="-mt-3 text-xs leading-relaxed text-faint">
               Public repositories show up with any key, because anyone may read them. To save checklists and boards to
@@ -319,6 +325,51 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 /** The repositories to pick from: glass rows, one or several at once. */
+/**
+ * Where a new project keeps its boards and documents (lib/plan.ts). Asked
+ * once here; the project's Overview finishes it after connecting. A project
+ * whose plan already lives elsewhere is found and followed instead.
+ */
+function PlanChoice({
+  repos,
+  picked,
+  connectedRepos,
+  value,
+  onChange,
+}: {
+  repos: (Repo & { role?: string })[];
+  picked: string[];
+  connectedRepos: string[];
+  value: PlanMode | null;
+  onChange: (mode: PlanMode) => void;
+}) {
+  const fresh = picked.filter((p) => !connectedRepos.includes(p.toLowerCase()));
+  if (!fresh.length) return null;
+  const isPublic = fresh.some((p) => repos.find((r) => r.fullName === p)?.private === false);
+  const mode = value ?? (isPublic ? "repo" : "main");
+  const note: Record<PlanMode, string> = {
+    main: isPublic
+      ? "In a public repository everyone can read the plan, screenshots included."
+      : "A .repoboard/ folder on main, as RepoBoard always did.",
+    branch: isPublic ? "A branch of a public repository is public too." : "No commits on main; nobody needs access to anything new.",
+    repo: "Private even if the code is public. RepoBoard helps you create it right after this.",
+  };
+  return (
+    <label className="rb-enter flex flex-col gap-1.5 text-sm font-medium text-ink">
+      Keep its boards and documents
+      <select className="rb-input h-10 rounded-xl" value={mode} onChange={(e) => onChange(e.target.value as PlanMode)}>
+        <option value="main">In this repository, on main</option>
+        <option value="branch">On RepoBoard&rsquo;s own branch</option>
+        <option value="repo">In a private repository of its own</option>
+      </select>
+      <span className={`text-xs font-normal ${isPublic && mode !== "repo" ? "text-warn-fg" : "text-faint"}`}>{note[mode]}</span>
+    </label>
+  );
+}
+
+const planDefault = (repos: (Repo & { role?: string })[], picked: string[], value: PlanMode | null): PlanMode =>
+  value ?? (picked.some((p) => repos.find((r) => r.fullName === p)?.private === false) ? "repo" : "main");
+
 function RepoList({
   repos,
   picked,
@@ -407,6 +458,7 @@ function SignInFlow({
   const [copied, setCopied] = useState(false);
   const [repos, setRepos] = useState<AppRepo[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  const [plan, setPlan] = useState<PlanMode | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
 
@@ -515,9 +567,12 @@ function SignInFlow({
     const order = [...picked.slice(1), picked[0]];
     let opened = "";
     try {
+      const mode = planDefault(repos ?? [], picked, plan);
       for (const [index, repo] of order.entries()) {
         setProgress({ name: repo.split("/")[1] ?? repo, n: index + 1, of: order.length });
+        const isNew = !connectedRepos.includes(repo.toLowerCase());
         opened = (await api.githubSignIn.connect([repo])).opened;
+        if (isNew) rememberPlanChoice(repo, mode);
       }
       onConnected(opened);
     } catch (err) {
@@ -611,6 +666,7 @@ function SignInFlow({
         </p>
       )}
       {repos && repos.length > 0 && <RepoList repos={repos} picked={picked} toggle={toggle} connectedRepos={connectedRepos} />}
+      {repos && repos.length > 0 && <PlanChoice repos={repos} picked={picked} connectedRepos={connectedRepos} value={plan} onChange={setPlan} />}
       {repos && repos.length === 0 && (
         <div className="rb-enter flex flex-col gap-3 rounded-2xl bg-accent/[0.07] p-4 shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.18)]">
           <div>

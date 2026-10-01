@@ -52,6 +52,8 @@ export interface PlanMovePreview {
   problem: { code: "missing" | "no_access" | "other_project" | "read_only" | "same"; message: string } | null;
   /** The new place as GitHub sees it. */
   toVisibility: "public" | "private" | null;
+  /** The new place already holds this project's plan (a teammate put it there): it can simply be used. */
+  existing: boolean;
   codeVisibility: "public" | "private";
 }
 
@@ -108,6 +110,7 @@ export async function previewPlanMove(to: PlanLocation): Promise<PlanMovePreview
 
   let problem: PlanMovePreview["problem"] = null;
   let toVisibility: PlanMovePreview["toVisibility"] = null;
+  let existing = false;
   if (sameLocation(from, to)) problem = { code: "same", message: "The plan is kept there already." };
   if (!problem && to.mode === "repo") {
     if (!to.repo || !/^[\w.-]+\/[\w.-]+$/.test(to.repo)) {
@@ -132,9 +135,17 @@ export async function previewPlanMove(to: PlanLocation): Promise<PlanMovePreview
       if (!problem && note?.for && note.for.toLowerCase() !== slug.toLowerCase()) {
         problem = { code: "other_project", message: `${to.repo} keeps the plan of ${note.for}. Use a repository of its own for this project.` };
       }
+      existing = Boolean(note?.for && note.for.toLowerCase() === slug.toLowerCase() && !note.movedTo);
     }
   } else if (to.mode !== "repo") {
     toVisibility = repository.visibility;
+    if (to.mode === "branch" && target.exists) {
+      const note = await target.client
+        .getFile(LOCATION_FILE)
+        .then((f) => parseLocationNote(f.content))
+        .catch(() => null);
+      existing = note?.mode === "branch" && !note.movedTo;
+    }
   }
 
   const sourceFiles = await planFiles(source);
@@ -154,8 +165,26 @@ export async function previewPlanMove(to: PlanLocation): Promise<PlanMovePreview
     oldFiles: sourceFiles,
     problem,
     toVisibility,
+    existing,
     codeVisibility: repository.visibility,
   };
+}
+
+/**
+ * Uses a plan that is already in a place (a teammate moved it there) without
+ * copying anything: this computer reads and syncs there from now on.
+ */
+export async function openPlanAt(to: PlanLocation): Promise<{ place: string }> {
+  const repository = activeRepository();
+  if (!repository) throw new Error("Connect a repository first");
+  const preview = await previewPlanMove(to);
+  if (preview.problem && preview.problem.code !== "same") throw new Error(preview.problem.message);
+  setPlanLocation(repository.id, to);
+  setPlanBlocked(repository.id, null);
+  if (to.mode !== "main") await syncBoards();
+  await watchDocs({ force: true }).catch(() => null);
+  logActivity({ repositoryId: repository.id, type: "sync_settings", message: `opened the plan kept in ${preview.toPlace}` });
+  return { place: preview.toPlace };
 }
 
 /**

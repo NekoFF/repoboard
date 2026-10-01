@@ -3,7 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Check, Copy, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2 } from "lucide-react";
+import { Bot, Check, Copy, FolderGit2, HardDrive, KeyRound, Monitor, Moon, Palette, Plus, Sun, Trash2, Users } from "lucide-react";
+import { PlanPeopleCard, PlanPlaceCard } from "@/components/PlanPlace";
 import { PageHeader } from "@/components/PageHeader";
 import { ProjectMark } from "@/components/shell/ProjectSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
@@ -457,6 +458,22 @@ export function SettingsScreen({
             </p>
           </Card>
 
+          {connected && (
+            <Card
+              title="Where the plan is kept"
+              icon={<FolderGit2 className="size-4" />}
+              description="Boards, checklists, notes and screenshots. The code, its branches and its history are not affected by where they are."
+            >
+              <PlanPlaceCard />
+            </Card>
+          )}
+
+          {connected && (
+            <Card title="People" icon={<Users className="size-4" />} description="Who works on this project with you, and what they need to see the same boards.">
+              <PlanPeopleCard />
+            </Card>
+          )}
+
           <Card title="Appearance" icon={<Palette className="size-4" />}>
             <div>
             <Segmented
@@ -476,11 +493,10 @@ export function SettingsScreen({
             icon={<Bot className="size-4" />}
             description={
               <>
-                Any AI that supports MCP — Claude, Codex, Cursor and others — works with the same board and checklists you
+                Any AI that supports MCP — Claude, Codex, Cursor and others — works with the same boards and checklists you
                 see: it reads the overview, creates, moves, changes and deletes cards, and comments, and every change shows
-                in the activity feed under its name. Checklists it edits as files in{" "}
-                <code className="font-mono text-xs">.repoboard/</code> in its own copy of the repository. It cannot commit
-                through RepoBoard — writes to GitHub always go through your review.
+                in the activity feed under its name. Documents it changes through RepoBoard: its changes wait for your review,
+                or are written directly when you allow it below. It has no way to write to the code.
               </>
             }
           >
@@ -488,9 +504,10 @@ export function SettingsScreen({
             {connected && <AgentPolicy initial={agentPolicy} canChange={role === "manager"} />}
             {connected && <AgentDocs initial={agentDocs} canChange={role === "manager"} />}
             <p className="text-sm text-muted">
-              In documents agents never tick an item themselves: they mark it <code className="font-mono text-xs">[?]</code> and
-              say how to verify it. The rules are in <code className="font-mono text-xs">.repoboard/README.md</code>, which
-              RepoBoard creates with the workspace.
+              In documents an agent marks a check <code className="font-mono text-xs">[?]</code> with what it checked and how,
+              for you to look at. It ticks one done itself only with a reason and evidence you can open — screenshots, files,
+              links — and only when this project lets agents close work. <code className="font-mono text-xs">Checked:</code> lines are
+              always yours.
             </p>
           </Card>
 
@@ -522,8 +539,8 @@ export function SettingsScreen({
             </dl>
             {activeRepo && (
               <p className="text-xs text-faint">
-                Card order, checklists and links can also be kept in the repository itself (Board → Save to repo), so a
-                teammate who connects the same repository sees them.
+                Boards, checklists and notes are also kept on GitHub — where, says “Where the plan is kept” — so a
+                teammate or another computer that opens the project sees the same.
               </p>
             )}
           </Card>
