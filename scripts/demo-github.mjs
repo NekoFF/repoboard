@@ -364,6 +364,20 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, list.slice((page - 1) * perPage, page * perPage).map(commitJson));
   }
 
+  // New pull requests and issues, as a teammate or an agent opens them (for testing what updates by itself).
+  if (rest === "/pulls" && req.method === "POST") {
+    const body = await readBody(req);
+    const number = Math.max(0, ...META.pulls.map((x) => x.number), ...META.issues.map((x) => x.number)) + 1;
+    META.pulls.unshift({ number, title: String(body.title ?? "Untitled"), body: body.body ?? "", state: "open", author: "maya", head: body.head, base: body.base ?? META.defaultBranch, hoursAgo: 0, updatedAt: new Date().toISOString() });
+    return send(res, 201, { number, html_url: `https://github.com/${OWNER}/${REPO}/pull/${number}` });
+  }
+  if (rest === "/issues" && req.method === "POST") {
+    const body = await readBody(req);
+    const number = Math.max(0, ...META.pulls.map((x) => x.number), ...META.issues.map((x) => x.number)) + 1;
+    META.issues.unshift({ number, title: String(body.title ?? "Untitled"), state: "open", labels: body.labels ?? [], updatedAt: new Date().toISOString() });
+    return send(res, 201, { number });
+  }
+
   if (rest === "/pulls") {
     return send(
       res,
@@ -380,24 +394,28 @@ const server = http.createServer(async (req, res) => {
         requested_reviewers: (pr.reviewers ?? []).map((login) => ({ login })),
         merged_at: pr.merged ? iso(pr.hoursAgo ?? 5) : null,
         created_at: iso((pr.hoursAgo ?? 5) + 24),
-        updated_at: iso(pr.hoursAgo ?? 5),
+        updated_at: pr.updatedAt ?? iso(pr.hoursAgo ?? 5),
         html_url: `https://github.com/${OWNER}/${REPO}/pull/${pr.number}`,
       })),
     );
   }
 
   if (rest === "/issues") {
-    return send(
-      res,
-      200,
-      META.issues.map((issue) => ({
+    // As GitHub: pull requests are in this list too (marked), each with when it last changed.
+    const all = [
+      ...META.issues.map((issue) => ({
         number: issue.number,
         title: issue.title,
         state: issue.state,
         labels: issue.labels.map((name) => ({ name })),
         assignees: (issue.assignees ?? []).map((login) => ({ login })),
+        updated_at: issue.updatedAt ?? iso(48),
       })),
-    );
+      ...META.pulls.map((pr) => ({ number: pr.number, title: pr.title, state: pr.state, labels: [], assignees: [], pull_request: {}, updated_at: pr.updatedAt ?? iso(pr.hoursAgo ?? 5) })),
+    ];
+    if (url.searchParams.get("sort") === "updated") all.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    const perPage = Number(url.searchParams.get("per_page") ?? 30);
+    return send(res, 200, all.slice(0, perPage));
   }
 
   return notFound(res);
