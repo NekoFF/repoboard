@@ -1,6 +1,6 @@
 "use client";
 
-import { useRepoLinks } from "@/lib/client/links";
+import { fileLink, useRepoLinks } from "@/lib/client/links";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -162,13 +162,17 @@ export function DocScreen({ path }: { path: string }) {
   }, [taken, path]);
   const waiting = (proposals.data?.proposals ?? []).filter((p) => p.edits && !taken.includes(p.id));
   // Files named in proofs open on the web, on the branch the documents come from.
-  const docsBranch = useResource(api.docsStatus, []).data?.status?.branch;
+  const docsStatus = useResource(api.docsStatus, []).data?.status;
+  const docsBranch = docsStatus?.branch;
+  const plan = docsStatus?.plan;
+  const { repo: shellRepo, projects: shellProjects } = useShell();
+  const host = shellProjects.find((p) => p.active)?.host;
   const fileUrl = useCallback(
     (file: string, from?: number, to?: number) => {
-      const url = docsBranch ? links.blob(docsBranch, file.replace(/^\/+/, "")) : undefined;
+      const url = docsBranch ? fileLink(host, shellRepo, plan, file, plan && plan.mode !== "main" ? "HEAD" : docsBranch) : undefined;
       return url && from ? `${url}#L${from}${to ? (links.service === "GitLab" ? `-${to}` : `-L${to}`) : ""}` : url;
     },
-    [docsBranch, links],
+    [docsBranch, links, host, shellRepo, plan],
   );
   const [mode, setMode] = useState<Mode>("checklist");
   const [filter, setFilter] = useState<ChecklistFilter>("all");
@@ -377,7 +381,7 @@ export function DocScreen({ path }: { path: string }) {
 
   const kind = kindOfPath(path);
   const tracked = data?.tracked ?? null;
-  const githubUrl = links.blob("HEAD", path) ?? null;
+  const githubUrl = fileLink(host, shellRepo, plan, path) ?? null;
 
   return (
     <>

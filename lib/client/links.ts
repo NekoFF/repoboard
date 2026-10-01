@@ -28,3 +28,22 @@ export function useRepoLinks() {
   const host = projects.find((p) => p.active)?.host;
   return repoLinks(host, repo);
 }
+
+/**
+ * Where a file of the project opens on the web, wherever the plan is kept
+ * (lib/plan.ts): .repoboard/ files in the plan's repository or on
+ * RepoBoard's branch, everything else in the code, on `codeRef`.
+ */
+export function fileLink(
+  host: HostChoice | undefined,
+  repo: string | null,
+  plan: { mode: "main" | "branch" | "repo"; repo: string | null } | null | undefined,
+  file: string,
+  codeRef = "HEAD",
+): string | undefined {
+  const clean = file.replace(/^\/+/, "");
+  const inPlan = clean === ".repoboard" || clean.startsWith(".repoboard/");
+  if (inPlan && plan?.mode === "repo" && plan.repo) return repoLinks(host, plan.repo).blob("HEAD", clean);
+  if (inPlan && plan?.mode === "branch") return repoLinks(host, repo).blob("repoboard", clean);
+  return repoLinks(host, repo).blob(codeRef, clean);
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, GitBranch, RotateCw } from "lucide-react";
 import { api, useResource, type DocsStatusInfo } from "@/lib/client/api";
@@ -59,7 +60,36 @@ export function DocsSource({ className = "" }: { className?: string }) {
   };
 
   if (!status) return null;
+  const elsewhere = status.plan && status.plan.mode !== "main";
   const branchName = <span className="font-mono text-muted">{status.branch}</span>;
+  if (elsewhere) {
+    // The plan is kept apart from the code (Settings → Where the plan is kept): no branch to pick here.
+    return (
+      <p className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-faint ${className}`}>
+        <span>
+          Read from{" "}
+          <Link href="/settings" className="font-mono text-muted hover:text-ink">
+            {status.plan.mode === "repo" ? status.plan.repo : "the repoboard branch"}
+          </Link>
+          {status.commit && (
+            <>
+              {" "}at <span className="font-mono text-muted">{status.commit.slice(0, 7)}</span>
+            </>
+          )}
+          {status.checkedAt ? (
+            <>
+              , checked <RelativeTime value={status.checkedAt} />
+            </>
+          ) : (
+            ", not checked yet"
+          )}
+        </span>
+        <button type="button" className="inline-flex items-center gap-1 text-muted hover:text-ink disabled:opacity-60" disabled={busy} onClick={() => void now()}>
+          <RotateCw className={`size-3 ${busy ? "animate-spin" : ""}`} /> Check now
+        </button>
+      </p>
+    );
+  }
   return (
     <p className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-faint ${className}`}>
       <span>

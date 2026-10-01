@@ -485,7 +485,11 @@ async function handlePost(request: Request) {
       if (who.role !== "manager") {
         return NextResponse.json({ error: "Only a project admin can turn automatic sync on or off.", forbidden: true }, { status: 403 });
       }
-      setAutoSync(body.autoSync);
+      try {
+        setAutoSync(body.autoSync);
+      } catch (error) {
+        return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+      }
       return NextResponse.json(body.autoSync ? await syncBoards() : { pulled: 0, pushed: 0, syncedAt: null });
     case "item-done":
       return NextResponse.json({ checklist: setItemDone(body.taskId, body.itemId, body.done) });
