@@ -272,6 +272,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  pulse: () => request<{ pulse: string }>("/api/github?resource=pulse"),
   branches: () =>
     request<{ branches: BranchSummary[] }>("/api/github?resource=branches"),
 
@@ -402,9 +403,10 @@ export function useResource<T>(
   loader: () => Promise<T>,
   deps: unknown[] = [],
   /** live: load again when the project's boards change (components/shell/LiveRefresh.tsx). */
-  options: { enabled?: boolean; pollMs?: number; live?: boolean } = {},
+  /** github: load again when the repository on GitHub changed (components/shell/GitHubPulse.tsx). */
+  options: { enabled?: boolean; pollMs?: number; live?: boolean; github?: boolean } = {},
 ): Resource<T> {
-  const { enabled = true, pollMs, live = false } = options;
+  const { enabled = true, pollMs, live = false, github = false } = options;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
@@ -462,6 +464,13 @@ export function useResource<T>(
     window.addEventListener("rb-live", again);
     return () => window.removeEventListener("rb-live", again);
   }, [live, enabled]);
+
+  useEffect(() => {
+    if (!github || !enabled) return;
+    const again = () => setNonce((n) => n + 1);
+    window.addEventListener("rb-github", again);
+    return () => window.removeEventListener("rb-github", again);
+  }, [github, enabled]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 

@@ -110,9 +110,9 @@ export function ProjectStory({
   /** Shown as an Overview card: a heading and a few facts above the picture. */
   card?: boolean;
 }) {
-  const data = useResource(api.story, [repo], { enabled: connected });
+  const data = useResource(api.story, [repo], { enabled: connected, github: true });
   const links = useRepoLinks();
-  const pulls = useResource(api.pulls, [repo], { enabled: connected });
+  const pulls = useResource(api.pulls, [repo], { enabled: connected, github: true });
   const box = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
   const nodeEls = useRef(new Map<string, HTMLElement>());

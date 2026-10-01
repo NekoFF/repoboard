@@ -69,6 +69,12 @@ Project (a GitHub repository)
   `checked: false`, so never `[x]` or `Checked:`. Files named in proofs open
   on the web (`fileUrl`, documents branch); the paperclip opens the item. Every DocEdit type must be in `lib/doc-edit-schema.ts`, or the
   API refuses it (`tests/doc-edit-schema.test.ts`).
+- What comes from GitHub (branches, commits, pull requests, issues,
+  Project life, the graph) stays current too: `components/shell/GitHubPulse.tsx`
+  asks `/api/github?resource=pulse` (`RepoClient.pulse`: branch heads and the
+  issue or pull request changed last — two requests) at once and then every
+  minute in view and on focus; a change fires `rb-github`, and resources
+  marked `github: true` load again. Mark every new GitHub resource that way.
 - Open pages stay current on their own: `components/shell/LiveRefresh.tsx`
   asks `/api/board?live=1` (`liveVersion`, a fingerprint of cards, boards
   and activity) every 3 s while the page is visible, and on a change calls

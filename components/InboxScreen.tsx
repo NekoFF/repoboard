@@ -94,8 +94,8 @@ export function InboxScreen({ boards }: { boards: { info: BoardSummary; data: Bo
   const router = useRouter();
   const toast = useToast();
   const { repo, viewer, connected } = useShell();
-  const refs = useResource(api.refs, [], { enabled: connected });
-  const issues = useResource(api.issues, [], { enabled: connected });
+  const refs = useResource(api.refs, [], { enabled: connected, github: true });
+  const issues = useResource(api.issues, [], { enabled: connected, github: true });
   const activity = useResource(() => api.activity(200), [], { live: true });
   const [seenAt, setSeenAt] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());

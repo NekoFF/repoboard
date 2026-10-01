@@ -121,7 +121,7 @@ export function BoardScreen({
   const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
   // How far the boards have drifted from the copy stored in the repository.
   const boardState = useResource(api.boardStatus, [], { enabled: connected });
-  const refs = useResource(api.refs, [], { enabled: connected });
+  const refs = useResource(api.refs, [], { enabled: connected, github: true });
 
   useEffect(() => {
     const onChanged = () => {

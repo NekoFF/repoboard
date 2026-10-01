@@ -256,6 +256,17 @@ export class GitLabClient {
     return summaryOf(await this.info());
   }
 
+  /** As GitHubClient.pulse: branch heads, and the merge request and issue changed last. */
+  async pulse(): Promise<string> {
+    const [branches, mrs, issues] = await Promise.all([
+      this.list<{ name: string; commit: { id: string } }>("/repository/branches", {}, 1),
+      this.req<{ iid: number; updated_at: string }[]>("GET", "/merge_requests", { query: { order_by: "updated_at", sort: "desc", per_page: 1, state: "all" } }).catch(() => []),
+      this.req<{ iid: number; updated_at: string }[]>("GET", "/issues", { query: { order_by: "updated_at", sort: "desc", per_page: 1, state: "all" } }).catch(() => []),
+    ]);
+    const heads = branches.map((b) => `${b.name}@${b.commit.id}`).sort().join(",");
+    return `${heads}|${mrs[0] ? `!${mrs[0].iid}@${mrs[0].updated_at}` : "-"}|${issues[0] ? `#${issues[0].iid}@${issues[0].updated_at}` : "-"}`;
+  }
+
   async listBranches(): Promise<BranchSummary[]> {
     const main = await this.branch();
     const branches = await this.list<{ name: string; protected: boolean; commit: GLCommit }>("/repository/branches", {}, 2).catch(

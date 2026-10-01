@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { GitHubClient, GitHubNotConfiguredError } from "@/lib/github/client";
 import { getVerifiedRepository } from "@/lib/github/access";
@@ -19,6 +20,9 @@ export async function GET(request: Request) {
     const gh = await GitHubClient.create();
 
     switch (resource) {
+      case "pulse":
+        // A short hash: the page compares it, nothing else is read from it.
+        return NextResponse.json({ pulse: createHash("sha1").update(await gh.pulse()).digest("hex").slice(0, 16) });
       case "branches":
         return NextResponse.json({ branches: await gh.listBranches() });
       case "commits":
