@@ -46,6 +46,33 @@ Project (a GitHub repository)
   `SyncChip` instead of "Save to repo". Cards compare by content
   (`sameCard`), never by `JSON.stringify` of objects built in different
   places — field order differs between the database and the parser.
+- **Where the plan is kept** (`lib/plan.ts`, `repositories.plan_mode`,
+  `plan_repo`): everything under `.repoboard/` — board.json, documents,
+  screenshots — lives in "main" (null: the repository's default branch, as
+  always; every project that never chose), "branch" (RepoBoard's own
+  `repoboard` branch, an orphan on GitHub) or "repo" (a separate
+  repository on the same host, opened with the same key). The code's own
+  information — branches, commits, pull requests, issues, files named in
+  proofs — always comes from the project's repository. Every plan read and
+  write goes through `planAware()` / `documentsClient()`: `splitClient`
+  sends `.repoboard/` paths to the plan's place and everything else to the
+  code (a commit touching both becomes two). Never call the client for a
+  plan file without it. Apart from main the boards always sync on their own
+  (`syncPlace` in board-service); `setAutoSync(false)` is refused there.
+  `lib/plan-move.ts` moves the plan (preview first: every file, the target's
+  visibility; then one commit in the new place, a `location.json` note left
+  in the old one, optionally the old copy removed) and reports status and
+  people (`/api/plan`). `findPlan` (from `adoptBoards`, on open and focus)
+  follows a note on another computer, finds the `repoboard` branch's note,
+  or — only when nothing of the plan is on this computer yet — a
+  `<name>-plan` repository whose note names this project; a plan in a
+  repository the key cannot open is reported (`planBlocked`), never
+  replaced. RepoBoard's branch is hidden from the code's views (branches,
+  graph, Project life, the pulse), and its automatic commits say
+  `[skip ci]`. Screens: Settings → Where the plan is kept and People
+  (`components/PlanPlace.tsx`), the one-time offer on the Overview, the
+  choice on the connect screen (remembered in sessionStorage until the
+  project opens), the notice when the plan cannot be opened.
 - Documents follow GitHub on their own: `components/shell/DocsWatch.tsx`
   asks `/api/docs?watch=1` every minute and on focus; `watchDocs` looks at
   the documents branch's newest commit and reads the files again only when
@@ -130,7 +157,15 @@ Project (a GitHub repository)
    `lib/docs-service.ts` commits agents' proposals — only under
    `.repoboard/`, on the documents' branch, through `commitDocEdit` /
    `createFiles` with the SHA it read. A proposal that no longer fits the
-   file waits for the person; agents still never set `[x]` or `Checked:`.
+   file waits for the person; agents still never set `[x]` or `Checked:`. The
+   third: a project that keeps its plan **apart from main** (lib/plan.ts —
+   RepoBoard's branch or a repository of its own, chosen by an admin in a
+   dialog that lists every file it moves) has board.json synced there
+   automatically, like automatic sync; documents there are still committed
+   through the same reviewed dialogs. Moving the plan is itself a reviewed
+   write: the dialog shows each file, and the commits go only to the new
+   place, plus — when the person ticks it — a location.json note in the old
+   one and the removal of the old `.repoboard/` copy.
 2. **Card moves have one path.** Dragging, the tick, the keyboard (`X`, `1–9`),
    the list view and the card page all go through `useCommitMove` in
    `lib/client/moves.ts`, so a markdown-backed card always joins the queue of
@@ -321,7 +356,8 @@ runtime and the server in `%LOCALAPPDATA%\NekoFF\RepoBoard\mcp`
 and Settings points agents there (`REPOBOARD_MCP_HOME`, `ready.json`).
 `desktop/test/mcp-copy.mjs` proves it on a Windows runner
 (`.github/workflows/windows-mcp.yml`); `whoami` tells an agent still on the
-old path to be set up again. `whoami` and `get_overview` carry `tidyUp`:
+old path to be set up again. `whoami` says where the plan is kept (`plan`), and
+`read_document` reads `.repoboard/` files from there. `whoami` and `get_overview` carry `tidyUp`:
 what is already in the wrong place (a plan kept as a checklist document,
 steps in a card's description, a pile on the main board) for the agent to
 put right. The server exposes the boards and documents to any MCP client
@@ -361,7 +397,11 @@ npm run doctor    # environment problems, in plain words
 npx tsc --noEmit  # types
 npm test          # unit + integration tests
 npm run build     # production build, writes to .next-build
+scripts/e2e-plan.sh  # end to end: where the plan is kept, 3 computers, 2 people (PRIVATE=1 too)
 npm run demo      # the app against a fake GitHub, no token needed
+                  # (scripts/demo-github.mjs: several repositories in memory,
+                  # private ones, people with roles — keys member-sam_…,
+                  # viewer-kim_…, noplan… — and /__test/ helpers)
 ```
 
 Releases: bump `package.json` and `desktop/package.json`, add notes to

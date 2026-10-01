@@ -6,7 +6,7 @@ person or an AI agent can change it without RepoBoard running.
 
 ## The workspace folder
 
-Everything that is not code lives in one folder at the root of the repository:
+Everything that is not code lives in one folder, `.repoboard/` — the plan:
 
 ```
 .repoboard/
@@ -15,12 +15,29 @@ Everything that is not code lives in one folder at the root of the repository:
   checklists/      checks: what must be true and be verified (privacy, release gate, licences) — work is cards
   notes/           how to run things, where they live
   decisions/       what was decided and why, with sources
+  evidence/        screenshots that prove checklist items
+  location.json    written by RepoBoard: whose plan this is, or where it moved
 ```
 
-`board.json` lives on the default branch when boards are saved by hand
-(Board → Save to repo). With automatic sync on, RepoBoard keeps it on a
-branch of its own, `repoboard`, cut from the default branch the first time;
-only that file is ever written there.
+Where the folder lives is the project's choice (Settings → Where the plan
+is kept):
+
+- **In the repository, on main** — at the root of the default branch, as it
+  always was. `board.json` lives there when boards are saved by hand
+  (Board → Save to repo). With automatic sync on, RepoBoard keeps it on a
+  branch of its own, `repoboard`, cut from the default branch the first
+  time; only that file is ever written there.
+- **On RepoBoard's own branch** — the whole folder on `repoboard`, a branch
+  with no history shared with the code (on GitLab it is cut from the
+  default branch). As visible as the repository.
+- **In a repository of its own** — at the root of a second repository (for
+  example `owner/name-plan`), private even when the code is public.
+
+`location.json` in a plan's place says which project it belongs to:
+`{"for": "owner/name", "mode": "repo"}`. After a move, the old place keeps
+one saying where it went — `{"for": "owner/name", "movedTo": {"mode":
+"repo", "repo": "owner/name-plan"}}` — and every computer that opens the
+project follows it.
 
 RepoBoard tracks every `.md` file under `.repoboard/` automatically.
 Checklists are pinned in the sidebar; notes and decisions are on the
