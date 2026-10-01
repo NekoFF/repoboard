@@ -27,5 +27,5 @@ if [[ "${GITLAB:-0}" == "1" ]]; then node tests/e2e/gitlab.mjs || result=1
 elif [[ "${PRIVATE:-0}" == "1" ]]; then node tests/e2e/private.mjs || result=1
 else node tests/e2e/plan.mjs || result=1; node tests/e2e/agent.mjs || result=1; fi
 pkill -f "demo-github.mjs 4011" || true; pkill -f "demo-gitlab.mjs 4012" || true; pkill -f "next dev -p 310[789]" || true
-git checkout -q tsconfig.json 2>/dev/null || true; rm -rf .next-e2e-a .next-e2e-b .next-e2e-c
+git checkout -q tsconfig.json 2>/dev/null || true; sleep 2; rm -rf .next-e2e-a .next-e2e-b .next-e2e-c 2>/dev/null || true
 exit $result
