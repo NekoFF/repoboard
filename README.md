@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/desk.jpg" alt="RepoBoard open on a monitor on a light wooden desk: the overview of a project, with its history drawn as branches" width="100%">
+  <img src="docs/media/desk.jpg" alt="RepoBoard open on a monitor on a light desk: the overview of a project, with its history drawn as branches" width="100%">
 </p>
 
 <h1 align="center">
