@@ -120,7 +120,7 @@ export function BoardScreen({
   const manage = data.board ? canManageBoard({ role, login: viewer }, data.board) : role === "manager";
   const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
   // How far the boards have drifted from the copy stored in the repository.
-  const boardState = useResource(api.boardStatus, [], { enabled: connected });
+  const boardState = useResource(api.boardStatus, [], { enabled: connected, live: true });
   const refs = useResource(api.refs, [], { enabled: connected, github: true });
 
   useEffect(() => {
