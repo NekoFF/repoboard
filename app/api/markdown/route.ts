@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { planAware, planLocationFor } from "@/lib/plan";
 import { runAs } from "@/lib/actor";
 import { getViewer } from "@/lib/github/access";
 
@@ -33,7 +34,8 @@ export async function GET() {
   let current: { content: string; sha: string } | null = null;
 
   try {
-    const gh = await GitHubClient.create();
+    // .repoboard/ files where the plan is kept; everything else from the code (main: as always).
+    const gh = await planAware(await GitHubClient.create(), planLocationFor(data.repository.id), null);
     files = await gh.listMarkdownFiles();
     if (data.markdownSource) {
       const file = await gh.getFile(data.markdownSource.path);

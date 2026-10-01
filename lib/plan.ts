@@ -153,15 +153,13 @@ export function splitClient(code: Client, plan: Client, describe: string): Clien
           return (args: Parameters<Client["putFile"]>[0]) => pick(args.path).putFile(args);
         case "listMarkdownFiles":
           return async () => {
-            const [inPlan, inCode] = await Promise.all([
-              plan.listMarkdownFiles().catch(() => [] as string[]),
-              code.listMarkdownFiles(),
-            ]);
+            // A plan that cannot be listed is an error, never "no documents" (that would drop them all).
+            const [inPlan, inCode] = await Promise.all([plan.listMarkdownFiles(), code.listMarkdownFiles()]);
             return [...inPlan.filter(isPlanPath), ...inCode.filter((p) => !isPlanPath(p))].sort();
           };
         case "listFiles":
           return async () => {
-            const [inPlan, inCode] = await Promise.all([plan.listFiles().catch(() => [] as string[]), code.listFiles()]);
+            const [inPlan, inCode] = await Promise.all([plan.listFiles(), code.listFiles()]);
             return [...inPlan.filter(isPlanPath), ...inCode.filter((p) => !isPlanPath(p))].sort();
           };
         case "headCommit":
@@ -169,7 +167,12 @@ export function splitClient(code: Client, plan: Client, describe: string): Clien
           return () => code.headCommit();
         case "watchKey":
           return async () => {
-            const [a, b] = await Promise.all([plan.headCommit().catch(() => "empty"), code.headCommit().catch(() => "empty")]);
+            // Only an empty repository has no head; anything else is an error to report, not a change.
+            const head = (gh: Client) => gh.headCommit().catch((error: { status?: number }) => {
+              if (error?.status === 409) return "empty";
+              throw error;
+            });
+            const [a, b] = await Promise.all([head(plan), head(code)]);
             return `${a}+${b}`;
           };
         case "commitChanges":
@@ -270,13 +273,27 @@ export type Found =
   | { kind: "found"; location: PlanLocation; how: string }
   /** The plan is in a repository this key cannot open (yet). */
   | { kind: "blocked"; repo: string }
+  /** A note points somewhere RepoBoard does not follow on its own (another owner, or public from private): ask first. */
+  | { kind: "ask"; location: PlanLocation; how: string }
   | null;
+
+const SLUG = /^[\w.-]+\/[\w.-]+$/;
+const sameRepo = (a: string | null, b: string | null) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+const key = (l: PlanLocation) => (l.mode === "repo" ? `repo:${(l.repo ?? "").toLowerCase()}` : l.mode);
 
 /**
  * Where another computer keeps this project's plan, when it is not where
  * this one looks — so a teammate's RepoBoard, or a second computer, follows
- * on its own: a note left in main after a move, RepoBoard's branch with its
- * note, or a repository named <name>-plan whose note names this project.
+ * on its own. From the place this computer uses, notes are followed hop by
+ * hop (a plan can move more than once) to the first place whose note does
+ * not send it on. In main with no note of its own, RepoBoard's branch is
+ * looked at, and — only when nothing of the plan is on this computer yet —
+ * a repository named <name>-plan whose note names this project.
+ *
+ * A note is only followed on its own to a repository of the same owner, and
+ * never from a private project to a public place: anything else is asked
+ * ("ask"), since anyone who can write a note could otherwise send the boards
+ * anywhere.
  */
 export async function findPlan(args: {
   code: Reader;
@@ -285,60 +302,83 @@ export async function findPlan(args: {
   open: (slug: string) => Promise<Reader>;
   /** Nothing of the plan on this computer yet: a repository named <name>-plan may be taken as it. */
   fresh: boolean;
+  /** The code repository's visibility. */
+  codePrivate?: boolean;
 }): Promise<Found> {
-  const { code, slug, current, open, fresh } = args;
-  const sameRepo = (a: string | null, b: string | null) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
-  const tryRepo = async (repo: string, how: string): Promise<Found> => {
-    const gh = await open(repo).catch(() => null);
-    if (!gh || !(await repoReadable(gh))) return { kind: "blocked", repo };
-    const note = await readNote(gh);
-    // A repository that says it is another project's plan is not this one's.
-    if (note?.for && !sameRepo(note.for, slug)) return null;
-    return { kind: "found", location: { mode: "repo", repo }, how };
-  };
-  const follow = async (moved: { mode: PlanMode; repo: string | null }, how: string): Promise<Found> => {
-    if (moved.mode === "repo" && moved.repo) return tryRepo(moved.repo, how);
-    return { kind: "found", location: { mode: moved.mode, repo: null }, how };
+  const { code, slug, current, open, fresh, codePrivate = false } = args;
+  const [owner, name] = slug.split("/");
+
+  /** A place's note, or why it cannot be read. */
+  const noteAt = async (place: PlanLocation): Promise<{ note: LocationNote | null; blocked?: string; visibility?: "public" | "private" }> => {
+    if (place.mode === "repo") {
+      if (!place.repo || !SLUG.test(place.repo)) return { note: null, blocked: place.repo ?? "?" };
+      const gh = await open(place.repo).catch(() => null);
+      const summary = gh ? await repoSummary(gh) : null;
+      if (!gh || !summary) return { note: null, blocked: place.repo };
+      return { note: await readNote(gh), visibility: summary.visibility };
+    }
+    return { note: await readNote(code, place.mode === "branch" ? PLAN_BRANCH : undefined) };
   };
 
-  // Where this computer looks now: was the plan moved away from there?
-  if (current.mode === "repo" && current.repo) {
-    const gh = await open(current.repo).catch(() => null);
-    const note = gh ? await readNote(gh) : null;
-    if (note?.movedTo && !(note.movedTo.mode === "repo" && sameRepo(note.movedTo.repo, current.repo))) {
-      return follow(note.movedTo, `the note in ${current.repo}`);
+  /** Follows notes from `start`; the place reached, or why not. */
+  const resolve = async (start: PlanLocation, startNote: LocationNote | null, how: string): Promise<Found> => {
+    const seen = new Set([key(start)]);
+    let place = start;
+    let note = startNote;
+    let ask = false;
+    for (let hop = 0; hop < 5 && note?.movedTo; hop += 1) {
+      const next: PlanLocation = { mode: note.movedTo.mode, repo: note.movedTo.mode === "repo" ? note.movedTo.repo : null };
+      if (seen.has(key(next))) break;
+      seen.add(key(next));
+      const at = await noteAt(next);
+      if (at.blocked) return { kind: "blocked", repo: at.blocked };
+      // A note that says it is another project's plan is not this one's.
+      if (at.note?.for && !sameRepo(at.note.for, slug)) return null;
+      if (next.mode === "repo" && (!sameRepo(next.repo!.split("/")[0], owner) || (codePrivate && at.visibility === "public"))) ask = true;
+      place = next;
+      note = at.note;
     }
-    return null;
+    if (key(place) === key(current)) return null;
+    return ask ? { kind: "ask", location: place, how } : { kind: "found", location: place, how };
+  };
+
+  if (current.mode !== "main") {
+    const at = await noteAt(current);
+    if (at.blocked) return { kind: "blocked", repo: at.blocked };
+    return at.note?.movedTo ? resolve(current, at.note, `the note in ${describePlace(current)}`) : null;
   }
-  if (current.mode === "branch") {
-    const note = await readNote(code, PLAN_BRANCH);
-    if (note?.movedTo && note.movedTo.mode !== "branch") return follow(note.movedTo, `the note on the ${PLAN_BRANCH} branch`);
-    return null;
-  }
-  // In main: a note there, then RepoBoard's branch, then <name>-plan.
+
+  // In main: main's own note decides when there is one.
   const inMain = await readNote(code);
-  if (inMain?.movedTo && inMain.movedTo.mode !== "main") return follow(inMain.movedTo, "the note in main");
+  if (inMain?.movedTo) return resolve(current, inMain, "the note in main");
+  if (inMain) return null;
+  // No note in main: RepoBoard's branch may hold the plan (or say where it went).
   const onBranchNote = await readNote(code, PLAN_BRANCH);
-  if (onBranchNote?.movedTo && onBranchNote.movedTo.mode !== "branch") return follow(onBranchNote.movedTo, `the note on the ${PLAN_BRANCH} branch`);
-  if (onBranchNote?.mode === "branch") return { kind: "found", location: { mode: "branch", repo: null }, how: `the ${PLAN_BRANCH} branch` };
+  if (onBranchNote?.movedTo || onBranchNote?.mode === "branch") {
+    if (onBranchNote.for && !sameRepo(onBranchNote.for, slug)) return null;
+    return resolve({ mode: "branch", repo: null }, onBranchNote, `the ${PLAN_BRANCH} branch`);
+  }
   // Something of the plan is here already: a <name>-plan repository is not taken over it unasked.
-  if (inMain || !fresh) return null;
-  const [owner, name] = slug.split("/");
+  if (!fresh) return null;
   const guess = defaultPlanRepo(owner, name);
   const gh = await open(guess).catch(() => null);
-  const note = gh ? await readNote(gh) : null;
-  if (note && sameRepo(note.for, slug) && (note.mode === "repo" || !note.mode)) return { kind: "found", location: { mode: "repo", repo: guess }, how: guess };
-  return null;
+  const summary = gh ? await repoSummary(gh) : null;
+  if (!gh || !summary) return null;
+  const note = await readNote(gh);
+  // Only a plan that says it is this project's, and is still there (not moved away).
+  if (!note || !sameRepo(note.for, slug) || note.mode !== "repo") {
+    return note?.movedTo && sameRepo(note.for, slug) ? resolve({ mode: "repo", repo: guess }, note, guess) : null;
+  }
+  if (codePrivate && summary.visibility === "public") return { kind: "ask", location: { mode: "repo", repo: guess }, how: guess };
+  return { kind: "found", location: { mode: "repo", repo: guess }, how: guess };
 }
 
-async function repoReadable(gh: Reader | null): Promise<boolean> {
-  const repo = gh as (Reader & { getRepo?: () => Promise<unknown> }) | null;
-  if (!repo?.getRepo) return false;
-  return repo.getRepo().then(
-    () => true,
-    () => false,
-  );
+async function repoSummary(gh: Reader): Promise<{ visibility: "public" | "private" } | null> {
+  const repo = gh as Reader & { getRepo?: () => Promise<{ visibility: "public" | "private" }> };
+  if (!repo.getRepo) return null;
+  return repo.getRepo().catch(() => null);
 }
+
 
 /** The plan's repository this key could not open, per project — for the screens that say so. */
 const blocked = new Map<string, string>();
@@ -346,4 +386,12 @@ export const planBlocked = (repositoryId: string) => blocked.get(repositoryId) ?
 export function setPlanBlocked(repositoryId: string, repo: string | null): void {
   if (repo) blocked.set(repositoryId, repo);
   else blocked.delete(repositoryId);
+}
+
+/** A move another computer made that RepoBoard asks about before following (findPlan "ask"). */
+const asking = new Map<string, PlanLocation>();
+export const planAsk = (repositoryId: string) => asking.get(repositoryId) ?? null;
+export function setPlanAsk(repositoryId: string, location: PlanLocation | null): void {
+  if (location) asking.set(repositoryId, location);
+  else asking.delete(repositoryId);
 }

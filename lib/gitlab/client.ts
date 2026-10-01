@@ -540,22 +540,31 @@ export class GitLabClient {
 
   async commitChanges(args: {
     message: string;
-    edits: { path: string; content: string; expectedSha: string }[];
+    edits: { path: string; content: string; expectedSha: string; base64?: string }[];
     adds: { path: string; base64: string }[];
-    deletes?: string[];
+    deletes?: { path: string; expectedSha: string }[];
     branch?: string;
   }): Promise<{ commitSha: string }> {
     const branch = args.branch ?? (await this.branch());
+    const checked = async (path: string, expectedSha: string) => {
+      const current = await this.file(path, branch).catch(() => null);
+      if (!current || current.blob_id !== expectedSha) {
+        const error = new Error(`${path} changed on GitLab meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+      return current;
+    };
     const edits = await Promise.all(
       args.edits.map(async (e) => {
-        const current = await this.file(e.path, branch);
-        if (current.blob_id !== e.expectedSha) {
-          const error = new Error(`${e.path} changed on GitLab meanwhile`);
-          (error as Error & { code?: string }).code = "CONFLICT";
-          throw error;
-        }
-        return { action: "update", file_path: e.path, content: e.content, last_commit_id: current.last_commit_id };
+        const current = await checked(e.path, e.expectedSha);
+        return e.base64 != null
+          ? { action: "update", file_path: e.path, content: e.base64, encoding: "base64", last_commit_id: current.last_commit_id }
+          : { action: "update", file_path: e.path, content: e.content, last_commit_id: current.last_commit_id };
       }),
+    );
+    const deletes = await Promise.all(
+      (args.deletes ?? []).map(async (d) => ({ action: "delete", file_path: d.path, last_commit_id: (await checked(d.path, d.expectedSha)).last_commit_id })),
     );
     for (const a of args.adds) if (await this.exists(a.path, branch)) throw new Error(`${a.path} already exists`);
     const commit = await this.req<{ id: string }>("POST", "/repository/commits", {
@@ -565,7 +574,7 @@ export class GitLabClient {
         actions: [
           ...edits,
           ...args.adds.map((a) => ({ action: "create", file_path: a.path, content: a.base64, encoding: "base64" })),
-          ...(args.deletes ?? []).map((path) => ({ action: "delete", file_path: path })),
+          ...deletes,
         ],
       },
     });
@@ -602,9 +611,23 @@ export class GitLabClient {
     );
     if (found) return false;
     await this.ensureBranch(name);
-    const missing: { path: string; base64: string }[] = [];
-    for (const f of files) if (!(await this.exists(f.path, name))) missing.push(f);
-    if (missing.length) await this.commitChanges({ message, edits: [], adds: missing, branch: name });
+    // Cut from the default branch, it carries whatever .repoboard/ was there: the plan being
+    // moved replaces it file by file, and plan files it does not have are removed.
+    const wanted = new Set(files.map((f) => f.path));
+    const there = (await this.tree(name)).filter((p) => p === ".repoboard" || p.startsWith(".repoboard/"));
+    const edits: { path: string; content: string; expectedSha: string; base64: string }[] = [];
+    const adds: { path: string; base64: string }[] = [];
+    for (const f of files) {
+      const current = await this.file(f.path, name).catch(() => null);
+      if (current) edits.push({ path: f.path, content: "", base64: f.base64, expectedSha: current.blob_id });
+      else adds.push(f);
+    }
+    const deletes: { path: string; expectedSha: string }[] = [];
+    for (const p of there.filter((p) => !wanted.has(p))) {
+      const current = await this.file(p, name).catch(() => null);
+      if (current) deletes.push({ path: p, expectedSha: current.blob_id });
+    }
+    await this.commitChanges({ message, edits, adds, deletes, branch: name });
     return true;
   }
 

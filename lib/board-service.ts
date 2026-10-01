@@ -23,7 +23,7 @@ import { canSeeBoard, type Who } from "@/lib/roles";
 import type { DoneBy } from "@/lib/checklist";
 import { GITHUB, type RepoHost } from "@/lib/github/auth-provider";
 import { GitHubClient, type RepoSummary } from "@/lib/github/client";
-import { describePlace, findPlan, isPlanPath, PLAN_BRANCH, planLocationFor, setPlanBlocked, setPlanLocation, SKIP_CI, type PlanLocation } from "@/lib/plan";
+import { describePlace, findPlan, isPlanPath, LOCATION_FILE, parseLocationNote, PLAN_BRANCH, planAware, planLocationFor, setPlanAsk, setPlanBlocked, setPlanLocation, SKIP_CI, type PlanLocation } from "@/lib/plan";
 import { currentActor, type Actor } from "@/lib/actor";
 import { locate, normalise, progress, setDone, type ChecklistItem } from "@/lib/checklist";
 import { getConfiguredRepo } from "@/lib/github/auth-provider";
@@ -88,7 +88,16 @@ export interface MarkdownGitHub {
 
 type ClientFactory = () => Promise<MarkdownGitHub>;
 
-const defaultClientFactory: ClientFactory = () => GitHubClient.create();
+/**
+ * The code's client — and, when the plan is kept apart from main, .repoboard/
+ * files (a board driven by a markdown file there) routed to the plan's place.
+ */
+const defaultClientFactory: ClientFactory = async () => {
+  const code = await GitHubClient.create();
+  const repositoryId = configuredRepositoryId();
+  const location = planLocationFor(repositoryId);
+  return location.mode === "main" ? code : planAware(code, location, null);
+};
 
 export interface BoardTask {
   id: string;
@@ -1890,7 +1899,7 @@ export function setAutoSync(on: boolean): void {
   if (!on && planLocationFor(repository.id).mode !== "main") {
     throw new Error("This project keeps its plan apart from main, where the boards always sync on their own. To save them by hand, keep the plan in this repository's main branch again (Settings → Where the plan is kept).");
   }
-  db.update(repositories).set({ autoSync: on }).where(eq(repositories.id, repository.id)).run();
+  db.update(repositories).set({ autoSync: on, ...(on ? {} : { autoSyncOffAt: new Date() }) }).where(eq(repositories.id, repository.id)).run();
   logActivity({
     repositoryId: repository.id,
     type: "sync_settings",
@@ -1930,9 +1939,17 @@ export async function boardStateStatus(
 export async function syncBoards(
   clientFactory: ClientFactory = defaultClientFactory,
   planFactory: PlanFactory = defaultPlanFactory,
+  /** Look first whether the plan moved (another computer moved it): never sync into a place it left. */
+  follow = true,
 ): Promise<{ pulled: number; pushed: number; syncedAt: number }> {
   const repository = activeRepository();
   if (!repository) throw new Error("Not connected");
+  if (follow) {
+    const plan = await followPlan(repository, clientFactory, planFactory);
+    if (plan.blocked) throw new Error(`The plan is kept in ${plan.blocked}, which this computer cannot open yet. Ask its owner to add you.`);
+    // It went back to main, where the boards are saved by hand: nothing to sync now.
+    if (plan.moved && !syncSettings().autoSync) return { pulled: 0, pushed: 0, syncedAt: Date.now() };
+  }
   if (!syncSettings().autoSync) throw new Error("Automatic sync is off for this project");
   const { gh, branch, ensure } = await syncPlace(clientFactory, planFactory);
   if (ensure) {
@@ -1989,26 +2006,58 @@ export async function syncBoards(
  * (lib/plan.ts findPlan). A plan in a repository this key cannot open is
  * reported, and nothing else is done until it can.
  */
-async function followPlan(
+/** Nothing of this project's plan on this computer yet: no cards, no plan documents. */
+async function isFresh(repositoryId: string): Promise<boolean> {
+  const cards = db.select({ n: sql<number>`count(*)` }).from(tasks).innerJoin(boards, eq(tasks.boardId, boards.id)).where(eq(boards.repositoryId, repositoryId)).get()!.n;
+  if (cards > 0) return false;
+  return db.select({ path: markdownSources.path }).from(markdownSources).where(eq(markdownSources.repositoryId, repositoryId)).all().every((d) => !isPlanPath(d.path));
+}
+
+async function hasNote(gh: MarkdownGitHub, ref?: string): Promise<boolean> {
+  return gh.getFile(LOCATION_FILE, ref).then(
+    (f) => {
+      const note = parseLocationNote(f.content);
+      return Boolean(note && (note.for || note.mode || note.movedTo));
+    },
+    () => false,
+  );
+}
+
+/** The newest change a board file carries: a board's or a card's. */
+function newestIn(state: BoardState): number {
+  const times: number[] = [];
+  const visit = (b: { updatedAt?: number | null; cards?: { updatedAt?: number | null }[] }) => {
+    if (b.updatedAt) times.push(b.updatedAt);
+    for (const c of b.cards ?? []) if (c.updatedAt) times.push(c.updatedAt);
+  };
+  visit(state as never);
+  for (const b of (state as { boards?: unknown[] }).boards ?? []) visit(b as never);
+  return Math.max(0, ...times);
+}
+
+export async function followPlan(
   repository: NonNullable<ReturnType<typeof activeRepository>>,
   clientFactory: ClientFactory,
   planFactory: PlanFactory,
 ): Promise<{ moved: boolean; location: PlanLocation; blocked: string | null }> {
   const current = planLocationFor(repository.id);
   const slug = `${repository.owner}/${repository.name}`;
-  const fresh =
-    db.select({ n: sql<number>`count(*)` }).from(tasks).innerJoin(boards, eq(tasks.boardId, boards.id)).where(eq(boards.repositoryId, repository.id)).get()!.n === 0 &&
-    db.select({ path: markdownSources.path }).from(markdownSources).where(eq(markdownSources.repositoryId, repository.id)).all().every((d) => !isPlanPath(d.path));
-  const found = await findPlan({ code: await clientFactory(), slug, current, open: planFactory, fresh });
+  const fresh = await isFresh(repository.id);
+  const found = await findPlan({ code: await clientFactory(), slug, current, open: planFactory, fresh, codePrivate: repository.visibility === "private" });
   if (found?.kind === "blocked") {
     setPlanBlocked(repository.id, found.repo);
     return { moved: false, location: current, blocked: found.repo };
   }
   setPlanBlocked(repository.id, null);
+  // Somewhere RepoBoard does not go on its own: the person is asked (components/PlanPlace.tsx).
+  setPlanAsk(repository.id, found?.kind === "ask" ? found.location : null);
+  if (found?.kind === "ask") return { moved: false, location: current, blocked: null };
   if (found?.kind !== "found" || (found.location.mode === current.mode && found.location.repo === current.repo)) {
     return { moved: false, location: current, blocked: null };
   }
   setPlanLocation(repository.id, found.location);
+  // Back in main the boards are saved by hand again, as the computer that moved them set it.
+  if (found.location.mode === "main") db.update(repositories).set({ autoSync: false }).where(eq(repositories.id, repository.id)).run();
   logActivity({
     repositoryId: repository.id,
     type: "sync_settings",
@@ -2033,9 +2082,15 @@ export async function adoptBoards(
   if (!repository) return { autoSync: false, pulled: 0 };
   const plan = await followPlan(repository, clientFactory, planFactory).catch(() => null);
   if (plan?.blocked) return { autoSync: syncSettings().autoSync, pulled: 0, plan };
-  if (syncSettings().autoSync) return { autoSync: true, pulled: (await syncBoards(clientFactory, planFactory)).pulled, ...(plan ? { plan } : {}) };
+  if (syncSettings().autoSync) return { autoSync: true, pulled: (await syncBoards(clientFactory, planFactory, false)).pulled, ...(plan ? { plan } : {}) };
   const gh = await clientFactory();
-  const onBranch = await readBoardFile(gh, SYNC_BRANCH).catch(() => ({ state: null, sha: null }));
+  // The boards on the sync branch, from a computer that turned automatic sync on — taken
+  // while that branch is not a plan's own (its note) and main does not say where the plan is.
+  // Sync turned off here stays off, unless the branch changed after that.
+  const legacy = !(await hasNote(gh)) && !(await hasNote(gh, SYNC_BRANCH));
+  const read = legacy ? await readBoardFile(gh, SYNC_BRANCH).catch(() => ({ state: null, sha: null })) : { state: null, sha: null };
+  const offAt = db.select({ at: repositories.autoSyncOffAt }).from(repositories).where(eq(repositories.id, repository.id)).get()?.at?.getTime() ?? null;
+  const onBranch = read.state && (offAt === null || newestIn(read.state) > offAt) ? read : { state: null, sha: null };
   if (onBranch.state) {
     db.update(repositories).set({ autoSync: true }).where(eq(repositories.id, repository.id)).run();
     logActivity({
@@ -2043,7 +2098,7 @@ export async function adoptBoards(
       type: "sync_settings",
       message: `found the boards on the ${SYNC_BRANCH} branch: this computer syncs them automatically too`,
     });
-    return { autoSync: true, pulled: (await syncBoards(clientFactory, planFactory)).pulled };
+    return { autoSync: true, pulled: (await syncBoards(clientFactory, planFactory, false)).pulled };
   }
   const pulled = await pullBoardState(clientFactory);
   return { autoSync: false, pulled: pulled ? pulled.added + pulled.updated : 0 };
@@ -2112,6 +2167,11 @@ export async function pushBoardState(
 ): Promise<{ commitSha: string; changes: string[] }> {
   const repository = activeRepository();
   if (!repository) throw new Error("Not connected");
+  // Moved on another computer: the boards are not written back into main.
+  const plan = await followPlan(repository, clientFactory, defaultPlanFactory).catch(() => null);
+  if (plan && plan.location.mode !== "main") {
+    throw new Error(`The plan has moved to ${describePlace(plan.location)}; the boards sync there by themselves now. Nothing was saved in main.`);
+  }
 
   const gh = await clientFactory();
   const { state: remote, sha } = await readBoardFile(gh);

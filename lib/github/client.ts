@@ -928,10 +928,11 @@ export class GitHubClient {
    */
   async commitChanges(args: {
     message: string;
-    edits: { path: string; content: string; expectedSha: string }[];
+    /** `base64` instead of `content` for a file that is not text (a screenshot replaced). */
+    edits: { path: string; content: string; expectedSha: string; base64?: string }[];
     adds: { path: string; base64: string }[];
-    /** Files to remove in the same commit (moving the plan away cleans up after itself). */
-    deletes?: string[];
+    /** Files to remove in the same commit, each still at the SHA it was seen at (moving the plan away cleans up after itself). */
+    deletes?: { path: string; expectedSha: string }[];
     branch?: string;
   }): Promise<{ commitSha: string }> {
     const repo = await this.getRepo();
@@ -981,9 +982,18 @@ export class GitHubClient {
       );
       if (exists) throw new Error(`${add.path} already exists`);
     }
+    for (const gone of args.deletes ?? []) {
+      const current = await this.getFileBytes(gone.path, ref.object.sha).catch(() => null);
+      if (!current || current.sha !== gone.expectedSha) {
+        const error = new Error(`${gone.path} changed on GitHub meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+    }
 
+    const binaryEdits = args.edits.filter((e) => e.base64 != null);
     const blobs = await Promise.all(
-      args.adds.map((add) =>
+      [...args.adds, ...binaryEdits.map((e) => ({ path: e.path, base64: e.base64! }))].map((add) =>
         this.octokit.rest.git
           .createBlob({ owner: this.owner, repo: this.repo, content: add.base64, encoding: "base64" })
           .then((r) => ({ path: add.path, sha: r.data.sha })),
@@ -994,9 +1004,9 @@ export class GitHubClient {
       repo: this.repo,
       base_tree: head.tree.sha,
       tree: [
-        ...args.edits.map((e) => ({ path: e.path, mode: "100644" as const, type: "blob" as const, content: e.content })),
+        ...args.edits.filter((e) => e.base64 == null).map((e) => ({ path: e.path, mode: "100644" as const, type: "blob" as const, content: e.content })),
         ...blobs.map((b) => ({ path: b.path, mode: "100644" as const, type: "blob" as const, sha: b.sha })),
-        ...(args.deletes ?? []).map((path) => ({ path, mode: "100644" as const, type: "blob" as const, sha: null })),
+        ...(args.deletes ?? []).map((d) => ({ path: d.path, mode: "100644" as const, type: "blob" as const, sha: null })),
       ],
     });
     const { data: commit } = await this.octokit.rest.git.createCommit({

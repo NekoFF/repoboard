@@ -3,11 +3,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, ExternalLink, FolderGit2, GitBranch, Globe, Lock, RefreshCw, Users } from "lucide-react";
-import { api, useResource } from "@/lib/client/api";
+import { api, useResource, type ApiError } from "@/lib/client/api";
 import type { PlanLocation, PlanMode } from "@/lib/plan";
 import type { PlanMovePreview, PlanStatus } from "@/lib/plan-move";
 import { useShell } from "@/components/shell/ShellContext";
 import { Modal, RowSkeleton, Spinner, useToast } from "@/components/ui";
+import { DiffView } from "@/components/DiffView";
 
 /**
  * Where a project keeps its plan — boards, checklists, notes, screenshots
@@ -54,7 +55,7 @@ const OPTIONS: { mode: PlanMode; title: string; icon: ReactNode; what: string; g
     mode: "branch",
     title: "On RepoBoard's own branch",
     icon: <GitBranch className="size-4" />,
-    what: "A branch called repoboard with nothing of the code in it. Main and the code's history stay the code's.",
+    what: "A branch called repoboard, just for the plan. Main and the code's history stay the code's.",
     good: ["No commits on main, no CI runs for the plan", "Boards sync by themselves", "Nobody needs access to anything new"],
     mind: (s) => [
       s.codeVisibility === "public"
@@ -179,6 +180,7 @@ export function PlanDialog({
   const [result, setResult] = useState<{ copied: number; place: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [mergeInstead, setMergeInstead] = useState(false);
+  const [openDiff, setOpenDiff] = useState<string | null>(null);
   const target: PlanLocation = { mode, repo: mode === "repo" ? repo.trim() : null };
   const current = status.location;
   const isCurrent = (m: PlanMode) => m === current.mode && (m !== "repo" || (current.repo ?? "").toLowerCase() === repo.trim().toLowerCase());
@@ -211,7 +213,8 @@ export function PlanDialog({
   const move = async () => {
     setMoving(true);
     try {
-      const done = await api.movePlan(target, { leaveNote: leaveNote || removeOld, removeOld });
+      const seen = Object.fromEntries((preview?.files ?? []).map((f) => [f.path, { source: f.sourceSha, target: f.targetSha }]));
+      const done = await api.movePlan(target, { leaveNote: leaveNote || removeOld || Boolean(preview?.noteRequired), removeOld }, seen);
       setResult({ copied: done.copied, place: done.place });
       setStep("done");
       window.dispatchEvent(new Event("rb-live"));
@@ -219,6 +222,8 @@ export function PlanDialog({
       router.refresh();
     } catch (error) {
       toast.push({ kind: "error", message: "The plan was not moved", detail: (error as Error).message });
+      // Something changed on GitHub meanwhile: show the move as it is now.
+      if ((error as ApiError).body?.code === "CONFLICT") void check();
     } finally {
       setMoving(false);
     }
@@ -450,9 +455,22 @@ export function PlanDialog({
             {preview.files.length > 0 && (
               <ul className="flex max-h-56 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
                 {preview.files.map((f) => (
-                  <li key={f.path} className="flex items-center gap-3 px-3 py-1.5">
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{f.path}</span>
-                    <span className="text-2xs text-muted">{f.status === "new" ? "copied" : f.status === "replace" ? "replaces the one there" : "already there"}</span>
+                  <li key={f.path}>
+                    <button
+                      type="button"
+                      className={`flex w-full items-center gap-3 px-3 py-1.5 text-left ${f.diff ? "hover:bg-hover" : "cursor-default"}`}
+                      onClick={() => f.diff && setOpenDiff(openDiff === f.path ? null : f.path)}
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{f.path}</span>
+                      <span className={`text-2xs ${f.status === "replace" ? "text-warn-fg" : "text-muted"}`}>
+                        {f.status === "new" ? "copied" : f.status === "replace" ? (f.diff ? "replaces the one there — see what changes" : "replaces the one there") : "already there"}
+                      </span>
+                    </button>
+                    {openDiff === f.path && f.diff && (
+                      <div className="max-h-60 overflow-auto border-t border-border">
+                        <DiffView diff={f.diff} />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -460,7 +478,13 @@ export function PlanDialog({
           </div>
           <div className="flex flex-col gap-2 rounded-lg bg-pill px-3 py-3 text-sm">
             <label className="flex items-start gap-2 text-ink">
-              <input type="checkbox" className="mt-0.5" checked={leaveNote || removeOld} disabled={removeOld} onChange={(e) => setLeaveNote(e.target.checked)} />
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={leaveNote || removeOld || preview.noteRequired}
+                disabled={removeOld || preview.noteRequired}
+                onChange={(e) => setLeaveNote(e.target.checked)}
+              />
               <span>
                 Leave a note in {preview.fromPlace} saying where the plan went
                 <span className="block text-xs text-muted">Other computers and teammates follow it by themselves. One small file, location.json.</span>
@@ -582,11 +606,45 @@ export function PlanOffer() {
   );
 }
 
-/** Across the app: the plan is in a repository this computer cannot open. */
+/** Across the app: the plan is in a repository this computer cannot open, or moved somewhere RepoBoard asks about. */
 export function PlanBlocked() {
   const { repo, connected } = useShell();
+  const toast = useToast();
+  const router = useRouter();
   const status = useResource(api.planStatus, [repo], { enabled: connected, live: true });
+  const [busy, setBusy] = useState(false);
   const s = status.data?.status;
+  if (s?.asked && !s.blocked) {
+    const where = s.asked.mode === "repo" ? s.asked.repo : s.asked.mode === "branch" ? "the repoboard branch" : "main";
+    const open = async () => {
+      setBusy(true);
+      try {
+        await api.openPlan(s.asked!);
+        status.reload();
+        window.dispatchEvent(new Event("rb-live"));
+        router.refresh();
+      } catch (error) {
+        toast.push({ kind: "error", message: "Could not open the plan there", detail: (error as Error).message });
+      } finally {
+        setBusy(false);
+      }
+    };
+    return (
+      <div
+        role="status"
+        className="rb-glass-strong absolute bottom-4 left-1/2 z-30 flex w-[min(100%-96px,820px)] -translate-x-1/2 flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm text-ink"
+      >
+        <FolderGit2 className="size-4 shrink-0 text-muted" />
+        <span className="min-w-0 flex-1">
+          This project&rsquo;s plan was moved to <span className="font-mono text-xs">{where}</span>. RepoBoard asks before following it there
+          {s.asked.mode === "repo" ? ", because it belongs to someone else or is public" : ""}.
+        </span>
+        <button className="rb-btn-primary" onClick={() => void open()} disabled={busy}>
+          {busy ? <Spinner /> : null} Open it there
+        </button>
+      </div>
+    );
+  }
   if (!s?.blocked) return null;
   return (
     <div

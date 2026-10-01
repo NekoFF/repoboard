@@ -1,5 +1,18 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.7.0
+
+- **Choose where the plan is kept.** Boards, checklists, notes and screenshots no longer have to sit in your code's main branch. Per project, when you connect it or later in Settings → Where the plan is kept:
+  - **In this repository, on main** — as before. Projects you already have stay exactly like this until you choose otherwise.
+  - **On RepoBoard's own branch** — a `repoboard` branch with nothing of the code in it: no commits on main, no CI runs for the plan.
+  - **In a private repository of its own** — for example `browser-plan` next to `browser`: private even when the code is public. RepoBoard opens GitHub's page with everything filled in; on GitLab it creates it for you.
+  Branches, commits, pull requests and issues always come from the code.
+- **A public repository says so.** Everything in a public repository is public, every branch too. RepoBoard now says this plainly when you connect one and before anything is saved there, and suggests the private repository.
+- **Moving is one dialog.** It shows every file before anything is written, moves them in one commit, and leaves a small note behind. Your other computers and your teammates' follow the note by themselves.
+- **People.** Settings → People shows who works on the project, who cannot open the plan yet, and the link to add them. Someone who connects a project whose plan they cannot open is told so, instead of seeing empty boards.
+- **Fixed: a second computer now takes the boards by itself when the app opens.** Before, a computer without automatic sync waited for the Sync button.
+- RepoBoard's own commits now say `[skip ci]`, and its branch no longer appears among the code's branches.
+
 ## What's new in 0.6.15
 
 - **GitHub stays current without a restart.** New branches, commits, pull requests and issues now show up by themselves, in Project life, Code and on cards. RepoBoard checks every minute while it is open and whenever you come back to it. Before, they only appeared after reopening the page or the app.

@@ -47,6 +47,8 @@ export const repositories = sqliteTable("repositories", {
   planRepo: text("plan_repo"),
   // When the one-time "keep the plan elsewhere?" offer was answered or closed.
   planOfferSeen: integer("plan_offer_seen", { mode: "timestamp_ms" }),
+  // When automatic sync was turned off here: boards on the sync branch older than that do not turn it back on.
+  autoSyncOffAt: integer("auto_sync_off_at", { mode: "timestamp_ms" }),
 });
 
 // A project (repository) has several boards: one per person ("Dima",

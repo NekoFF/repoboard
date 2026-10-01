@@ -5,6 +5,8 @@ import { documentsBranch, watchDocs } from "@/lib/docs-service";
 import { db } from "@/lib/db/client";
 import { repositories } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { activeHost } from "@/lib/github/auth-provider";
+import { buildDiff, type DiffLine } from "@/lib/markdown/sync";
 import {
   describePlace,
   isPlanPath,
@@ -13,7 +15,9 @@ import {
   onBranch,
   parseLocationNote,
   PLAN_BRANCH,
+  planAsk,
   planBlocked as planBlockedFor,
+  setPlanAsk,
   planLocationFor,
   setPlanBlocked,
   setPlanLocation,
@@ -32,12 +36,17 @@ import {
 
 type Opened = { client: RepoClient; exists: boolean };
 
-const BINARY = /\.(png|jpe?g|webp|gif|pdf)$/i;
+const BINARY = /\.(png|jpe?g|webp|gif|pdf|avif|heic|mp4|mov|zip)$/i;
 
 export interface PlanMoveFile {
   path: string;
   /** new: not there yet; replace: there, different; same: already there as it is. */
   status: "new" | "replace" | "same";
+  /** The file's SHA in the old place, and in the new one (null: not there) — the move refuses if either moved since. */
+  sourceSha: string;
+  targetSha: string | null;
+  /** For a text file that replaces another: what changes there. */
+  diff?: DiffLine[];
 }
 
 export interface PlanMovePreview {
@@ -55,43 +64,66 @@ export interface PlanMovePreview {
   /** The new place already holds this project's plan (a teammate put it there): it can simply be used. */
   existing: boolean;
   codeVisibility: "public" | "private";
+  /** Back to main: the old place must say so, or other computers would stay there. */
+  noteRequired: boolean;
+  host: "github" | "gitlab";
 }
 
 async function code(): Promise<RepoClient> {
   return GitHubClient.create();
 }
 
-/** The plan's place as a client, and whether it exists yet. */
+const missing = (error: unknown) => {
+  const status = (error as { status?: number }).status;
+  return status === 404 || /not found/i.test((error as Error).message ?? "");
+};
+
+/** The plan's place as a client, and whether it exists yet. Only a "not found" counts as missing. */
 async function open(location: PlanLocation, gh: RepoClient): Promise<Opened> {
   if (location.mode === "repo" && location.repo) {
     const client = await GitHubClient.createFor(location.repo);
     const exists = await client.getRepo().then(
       () => true,
-      () => false,
+      (error) => {
+        if (missing(error)) return false;
+        throw error;
+      },
     );
     return { client, exists };
   }
   if (location.mode === "branch") {
     const exists = await gh.headCommit(PLAN_BRANCH).then(
       () => true,
-      () => false,
+      (error) => {
+        if (missing(error)) return false;
+        throw error;
+      },
     );
     return { client: onBranch(gh, PLAN_BRANCH), exists };
   }
   return { client: onBranch(gh, documentsBranch()), exists: true };
 }
 
+/** Where this place's board.json is read from (main with automatic sync keeps it on RepoBoard's branch). */
+async function boardsAt(location: PlanLocation, gh: RepoClient, place: Opened): Promise<{ client: RepoClient; ref?: string }> {
+  if (location.mode === "main") {
+    const auto = db.select({ a: repositories.autoSync }).from(repositories).where(eq(repositories.id, activeRepository()!.id)).get()?.a;
+    return auto ? { client: gh, ref: PLAN_BRANCH } : { client: gh };
+  }
+  return { client: place.client };
+}
+
 /** Plan files in a place, without RepoBoard's own two (board.json travels merged; the note is per place). */
 async function planFiles(place: Opened): Promise<string[]> {
   if (!place.exists) return [];
-  const all = await place.client.listFiles().catch(() => [] as string[]);
+  const all = await place.client.listFiles();
   return all.filter((p) => isPlanPath(p) && p !== BOARD_STATE_PATH && p !== LOCATION_FILE);
 }
 
-const shaOf = (place: Opened, path: string) =>
+const bytesOf = (place: Opened, path: string) =>
   place.exists
     ? place.client.getFileBytes(path).then(
-        (f) => f.sha,
+        (f) => f,
         () => null,
       )
     : Promise.resolve(null);
@@ -149,13 +181,15 @@ export async function previewPlanMove(to: PlanLocation): Promise<PlanMovePreview
   }
 
   const sourceFiles = await planFiles(source);
-  const files: PlanMoveFile[] = await Promise.all(
-    sourceFiles.map(async (path) => {
-      if (!target.exists || to.mode === from.mode) return { path, status: "new" as const };
-      const [a, b] = await Promise.all([shaOf(source, path), shaOf(target, path)]);
-      return { path, status: b === null ? ("new" as const) : a === b ? ("same" as const) : ("replace" as const) };
-    }),
-  );
+  const files: PlanMoveFile[] = [];
+  for (const path of sourceFiles) {
+    const [a, b] = await Promise.all([bytesOf(source, path), bytesOf(target, path)]);
+    if (!a) continue;
+    const status = !b ? "new" : a.sha === b.sha ? "same" : "replace";
+    const diff =
+      status === "replace" && !BINARY.test(path) ? buildDiff(b!.bytes.toString("utf8"), a.bytes.toString("utf8")) : undefined;
+    files.push({ path, status, sourceSha: a.sha, targetSha: b?.sha ?? null, ...(diff ? { diff } : {}) });
+  }
   return {
     from,
     to,
@@ -167,6 +201,8 @@ export async function previewPlanMove(to: PlanLocation): Promise<PlanMovePreview
     toVisibility,
     existing,
     codeVisibility: repository.visibility,
+    noteRequired: to.mode === "main",
+    host: activeHost().kind,
   };
 }
 
@@ -181,105 +217,135 @@ export async function openPlanAt(to: PlanLocation): Promise<{ place: string }> {
   if (preview.problem && preview.problem.code !== "same") throw new Error(preview.problem.message);
   setPlanLocation(repository.id, to);
   setPlanBlocked(repository.id, null);
-  if (to.mode !== "main") await syncBoards();
+  setPlanAsk(repository.id, null);
+  if (to.mode === "main") db.update(repositories).set({ autoSync: false }).where(eq(repositories.id, repository.id)).run();
+  else await syncBoards(undefined, undefined, false);
   await watchDocs({ force: true }).catch(() => null);
   logActivity({ repositoryId: repository.id, type: "sync_settings", message: `opened the plan kept in ${preview.toPlace}` });
   return { place: preview.toPlace };
 }
 
+function conflict(message: string): Error {
+  const error = new Error(message);
+  (error as Error & { code?: string }).code = "CONFLICT";
+  return error;
+}
+
 /**
- * Moves the plan. `leaveNote`: a location.json in the old place saying where
- * it went (other computers follow it); `removeOld`: the old .repoboard/ files
- * are removed there in the same commit as the note.
+ * Moves the plan. `seen`: each file's SHAs in the preview the person looked
+ * at — anything that moved since means a new look. `leaveNote`: a
+ * location.json in the old place saying where it went (other computers follow
+ * it; always, when the plan goes back to main); `removeOld`: the old
+ * .repoboard/ files are removed there, each still as it was seen.
+ *
+ * Order: the new place first, then the old place's note, and only then this
+ * computer switches — a failure on the way leaves it where it was, and moving
+ * again picks up from what is there already.
  */
 export async function movePlan(
   to: PlanLocation,
   options: { leaveNote: boolean; removeOld: boolean },
+  seen?: Record<string, { source: string; target: string | null }>,
 ): Promise<{ copied: number; commits: string[]; place: string }> {
   const repository = activeRepository();
   if (!repository) throw new Error("Connect a repository first");
   const preview = await previewPlanMove(to);
   if (preview.problem) throw new Error(preview.problem.message);
+  if (seen) {
+    for (const f of preview.files) {
+      const was = seen[f.path];
+      if (!was || was.source !== f.sourceSha || (was.target ?? null) !== (f.targetSha ?? null)) {
+        throw conflict(`${f.path} changed since you looked. Look at the move again.`);
+      }
+    }
+    if (Object.keys(seen).some((p) => !preview.files.some((f) => f.path === p))) throw conflict("The plan's files changed since you looked. Look at the move again.");
+  }
+  const leaveNote = options.leaveNote || options.removeOld || preview.noteRequired;
   const from = preview.from;
   const gh = await code();
   const source = await open(from, gh);
-  const target = await open(to, gh);
+  let target = await open(to, gh);
   const slug = `${repository.owner}/${repository.name}`;
   const commits: string[] = [];
 
-  // What goes: each file's bytes from the old place.
+  // What other computers synced to the old place comes along too.
+  const sourceBoards = await boardsAt(from, gh, source);
+  await boardFileFor(sourceBoards.client, sourceBoards.ref);
+
   const moving = preview.files.filter((f) => f.status !== "same");
   const bytes = new Map<string, string>();
   for (const f of moving) bytes.set(f.path, (await source.client.getFileBytes(f.path)).bytes.toString("base64"));
   const note = Buffer.from(locationNote({ for: slug, mode: to.mode }), "utf8").toString("base64");
   const message = `RepoBoard: move the plan here from ${preview.fromPlace} (${moving.length} file${moving.length === 1 ? "" : "s"}) ${SKIP_CI}`;
 
+  let written = false;
   if (to.mode === "branch" && !target.exists) {
     // A branch of its own, with nothing of the code in it.
     const files = [...moving.map((f) => ({ path: f.path, base64: bytes.get(f.path)! })), { path: LOCATION_FILE, base64: note }];
-    await gh.createOrphanBranch(PLAN_BRANCH, files, message);
-  } else {
-    const edits: { path: string; content: string; expectedSha: string }[] = [];
+    written = await gh.createOrphanBranch(PLAN_BRANCH, files, message);
+    // Made by another computer a moment ago: write into it as into any existing place.
+    if (!written) target = await open(to, gh);
+  }
+  if (!written) {
+    const edits: { path: string; content: string; expectedSha: string; base64?: string }[] = [];
     const adds: { path: string; base64: string }[] = [];
     for (const f of moving) {
-      if (f.status === "replace") {
-        const current = await target.client.getFile(f.path);
-        edits.push({ path: f.path, content: Buffer.from(bytes.get(f.path)!, "base64").toString("utf8"), expectedSha: current.sha });
-      } else {
-        adds.push({ path: f.path, base64: bytes.get(f.path)! });
-      }
+      if (f.status === "replace") edits.push({ path: f.path, content: "", base64: bytes.get(f.path)!, expectedSha: f.targetSha! });
+      else adds.push({ path: f.path, base64: bytes.get(f.path)! });
     }
-    // The note in the new place: whose plan it is.
+    // The note in the new place: whose plan it is (in main too, so a note elsewhere cannot send computers off again).
     const existingNote = await target.client.getFile(LOCATION_FILE).catch(() => null);
-    if (to.mode !== "main") {
-      if (existingNote) edits.push({ path: LOCATION_FILE, content: Buffer.from(note, "base64").toString("utf8"), expectedSha: existingNote.sha });
-      else adds.push({ path: LOCATION_FILE, base64: note });
-    } else if (existingNote) {
-      // Back in main: a "moved away" note left there earlier would send other computers off again.
-      edits.push({ path: LOCATION_FILE, content: Buffer.from(note, "base64").toString("utf8"), expectedSha: existingNote.sha });
-    }
+    if (existingNote) edits.push({ path: LOCATION_FILE, content: Buffer.from(note, "base64").toString("utf8"), expectedSha: existingNote.sha });
+    else adds.push({ path: LOCATION_FILE, base64: note });
     if (to.mode === "main") {
       // The boards go with them, into main's board.json.
       const board = await boardFileFor(target.client);
       if (board.sha) edits.push({ path: BOARD_STATE_PATH, content: board.content, expectedSha: board.sha });
       else adds.push({ path: BOARD_STATE_PATH, base64: Buffer.from(board.content, "utf8").toString("base64") });
     }
-    // A screenshot already there under the same name keeps its bytes (a document that names it still finds one).
-    const textEdits = edits.filter((e) => !BINARY.test(e.path));
-    if (textEdits.length + adds.length) {
-      commits.push((await target.client.commitChanges({ message, edits: textEdits, adds })).commitSha);
+    if (edits.length + adds.length) commits.push((await target.client.commitChanges({ message, edits, adds })).commitSha);
+  }
+
+  // The old place: a note saying where the plan went (main's on its default branch, where other computers look), and its old copy removed if wanted.
+  if (leaveNote) {
+    const movedNote = locationNote({ for: slug, mode: from.mode, movedTo: { mode: to.mode, repo: to.repo } });
+    const noteClient = from.mode === "main" ? gh : source.client;
+    const current = await noteClient.getFile(LOCATION_FILE).catch(() => null);
+    const noteEdit = current ? [{ path: LOCATION_FILE, content: movedNote, expectedSha: current.sha }] : [];
+    const noteAdd = current ? [] : [{ path: LOCATION_FILE, base64: Buffer.from(movedNote, "utf8").toString("base64") }];
+    const deletes: { path: string; expectedSha: string }[] = [];
+    if (options.removeOld) {
+      for (const f of preview.files) deletes.push({ path: f.path, expectedSha: f.sourceSha });
+      const board = await source.client.getFile(BOARD_STATE_PATH).catch(() => null);
+      if (board) deletes.push({ path: BOARD_STATE_PATH, expectedSha: board.sha });
+    }
+    const sameBranch = from.mode !== "main" || !documentsBranch() || documentsBranch() === repository.defaultBranch;
+    const word = `RepoBoard: the plan moved to ${preview.toPlace}`;
+    try {
+      if (sameBranch) {
+        commits.push((await source.client.commitChanges({ message: `${word}${options.removeOld ? "; removed the old copy" : ""} ${SKIP_CI}`, edits: noteEdit, adds: noteAdd, deletes })).commitSha);
+      } else {
+        // main's own board.json is on the default branch, next to the note.
+        const mainBoard = options.removeOld ? await gh.getFile(BOARD_STATE_PATH).catch(() => null) : null;
+        commits.push(
+          (await gh.commitChanges({ message: `${word} ${SKIP_CI}`, edits: noteEdit, adds: noteAdd, deletes: mainBoard ? [{ path: BOARD_STATE_PATH, expectedSha: mainBoard.sha }] : [] })).commitSha,
+        );
+        if (deletes.length) commits.push((await source.client.commitChanges({ message: `${word}; removed the old copy`, edits: [], adds: [], deletes })).commitSha);
+      }
+    } catch (error) {
+      throw new Error(
+        `The plan was copied to ${preview.toPlace}, but RepoBoard could not leave the note in ${preview.fromPlace} (${(error as Error).message}). ` +
+          "Nothing was switched: move again to finish — what is copied already stays.",
+      );
     }
   }
 
   setPlanLocation(repository.id, to);
   setPlanBlocked(repository.id, null);
+  setPlanAsk(repository.id, null);
   if (to.mode === "main") db.update(repositories).set({ autoSync: false }).where(eq(repositories.id, repository.id)).run();
 
-  // The old place: a note saying where the plan went, and its old copy removed if wanted.
-  // Removing it without a note would leave other computers with an empty plan and no way on.
-  if (options.removeOld) options = { ...options, leaveNote: true };
-  if (options.leaveNote) {
-    const movedNote = locationNote({ for: slug, mode: from.mode, movedTo: { mode: to.mode, repo: to.repo } });
-    const current = await source.client.getFile(LOCATION_FILE).catch(() => null);
-    const edits = options.leaveNote && current ? [{ path: LOCATION_FILE, content: movedNote, expectedSha: current.sha }] : [];
-    const adds = options.leaveNote && !current ? [{ path: LOCATION_FILE, base64: Buffer.from(movedNote, "utf8").toString("base64") }] : [];
-    const deletes = options.removeOld ? [...preview.oldFiles] : [];
-    if (options.removeOld && (await source.client.getFile(BOARD_STATE_PATH).catch(() => null))) deletes.push(BOARD_STATE_PATH);
-    if (edits.length + adds.length + deletes.length) {
-      commits.push(
-        (
-          await source.client.commitChanges({
-            message: `RepoBoard: the plan moved to ${preview.toPlace}${options.removeOld ? "; removed the old copy" : ""} ${SKIP_CI}`,
-            edits,
-            adds,
-            deletes,
-          })
-        ).commitSha,
-      );
-    }
-  }
-
-  if (to.mode !== "main") await syncBoards();
+  if (to.mode !== "main") await syncBoards(undefined, undefined, false);
   await watchDocs({ force: true }).catch(() => null);
   logActivity({
     repositoryId: repository.id,
@@ -299,6 +365,8 @@ export interface PlanStatus {
   defaultBranch: string;
   /** The plan's repository this key cannot open (yet). */
   blocked: string | null;
+  /** Another computer moved the plan somewhere RepoBoard asks about before following. */
+  asked: PlanLocation | null;
   /** What a repository of its own would be called. */
   suggestedRepo: string;
   /** Show the one-time "keep the plan elsewhere?" offer. */
@@ -347,6 +415,7 @@ export function planStatus(args: { via: "github" | "key"; host: { kind: "github"
     codeVisibility: repository.visibility,
     defaultBranch: repository.defaultBranch,
     blocked: planBlockedFor(repository.id),
+    asked: planAsk(repository.id),
     suggestedRepo: suggested,
     offer: location.mode === "main" && !row?.seen,
     host: gitlab ? "gitlab" : "github",

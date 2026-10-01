@@ -319,6 +319,27 @@ describe("a new computer takes the boards by itself", () => {
     // Nothing went to the default branch.
     expect(files.has("main")).toBe(false);
   });
+
+  it("keeps automatic sync off when it was turned off here and the branch has not changed since", async () => {
+    access.valid = true;
+    access.role = "manager";
+    const main = service.getBoardData();
+    const old = { version: 1, columns: main.columns.map((c) => c.name), cards: [{ id: "stale", number: 901, column: main.columns[0].name, position: 0, title: "Old", description: null, assignee: null, dueDate: null, checklist: [], labels: [], branches: [], pullRequests: [], issues: [], markdownTaskId: null, updatedAt: Date.now() - 60_000, deletedAt: null }] };
+    const github = {
+      getFile: async (p: string, ref?: string) => {
+        if (ref === "repoboard" && p.endsWith("board.json")) return { content: JSON.stringify(old), sha: "s1" };
+        throw Object.assign(new Error("Not Found"), { status: 404 });
+      },
+      ensureBranch: async () => {},
+      putFile: async () => ({ commitSha: "c", contentSha: "x" }),
+    };
+    const db = sqlite2();
+    db.prepare("UPDATE repositories SET auto_sync = 0, auto_sync_off_at = ?").run(Date.now());
+    db.close();
+    const result = await service.adoptBoards(async () => github as never);
+    expect(result.autoSync).toBe(false);
+    expect(service.syncSettings().autoSync).toBe(false);
+  });
 });
 
 describe("saving the boards leaves nothing behind", () => {

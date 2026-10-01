@@ -1,6 +1,6 @@
 import { GitHubClient } from "@/lib/github/client";
 import { BOARD_STATE_PATH } from "@/lib/board-state";
-import { activeRepository, boardFileToSave, boardStateStatus, logActivity, syncBoards, syncSettings } from "@/lib/board-service";
+import { activeRepository, boardFileToSave, boardStateStatus, followPlan, logActivity, syncBoards, syncSettings } from "@/lib/board-service";
 import {
   clearProposals,
   documentsBranch,
@@ -95,9 +95,16 @@ async function documentsPlan(yours: YourEdits): Promise<{ documents: SaveAllDocu
   return { documents, proposalIds };
 }
 
+/** Before anything is saved: the plan may have moved on another computer — save where it is now. */
+async function whereItIsNow(repository: NonNullable<ReturnType<typeof activeRepository>>): Promise<void> {
+  const plan = await followPlan(repository, () => GitHubClient.create(), (slug) => GitHubClient.createFor(slug)).catch(() => null);
+  if (plan?.blocked) throw new Error(`The plan is kept in ${plan.blocked}, which this computer cannot open yet. Ask its owner to add you.`);
+}
+
 export async function planSaveAll(yours: YourEdits = []): Promise<SavePlan> {
   const repository = activeRepository();
   if (!repository) throw new Error("Connect a repository first");
+  await whereItIsNow(repository);
   const auto = syncSettings().autoSync;
   const boards = auto ? { changes: [], auto } : { changes: (await boardStateStatus()).changes, auto };
   const { documents } = await documentsPlan(yours);
@@ -119,6 +126,7 @@ export async function saveAll(
 ): Promise<{ commits: string[]; boards: number; documents: number }> {
   const repository = activeRepository();
   if (!repository) throw new Error("Connect a repository first");
+  await whereItIsNow(repository);
   const planned = await documentsPlan(yours);
   const documents = planned.documents.filter((d) => !d.error);
   const { proposalIds } = planned;
@@ -166,7 +174,9 @@ export async function saveAll(
     documents.length ? `${documents.length} document${documents.length === 1 ? "" : "s"}` : null,
   ].filter(Boolean);
   // Only plan files: nothing for the code's CI to look at.
-  const onlyPlan = [...docEdits, ...docAdds].every((f) => isPlanPath(f.path));
+  // Not on a documents branch of its own: that may be a pull request whose checks must run.
+  const onlyPlan =
+    [...docEdits, ...docAdds].every((f) => isPlanPath(f.path)) && (plan.mode !== "main" || !docsBranch || docsBranch === repository.defaultBranch);
   const message = `RepoBoard: save ${parts.join(" and ") || "everything"}${onlyPlan ? ` ${SKIP_CI}` : ""}`;
   const commits: string[] = [];
   const hasDocs = docEdits.length + docAdds.length > 0;

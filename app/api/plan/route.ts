@@ -45,7 +45,14 @@ const location = z
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("preview"), to: location }),
-  z.object({ action: z.literal("move"), to: location, leaveNote: z.boolean(), removeOld: z.boolean() }),
+  z.object({
+    action: z.literal("move"),
+    to: location,
+    leaveNote: z.boolean(),
+    removeOld: z.boolean(),
+    // Each file's SHAs as the person saw them in the preview.
+    seen: z.record(z.object({ source: z.string(), target: z.string().nullable() })).optional(),
+  }),
   z.object({ action: z.literal("offer-seen") }),
   z.object({ action: z.literal("use"), to: location }),
   z.object({ action: z.literal("create"), name: z.string().regex(/^[\w.-]{1,100}$/, "Use letters, numbers, dots, dashes") }),
@@ -66,16 +73,22 @@ async function handlePost(request: Request) {
     closePlanOffer();
     return NextResponse.json({ ok: true });
   }
+  // Following a plan that is already there changes only this computer: anyone who can open it may.
+  if (body.action === "use") {
+    try {
+      const used = await openPlanAt(body.to);
+      invalidateAccessCache();
+      return NextResponse.json({ ...used, status: status() });
+    } catch (error) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
+  }
   if (who?.role !== "manager") {
     return NextResponse.json({ error: "Only a project admin can choose where the plan is kept.", forbidden: true }, { status: 403 });
   }
   try {
     if (body.action === "preview") return NextResponse.json({ preview: await previewPlanMove(body.to) });
-    if (body.action === "use") {
-      const used = await openPlanAt(body.to);
-      invalidateAccessCache();
-      return NextResponse.json({ ...used, status: status() });
-    }
+
     if (body.action === "create") {
       // GitLab only: the key may make projects. On GitHub the person makes it on github.com.
       const host = activeHost();
@@ -88,7 +101,7 @@ async function handlePost(request: Request) {
       const created = await GitLabClient.createProject(token!, host.url, body.name, namespaceId);
       return NextResponse.json({ repo: created.slug });
     }
-    const result = await movePlan(body.to, { leaveNote: body.leaveNote, removeOld: body.removeOld });
+    const result = await movePlan(body.to, { leaveNote: body.leaveNote, removeOld: body.removeOld }, body.seen);
     invalidateAccessCache();
     return NextResponse.json({ ...result, status: status() });
   } catch (error) {

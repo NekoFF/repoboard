@@ -198,10 +198,12 @@ ok(branchCommits.at(-1)?.parents.length === 0, "the branch has no history of the
 ok(JSON.parse((await file("lumen/browser-plan", ".repoboard/location.json")) ?? "{}").movedTo?.mode === "branch", "the plan's repository says where it went");
 r = await call(A, "/api/github?resource=branches");
 ok(!(r.branches ?? []).some((b) => b.name === "repoboard"), "Code → Branches does not show RepoBoard's branch", (r.branches ?? []).map((b) => b.name));
-r = await call(B, "/api/board", { action: "board-adopt" });
-ok(r.plan?.location?.mode === "branch", "B followed to the branch", r);
-r = await call(C, "/api/board", { action: "board-adopt" });
-ok(r.plan?.location?.mode === "branch", "sam followed to the branch", r);
+// B and sam already sync on their own: their next sync must notice the move, not their next adopt.
+r = await call(B, "/api/board", { action: "sync-now" });
+ok((await call(B, "/api/plan")).status?.location?.mode === "branch", "B's next sync followed to the branch", r);
+r = await call(C, "/api/board", { action: "sync-now" });
+ok((await call(C, "/api/plan")).status?.location?.mode === "branch", "sam's next sync followed to the branch", r);
+ok(!(await file("lumen/browser-plan", ".repoboard/board.json"))?.includes("Sam on the branch"), "nothing new is written to the place the plan left");
 await newCard(C, "Sam on the branch");
 await call(C, "/api/board", { action: "sync-now" });
 await call(A, "/api/board", { action: "sync-now" });
@@ -216,14 +218,63 @@ ok((await file("lumen/browser", ".repoboard/checklists/privacy-policy.md"))?.inc
 ok((await file("lumen/browser", ".repoboard/board.json"))?.includes("Sam on the branch"), "the cards made while away came back");
 r = await call(A, "/api/board", { action: "board-status" });
 ok(r.autoSync === false && r.planMode === "main", "A saves by hand again, as before", r);
-r = await call(B, "/api/board", { action: "board-adopt" });
-ok(r.plan?.location?.mode === "main", "B followed back to main", r);
+r = await call(B, "/api/board", { action: "sync-now" });
+ok((await call(B, "/api/plan")).status?.location?.mode === "main", "B's next sync followed back to main", r);
+r = await call(B, "/api/board", { action: "board-push" });
+ok(!r.error || !/moved/.test(r.error), "B can save in main again", r);
 
 step("10. A key that does not include the plan's repository is caught before anything moves");
 r = await gh("/orgs/lumen/repos", { method: "POST", body: { name: "second-plan", private: true } });
 await connect(C, "noplan_11NOPLAN000000000000_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab");
 r = await call(C, "/api/plan", { action: "preview", to: { mode: "repo", repo: "lumen/second-plan" } });
 ok(r.preview?.problem?.code === "missing", "preview says the key cannot open it", r.preview?.problem ?? r);
+
+step("11. Two moves in a row while sam's computer is away: it follows both hops");
+await connect(C, SAM);
+r = await call(C, "/api/board", { action: "board-adopt" });
+ok((await call(C, "/api/plan")).status?.location?.mode === "main", "sam starts in main");
+r = await call(A, "/api/plan", { action: "move", to: { mode: "branch" }, leaveNote: true, removeOld: false });
+ok(typeof r.copied === "number", "A: main → branch", r.error);
+r = await call(A, "/api/plan", { action: "move", to: { mode: "repo", repo: "lumen/browser-plan" }, leaveNote: true, removeOld: false });
+ok(typeof r.copied === "number", "A: branch → lumen/browser-plan", r.error);
+r = await call(C, "/api/board", { action: "board-adopt" });
+ok(r.plan?.location?.repo === "lumen/browser-plan", "sam's RepoBoard followed main → branch → repository in one go", r);
+
+step("12. Back to main sticks: nobody is sent off to an old place again");
+r = await call(A, "/api/plan", { action: "move", to: { mode: "main" }, leaveNote: false, removeOld: false });
+ok(typeof r.copied === "number", "A: back to main (the note is left even unticked)", r.error);
+ok(JSON.parse((await file("lumen/browser", ".repoboard/location.json")) ?? "{}").mode === "main", "main's note says the plan is here");
+ok(JSON.parse((await file("lumen/browser-plan", ".repoboard/location.json")) ?? "{}").movedTo?.mode === "main", "the repository's note says it went back to main");
+r = await call(C, "/api/board", { action: "sync-now" });
+r = await call(C, "/api/plan");
+ok(r.status?.location?.mode === "main", "sam's next sync followed back to main", r.status?.location);
+r = await call(C, "/api/board", { action: "board-adopt" });
+r = await call(C, "/api/board", { action: "board-status" });
+ok(r.planMode === "main" && r.autoSync === false, "and stays there: not pulled back to the branch, sync stays off", r);
+r = await call(B, "/api/board", { action: "board-adopt" });
+ok((await call(B, "/api/plan")).status?.location?.mode === "main", "B stays in main too");
+
+step("13. A file changed between looking and moving: the move is refused, nothing switches");
+r = await call(A, "/api/plan", { action: "preview", to: { mode: "branch" } });
+const seen = Object.fromEntries(r.preview.files.map((f) => [f.path, { source: f.sourceSha, target: f.targetSha }]));
+{
+  const cur = await gh("/repos/lumen/browser/contents/.repoboard/notes/commands.md");
+  await gh("/repos/lumen/browser/contents/.repoboard/notes/commands.md", { method: "PUT", body: { message: "teammate edit", sha: cur.json.sha, content: Buffer.from("# Commands\n\nChanged meanwhile\n").toString("base64") } });
+}
+r = await call(A, "/api/plan", { action: "move", to: { mode: "branch" }, leaveNote: true, removeOld: true, seen });
+ok(r.code === "CONFLICT", "refused: it changed since the preview", r);
+ok((await call(A, "/api/plan")).status?.location?.mode === "main", "A is still in main");
+ok((await tree("lumen/browser")).includes(".repoboard/notes/commands.md"), "nothing was removed from main");
+
+step("14. A plan moved to a repository of another owner: other computers ask, they do not follow on their own");
+await gh("/user/repos", { method: "POST", body: { name: "personal-plan", private: true } });
+r = await call(A, "/api/plan", { action: "move", to: { mode: "repo", repo: "alex/personal-plan" }, leaveNote: true, removeOld: false });
+ok(typeof r.copied === "number", "A keeps the plan in alex/personal-plan", r.error);
+r = await call(B, "/api/board", { action: "board-adopt" });
+r = await call(B, "/api/plan");
+ok(r.status?.location?.mode === "main" && r.status?.asked?.repo === "alex/personal-plan", "B asks instead of following", r.status);
+r = await call(B, "/api/plan", { action: "use", to: { mode: "repo", repo: "alex/personal-plan" } });
+ok(r.place === "alex/personal-plan", "after B says yes, B opens it there", r);
 
 console.log(`\n${failures ? `${failures} FAILED` : "all passed"}`);
 process.exit(failures ? 1 : 0);

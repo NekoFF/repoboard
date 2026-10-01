@@ -151,8 +151,8 @@ export const api = {
   planStatus: () => request<{ status: PlanStatus | null }>("/api/plan"),
   planPeople: () => request<PlanPeople>("/api/plan?people=1"),
   previewPlanMove: (to: PlanLocation) => post<{ preview: PlanMovePreview }>("/api/plan", { action: "preview", to }),
-  movePlan: (to: PlanLocation, options: { leaveNote: boolean; removeOld: boolean }) =>
-    post<{ copied: number; commits: string[]; place: string; status: PlanStatus | null }>("/api/plan", { action: "move", to, ...options }),
+  movePlan: (to: PlanLocation, options: { leaveNote: boolean; removeOld: boolean }, seen?: Record<string, { source: string; target: string | null }>) =>
+    post<{ copied: number; commits: string[]; place: string; status: PlanStatus | null }>("/api/plan", { action: "move", to, ...options, seen }),
   closePlanOffer: () => post<{ ok: true }>("/api/plan", { action: "offer-seen" }),
   openPlan: (to: PlanLocation) => post<{ place: string; status: PlanStatus | null }>("/api/plan", { action: "use", to }),
   createPlanRepo: (name: string) => post<{ repo: string }>("/api/plan", { action: "create", name }),

@@ -227,6 +227,42 @@ with everything else, or turn on automatic sync: RepoBoard then keeps them on
 a `repoboard` branch by itself and never touches your code. A computer that
 opens the project for the first time takes the boards from there.
 
+## Where the plan is kept
+
+The plan — boards, checklists, notes, screenshots — does not have to sit in
+your code's main branch. You choose per project, when you connect it or later
+in Settings:
+
+| | In this repository, on main | On RepoBoard's own branch | In a private repository of its own |
+|---|---|---|---|
+| **What** | `.repoboard/` next to the code, as always | a `repoboard` branch with nothing of the code in it | a second repository, e.g. `browser-plan` |
+| **Good** | nothing to set up | no commits on main, no CI runs for the plan | private even when the code is public; its own list of people |
+| **Mind** | saving makes commits on main | as visible as the repository | people need access to both |
+
+Branches, commits, pull requests and issues always come from the code. A
+public repository makes everything in it public — every branch too — so for
+a public project RepoBoard suggests the private repository, and says so
+plainly before anything is saved there.
+
+Moving later is one dialog: it shows every file it will copy, moves them in
+one commit, leaves a small note behind, and every other computer — yours or a
+teammate's — follows the note by itself. Nothing is lost on the way: notes,
+screenshots and cards made meanwhile all arrive.
+
+## Working together
+
+1. Add people on GitHub (or GitLab) to the repository — and to the plan's
+   repository, if it has one. Write lets them work on cards and their own
+   boards; Admin also changes the project's settings; Read only looks.
+2. They install RepoBoard, sign in and pick the repository. Their boards,
+   checklists and notes appear by themselves.
+
+Settings → People shows who is in the code but cannot open the plan yet, with
+the link to add them. Everyone sees a change a few seconds after it is made.
+A free GitHub account allows any number of people on a private repository;
+on gitlab.com a free private group holds up to five (your own namespace and a
+company's GitLab server have no such limit).
+
 ## Connecting an agent
 
 Settings → AI agents shows the exact line for your installation and for each
@@ -256,9 +292,9 @@ removed, so an agent set up today keeps working after updates.
 
 | What | Where |
 | ---- | ----- |
-| Boards, cards, history | `~/.repoboard/repoboard.db`, and `.repoboard/board.json` in your repository once saved |
+| Boards, cards, history | `~/.repoboard/repoboard.db`, and `.repoboard/board.json` where the plan is kept once saved |
 | Sign-in and keys | `~/.repoboard/credentials.json` (readable only by you) |
-| Checklists, notes, decisions | your repository, `.repoboard/` |
+| Checklists, notes, decisions, screenshots | `.repoboard/` where the plan is kept: your repository, RepoBoard's branch, or the plan's own repository |
 
 Back up the `~/.repoboard` folder to keep everything local. Updating the app
 never touches it.
@@ -274,9 +310,11 @@ never touches it.
   other programs on the computer cannot use it.
 - Nothing is written to your repository without a diff you approved, and a
   file that changed on GitHub since you opened it is never overwritten. The
-  two exceptions are ones you turn on yourself: automatic sync (only
-  `board.json`, only on the `repoboard` branch) and agents writing documents
-  directly (only `.repoboard/`).
+  exceptions are ones you choose yourself: automatic sync (only
+  `board.json`, only on the `repoboard` branch), agents writing documents
+  directly (only `.repoboard/`), and a plan kept apart from main (its
+  `board.json` syncs there by itself). RepoBoard's own commits say
+  `[skip ci]`, so your CI does not run for a board moving.
 - A program running on your computer as you — an AI agent with a shell, for
   instance — can still read `~/.repoboard`, as it can read any of your files.
   The rules agents follow are enforced in the MCP server, which has no tool
