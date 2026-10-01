@@ -3,7 +3,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db/client";
 import { docProposals, markdownSources, repositories, type DocSnapshot } from "@/db/schema";
-import { GitHubClient } from "@/lib/github/client";
+import { GitHubClient, type RepoClient } from "@/lib/github/client";
+import { onBranch, planAware, planLocationFor, type PlanLocation } from "@/lib/plan";
 import { activeRepository, logActivity, type MarkdownGitHub } from "@/lib/board-service";
 import {
   applyDocEdits,
@@ -117,29 +118,20 @@ export function documentsBranch(): string | null {
   return db.select({ b: repositories.docsBranch }).from(repositories).where(eq(repositories.id, repository.id)).get()?.b ?? null;
 }
 
+/** Re-exported: the client, pointed at a branch (lib/plan.ts). */
+export { onBranch };
+
 /**
- * The client, pointed at the documents' branch: every read, list and commit
- * of a document goes there, so a team that keeps .repoboard/ on a working
- * branch sees and edits it where it is.
+ * Documents go where the plan is kept (lib/plan.ts): .repoboard/ to the
+ * plan's place, other tracked files to the code — or, as always, all of it
+ * to the documents' branch of the repository.
  */
-export function onBranch(gh: DocsGitHub, branch: string | null): DocsGitHub {
-  if (!branch) return gh;
-  const client = gh as DocsGitHub & Record<string, unknown>;
-  return new Proxy(client, {
-    get(target, prop) {
-      if (prop === "getFile") return (path: string, ref?: string) => target.getFile(path, ref ?? branch);
-      if (prop === "listMarkdownFiles" && target.listMarkdownFiles) return () => (target.listMarkdownFiles as (b?: string) => Promise<string[]>)(branch);
-      if (prop === "headCommit" && target.headCommit) return () => (target.headCommit as (b?: string) => Promise<string>)(branch);
-      if (prop === "putFile") return (args: Parameters<DocsGitHub["putFile"]>[0]) => target.putFile({ ...args, branch: args.branch ?? branch });
-      if (prop === "commitChanges" && target.commitChanges) return (args: object) => (target.commitChanges as (a: object) => Promise<{ commitSha: string }>)({ branch, ...args });
-      if (prop === "createFiles" && target.createFiles) return (args: object) => (target.createFiles as (a: object) => Promise<{ commitSha: string }>)({ branch, ...args });
-      const value = Reflect.get(target, prop);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  }) as DocsGitHub;
+export async function documentsClient(): Promise<DocsGitHub & RepoClient> {
+  const repository = requireRepository();
+  return (await planAware(await GitHubClient.create(), planLocationFor(repository.id), documentsBranch())) as DocsGitHub & RepoClient;
 }
 
-const defaultClientFactory: ClientFactory = async () => onBranch(await GitHubClient.create(), documentsBranch());
+const defaultClientFactory: ClientFactory = documentsClient;
 
 /** Documents read from `branch` from now on (null: the default branch); the next look reads them again. */
 export async function setDocumentsBranch(branch: string | null): Promise<void> {
@@ -739,6 +731,8 @@ export interface DocsStatus {
   defaultBranch: string;
   commit: string | null;
   checkedAt: number | null;
+  /** Where .repoboard/ is kept (lib/plan.ts). */
+  plan: PlanLocation;
 }
 
 export function docsStatus(): DocsStatus | null {
@@ -750,7 +744,14 @@ export function docsStatus(): DocsStatus | null {
     .where(eq(repositories.id, repository.id))
     .get();
   return row
-    ? { branch: row.docs ?? row.main, defaultBranch: row.main, commit: row.commit ?? null, checkedAt: row.at?.getTime() ?? null }
+    ? {
+        branch: row.docs ?? row.main,
+        defaultBranch: row.main,
+        // In a split place the key is both heads ("plan+code"); the plan's says what was read.
+        commit: row.commit?.split("+")[0] ?? null,
+        checkedAt: row.at?.getTime() ?? null,
+        plan: planLocationFor(repository.id),
+      }
     : null;
 }
 
@@ -768,17 +769,18 @@ export async function watchDocs(
   // Agents' documents first, when they may be written directly: the look below then reads them back.
   await applyProposals(clientFactory).catch(() => null);
   const gh = await clientFactory();
-  const head = gh.headCommit ? await gh.headCommit().catch(() => null) : null;
-  const before = docsStatus();
+  const keyed = gh as DocsGitHub & { watchKey?: () => Promise<string> };
+  const head = keyed.watchKey ? await keyed.watchKey().catch(() => null) : gh.headCommit ? await gh.headCommit().catch(() => null) : null;
+  const seen = db.select({ c: repositories.docsCommit }).from(repositories).where(eq(repositories.id, repository.id)).get()?.c ?? null;
   const stamp = (commit: string | null) =>
     db.update(repositories).set({ docsCommit: commit, docsCheckedAt: new Date() }).where(eq(repositories.id, repository.id)).run();
-  if (!force && head && head === before?.commit) {
+  if (!force && head && head === seen) {
     stamp(head);
     return { ...docsStatus()!, changed: false, added: [], removed: [], refreshed: 0 };
   }
   const workspace = await syncWorkspace(clientFactory);
   const { refreshed } = await refreshDocs(clientFactory);
-  stamp(head ?? before?.commit ?? null);
+  stamp(head ?? seen);
   return {
     ...docsStatus()!,
     changed: workspace.added.length + workspace.removed.length + refreshed > 0,

@@ -4,8 +4,8 @@ import { activeRepository, boardFileToSave, boardStateStatus, logActivity, syncB
 import {
   clearProposals,
   documentsBranch,
+  documentsClient,
   listProposals,
-  onBranch,
   previewDocEdit,
   previewProposedDocs,
   rememberDocument,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/docs-service";
 import type { DocEdit } from "@/lib/markdown/document";
 import type { DiffLine } from "@/lib/markdown/sync";
+import { describePlace, isPlanPath, planLocationFor, SKIP_CI, type PlanLocation } from "@/lib/plan";
 
 /**
  * Everything this computer has that GitHub does not, saved with one button:
@@ -45,6 +46,9 @@ export interface SavePlan {
   documents: SaveAllDocument[];
   documentsBranch: string;
   defaultBranch: string;
+  /** Where the plan (.repoboard/) is kept, and in words. */
+  plan: PlanLocation;
+  place: string;
 }
 
 /** The person's own uncommitted edits, per document (kept by the document pages). */
@@ -97,7 +101,15 @@ export async function planSaveAll(yours: YourEdits = []): Promise<SavePlan> {
   const auto = syncSettings().autoSync;
   const boards = auto ? { changes: [], auto } : { changes: (await boardStateStatus()).changes, auto };
   const { documents } = await documentsPlan(yours);
-  return { boards, documents, documentsBranch: documentsBranch() ?? repository.defaultBranch, defaultBranch: repository.defaultBranch };
+  const plan = planLocationFor(repository.id);
+  return {
+    boards,
+    documents,
+    documentsBranch: documentsBranch() ?? repository.defaultBranch,
+    defaultBranch: repository.defaultBranch,
+    plan,
+    place: describePlace(plan),
+  };
 }
 
 export async function saveAll(
@@ -121,7 +133,9 @@ export async function saveAll(
   const raw = await GitHubClient.create();
   if (!raw.commitChanges) throw new Error("This host cannot commit several files at once");
   const docsBranch = documentsBranch();
-  const docsClient = onBranch(raw, docsBranch);
+  const plan = planLocationFor(repository.id);
+  // Documents go where the plan is kept: .repoboard/ to its place, other files to the code.
+  const docsClient = await documentsClient();
   const auto = syncSettings().autoSync;
   // Boards on the default branch (automatic sync keeps them on its own branch instead).
   const boardFile = auto ? null : await boardFileToSave();
@@ -151,18 +165,20 @@ export async function saveAll(
     boardFile ? `${boardFile.changes.length || "the activity of"} board change${boardFile.changes.length === 1 ? "" : "s"}` : null,
     documents.length ? `${documents.length} document${documents.length === 1 ? "" : "s"}` : null,
   ].filter(Boolean);
-  const message = `RepoBoard: save ${parts.join(" and ") || "everything"}`;
+  // Only plan files: nothing for the code's CI to look at.
+  const onlyPlan = [...docEdits, ...docAdds].every((f) => isPlanPath(f.path));
+  const message = `RepoBoard: save ${parts.join(" and ") || "everything"}${onlyPlan ? ` ${SKIP_CI}` : ""}`;
   const commits: string[] = [];
   const hasDocs = docEdits.length + docAdds.length > 0;
   const hasBoards = boardEdit.length + boardAdd.length > 0;
-  if (!docsBranch || docsBranch === repository.defaultBranch) {
+  if (plan.mode === "main" && (!docsBranch || docsBranch === repository.defaultBranch)) {
     // One commit for all of it.
     if (hasDocs || hasBoards) {
       commits.push((await raw.commitChanges({ message, edits: [...boardEdit, ...docEdits], adds: [...boardAdd, ...docAdds] })).commitSha);
     }
   } else {
-    if (hasBoards) commits.push((await raw.commitChanges({ message: `RepoBoard: save ${parts[0]}`, edits: boardEdit, adds: boardAdd })).commitSha);
-    if (hasDocs) commits.push((await docsClient.commitChanges!({ message: `RepoBoard: save ${parts.at(-1)}`, edits: docEdits, adds: docAdds })).commitSha);
+    if (hasBoards) commits.push((await raw.commitChanges({ message: `RepoBoard: save ${parts[0]} ${SKIP_CI}`, edits: boardEdit, adds: boardAdd })).commitSha);
+    if (hasDocs) commits.push((await docsClient.commitChanges!({ message: `RepoBoard: save ${parts.at(-1)}${onlyPlan ? ` ${SKIP_CI}` : ""}`, edits: docEdits, adds: docAdds })).commitSha);
   }
   if (auto) await syncBoards();
 

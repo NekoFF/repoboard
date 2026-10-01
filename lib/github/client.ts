@@ -238,6 +238,23 @@ export class GitHubClient {
     return new GitHubClient(makeOctokit(token), repo.owner, repo.name);
   }
 
+  /**
+   * Another repository on the open project's host, opened with the open
+   * project's key — where a project keeps its plan apart from its code
+   * (lib/plan.ts). Fails like any other read when the key does not open it.
+   */
+  static async createFor(slug: string): Promise<RepoClient> {
+    const token = await getAuthProvider().getToken();
+    const [owner, name] = slug.split("/");
+    if (!token || !owner || !name) throw new GitHubNotConfiguredError();
+    const host = activeHost();
+    if (host.kind === "gitlab") {
+      const { GitLabClient } = await import("@/lib/gitlab/client");
+      return new GitLabClient(token, owner, name, host.url);
+    }
+    return new GitHubClient(makeOctokit(token), owner, name);
+  }
+
   /** Checks a token and repository on whichever host the project lives. */
   static async probeOn(host: RepoHost, token: string, slug: string): Promise<RepoSummary> {
     if (host.kind === "gitlab") {
@@ -912,7 +929,34 @@ export class GitHubClient {
   }): Promise<{ commitSha: string }> {
     const repo = await this.getRepo();
     const branch = args.branch ?? repo.defaultBranch;
-    const { data: ref } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` });
+    const ref = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error) && !args.branch) return null;
+        throw error;
+      });
+    if (!ref) {
+      // A repository just made for the plan has no commit yet: the Contents
+      // API starts it, one file per commit. There is nothing to edit in it.
+      if (args.edits.length) {
+        const error = new Error(`${args.edits[0].path} changed on GitHub meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+      let commitSha = "";
+      for (const add of args.adds) {
+        const { data } = await this.octokit.rest.repos.createOrUpdateFileContents({
+          owner: this.owner,
+          repo: this.repo,
+          path: add.path,
+          message: args.message,
+          content: add.base64,
+        });
+        commitSha = data.commit.sha ?? commitSha;
+      }
+      return { commitSha };
+    }
     const { data: head } = await this.octokit.rest.git.getCommit({ owner: this.owner, repo: this.repo, commit_sha: ref.object.sha });
 
     for (const edit of args.edits) {
