@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/desk.jpg" alt="RepoBoard open on a monitor on a light desk: the overview of a project, with its history drawn as branches" width="100%">
+  <img src="docs/media/desk.jpg" alt="A desk in a white room: RepoBoard on a monitor and a laptop, a lamp, books and a plant" width="100%">
 </p>
 
 <h1 align="center">
@@ -105,7 +105,7 @@ tells you what others — people and agents — did since you last looked.
 | ![The Inbox: pull requests and issues from GitHub to put on a board, and what Claude and Codex did since you last looked](docs/screenshots/inbox-light.png) | ![Documents: checklists, notes and decisions read from the repository, with the branch and commit they come from](docs/screenshots/docs-light.png) |
 
 <p align="center">
-  <img src="docs/media/night.jpg" alt="RepoBoard in its dark theme on a monitor in a dim room, lit by a warm lamp" width="100%">
+  <img src="docs/media/night.jpg" alt="The same desk at night: RepoBoard in its dark theme, lit by a desk lamp" width="100%">
 </p>
 
 ## Made for AI agents
