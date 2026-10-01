@@ -176,6 +176,9 @@ function makeOctokit(token: string): Octokit {
 }
 
 /** GitHub's answer for a repository that has no commits yet. */
+/** RepoBoard's own branch (lib/plan.ts PLAN_BRANCH): never shown as the code's. */
+const PLAN_BRANCH_NAME = "repoboard";
+
 export function isEmptyRepository(error: unknown): boolean {
   const e = error as { status?: number; message?: string };
   return e?.status === 409 || /repository is empty/i.test(e?.message ?? "");
@@ -211,6 +214,8 @@ export type RepoClient = Pick<
   | "getFileBytes"
   | "commitChanges"
   | "ensureBranch"
+  | "createOrphanBranch"
+  | "fileShas"
   | "putFile"
 >;
 
@@ -236,6 +241,23 @@ export class GitHubClient {
       return new GitLabClient(token, repo.owner, repo.name, host.url);
     }
     return new GitHubClient(makeOctokit(token), repo.owner, repo.name);
+  }
+
+  /**
+   * Another repository on the open project's host, opened with the open
+   * project's key — where a project keeps its plan apart from its code
+   * (lib/plan.ts). Fails like any other read when the key does not open it.
+   */
+  static async createFor(slug: string): Promise<RepoClient> {
+    const token = await getAuthProvider().getToken();
+    const [owner, name] = slug.split("/");
+    if (!token || !owner || !name) throw new GitHubNotConfiguredError();
+    const host = activeHost();
+    if (host.kind === "gitlab") {
+      const { GitLabClient } = await import("@/lib/gitlab/client");
+      return new GitLabClient(token, owner, name, host.url);
+    }
+    return new GitHubClient(makeOctokit(token), owner, name);
   }
 
   /** Checks a token and repository on whichever host the project lives. */
@@ -409,7 +431,8 @@ export class GitHubClient {
         .then((r) => r.data)
         .catch(() => []),
     ]);
-    const heads = branches.map((b) => `${b.name}@${b.commit.sha}`).sort().join(",");
+    // RepoBoard's own branch moves with every board sync: not news about the code.
+    const heads = branches.filter((b) => b.name !== PLAN_BRANCH_NAME).map((b) => `${b.name}@${b.commit.sha}`).sort().join(",");
     return `${heads}|${latest[0] ? `${latest[0].number}@${latest[0].updated_at}` : "-"}`;
   }
 
@@ -422,7 +445,7 @@ export class GitHubClient {
     });
 
     return Promise.all(
-      data.map(async (branch) => {
+      data.filter((branch) => branch.name !== PLAN_BRANCH_NAME).map(async (branch) => {
         const [commit, comparison] = await Promise.all([
           this.octokit.rest.repos.getCommit({
             owner: this.owner,
@@ -640,7 +663,7 @@ export class GitHubClient {
     // so the per-branch histories decide what is recent.
     const ordered = [
       ...branches.filter((b) => b.name === repo.defaultBranch),
-      ...branches.filter((b) => b.name !== repo.defaultBranch),
+      ...branches.filter((b) => b.name !== repo.defaultBranch && b.name !== PLAN_BRANCH_NAME),
     ].slice(0, maxBranches);
 
     const byShaMap = new Map<string, GraphCommit>();
@@ -696,7 +719,7 @@ export class GitHubClient {
       });
     const main = branches.find((b) => b.name === repo.defaultBranch);
     // RepoBoard's own sync branch carries board.json, not work: not part of the project's life.
-    const others = branches.filter((b) => b.name !== repo.defaultBranch && b.name !== "repoboard");
+    const others = branches.filter((b) => b.name !== repo.defaultBranch && b.name !== PLAN_BRANCH_NAME);
     const bySha = new Map<string, GraphCommit>();
     type Listed = Awaited<ReturnType<Octokit["rest"]["repos"]["listCommits"]>>["data"];
     const add = (c: Listed[number]) => {
@@ -865,6 +888,19 @@ export class GitHubClient {
     return { commitSha: commit.sha };
   }
 
+  /** Every file's blob SHA on a branch: what changed, without reading any file. */
+  async fileShas(branch?: string): Promise<Map<string, string>> {
+    const repo = await this.getRepo();
+    const data = await this.octokit.rest.git
+      .getTree({ owner: this.owner, repo: this.repo, tree_sha: branch ?? repo.defaultBranch, recursive: "1" })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error) || (error as { status?: number }).status === 404) return { tree: [] };
+        throw error;
+      });
+    return new Map(data.tree.filter((n) => n.type === "blob" && n.path && n.sha).map((n) => [n.path!, n.sha!]));
+  }
+
   /** The commit the default branch points at now — what a permalink should name. */
   async headCommit(branch?: string): Promise<string> {
     const repo = await this.getRepo();
@@ -872,11 +908,11 @@ export class GitHubClient {
     return data.object.sha;
   }
 
-  /** Every file in the repository (paths only), for pickers. */
-  async listFiles(): Promise<string[]> {
+  /** Every file in the repository (paths only), for pickers; `branch`: another branch than the default one. */
+  async listFiles(branch?: string): Promise<string[]> {
     const repo = await this.getRepo();
     const data = await this.octokit.rest.git
-      .getTree({ owner: this.owner, repo: this.repo, tree_sha: repo.defaultBranch, recursive: "1" })
+      .getTree({ owner: this.owner, repo: this.repo, tree_sha: branch ?? repo.defaultBranch, recursive: "1" })
       .then((r) => r.data)
       .catch((error) => {
         if (isEmptyRepository(error) || (error as { status?: number }).status === 404) return { tree: [] };
@@ -906,13 +942,43 @@ export class GitHubClient {
    */
   async commitChanges(args: {
     message: string;
-    edits: { path: string; content: string; expectedSha: string }[];
+    /** `base64` instead of `content` for a file that is not text (a screenshot replaced). */
+    edits: { path: string; content: string; expectedSha: string; base64?: string }[];
     adds: { path: string; base64: string }[];
+    /** Files to remove in the same commit, each still at the SHA it was seen at (moving the plan away cleans up after itself). */
+    deletes?: { path: string; expectedSha: string }[];
     branch?: string;
   }): Promise<{ commitSha: string }> {
     const repo = await this.getRepo();
     const branch = args.branch ?? repo.defaultBranch;
-    const { data: ref } = await this.octokit.rest.git.getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` });
+    const ref = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${branch}` })
+      .then((r) => r.data)
+      .catch((error) => {
+        if (isEmptyRepository(error) && !args.branch) return null;
+        throw error;
+      });
+    if (!ref) {
+      // A repository just made for the plan has no commit yet: the Contents
+      // API starts it, one file per commit. There is nothing to edit in it.
+      if (args.edits.length) {
+        const error = new Error(`${args.edits[0].path} changed on GitHub meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+      let commitSha = "";
+      for (const add of args.adds) {
+        const { data } = await this.octokit.rest.repos.createOrUpdateFileContents({
+          owner: this.owner,
+          repo: this.repo,
+          path: add.path,
+          message: args.message,
+          content: add.base64,
+        });
+        commitSha = data.commit.sha ?? commitSha;
+      }
+      return { commitSha };
+    }
     const { data: head } = await this.octokit.rest.git.getCommit({ owner: this.owner, repo: this.repo, commit_sha: ref.object.sha });
 
     for (const edit of args.edits) {
@@ -930,9 +996,18 @@ export class GitHubClient {
       );
       if (exists) throw new Error(`${add.path} already exists`);
     }
+    for (const gone of args.deletes ?? []) {
+      const current = await this.getFileBytes(gone.path, ref.object.sha).catch(() => null);
+      if (!current || current.sha !== gone.expectedSha) {
+        const error = new Error(`${gone.path} changed on GitHub meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+    }
 
+    const binaryEdits = args.edits.filter((e) => e.base64 != null);
     const blobs = await Promise.all(
-      args.adds.map((add) =>
+      [...args.adds, ...binaryEdits.map((e) => ({ path: e.path, base64: e.base64! }))].map((add) =>
         this.octokit.rest.git
           .createBlob({ owner: this.owner, repo: this.repo, content: add.base64, encoding: "base64" })
           .then((r) => ({ path: add.path, sha: r.data.sha })),
@@ -943,8 +1018,9 @@ export class GitHubClient {
       repo: this.repo,
       base_tree: head.tree.sha,
       tree: [
-        ...args.edits.map((e) => ({ path: e.path, mode: "100644" as const, type: "blob" as const, content: e.content })),
+        ...args.edits.filter((e) => e.base64 == null).map((e) => ({ path: e.path, mode: "100644" as const, type: "blob" as const, content: e.content })),
         ...blobs.map((b) => ({ path: b.path, mode: "100644" as const, type: "blob" as const, sha: b.sha })),
+        ...(args.deletes ?? []).map((d) => ({ path: d.path, mode: "100644" as const, type: "blob" as const, sha: null })),
       ],
     });
     const { data: commit } = await this.octokit.rest.git.createCommit({
@@ -987,6 +1063,40 @@ export class GitHubClient {
         // Another computer made it a moment ago.
         if (error.status !== 422) throw error;
       });
+  }
+
+  /**
+   * A branch with no history of its own and only these files — RepoBoard's
+   * plan branch: it shares nothing with the code, so the code's workflows are
+   * not in it and nothing runs when it moves. Does nothing if it exists.
+   */
+  async createOrphanBranch(name: string, files: { path: string; base64: string }[], message: string): Promise<boolean> {
+    const found = await this.octokit.rest.git
+      .getRef({ owner: this.owner, repo: this.repo, ref: `heads/${name}` })
+      .then(() => true)
+      .catch((error: { status?: number }) => {
+        if (error.status === 404) return false;
+        throw error;
+      });
+    if (found) return false;
+    const blobs = await Promise.all(
+      files.map((f) =>
+        this.octokit.rest.git
+          .createBlob({ owner: this.owner, repo: this.repo, content: f.base64, encoding: "base64" })
+          .then((r) => ({ path: f.path, sha: r.data.sha })),
+      ),
+    );
+    const { data: tree } = await this.octokit.rest.git.createTree({
+      owner: this.owner,
+      repo: this.repo,
+      tree: blobs.map((b) => ({ path: b.path, mode: "100644" as const, type: "blob" as const, sha: b.sha })),
+    });
+    const { data: commit } = await this.octokit.rest.git.createCommit({ owner: this.owner, repo: this.repo, message, tree: tree.sha, parents: [] });
+    await this.octokit.rest.git.createRef({ owner: this.owner, repo: this.repo, ref: `refs/heads/${name}`, sha: commit.sha }).catch((error: { status?: number }) => {
+      // Another computer made it a moment ago.
+      if (error.status !== 422) throw error;
+    });
+    return true;
   }
 
   /**

@@ -6,14 +6,13 @@ import { z } from "zod";
 import { docPath, edit } from "@/lib/doc-edit-schema";
 import { canWrite } from "@/lib/roles";
 import { currentWho, getVerifiedRepository } from "@/lib/github/access";
-import { GitHubClient } from "@/lib/github/client";
 import {
   commitDocCreate,
   createWorkspace,
   previewWorkspace,
   syncWorkspace,
   docsStatus,
-  documentsBranch,
+  documentsClient,
   listProposals,
   clearProposals,
   previewProposedDocs,
@@ -86,20 +85,19 @@ export async function GET(request: Request) {
     if (url.searchParams.get("proposals")) return NextResponse.json({ proposals: listProposals(url.searchParams.get("for")) });
     if (url.searchParams.get("watch")) return NextResponse.json(await watchDocs({ force: url.searchParams.get("force") === "1" }));
     if (path) return NextResponse.json(await readDoc(path));
-    // Documents, their text and their screenshots come from the documents' branch.
-    const branch = documentsBranch() ?? undefined;
+    // Documents, their text and their screenshots come from where the plan is kept (lib/plan.ts).
     if (url.searchParams.get("files")) {
-      const gh = await GitHubClient.create();
-      return NextResponse.json({ files: await gh.listMarkdownFiles(branch) });
+      const gh = await documentsClient();
+      return NextResponse.json({ files: await gh.listMarkdownFiles() });
     }
     if (url.searchParams.get("all")) {
-      const gh = await GitHubClient.create();
+      const gh = await documentsClient();
       return NextResponse.json({ files: await gh.listFiles() });
     }
     const text = url.searchParams.get("text");
     if (text) {
-      const gh = await GitHubClient.create();
-      const file = await gh.getFile(text, branch);
+      const gh = await documentsClient();
+      const file = await gh.getFile(text);
       if (file.content.includes("\u0000")) return NextResponse.json({ error: "That file is not text" }, { status: 415 });
       return NextResponse.json({ path: text, content: file.content, sha: file.sha });
     }
@@ -107,8 +105,8 @@ export async function GET(request: Request) {
     if (raw) {
       const type = RAW_TYPES[raw.split(".").pop()?.toLowerCase() ?? ""];
       if (!type) return NextResponse.json({ error: "Only images and PDFs are shown" }, { status: 415 });
-      const gh = await GitHubClient.create();
-      const { bytes, sha } = await gh.getFileBytes(raw, branch);
+      const gh = await documentsClient();
+      const { bytes, sha } = await gh.getFileBytes(raw);
       return new NextResponse(new Uint8Array(bytes), {
         headers: {
           "content-type": type,

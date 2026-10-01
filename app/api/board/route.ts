@@ -278,7 +278,7 @@ async function handlePost(request: Request) {
   }
 
   // Managing the boards themselves.
-  if (typeof raw?.action === "string" && raw.action.startsWith("board-") && !["board-status", "board-pull", "board-push"].includes(raw.action)) {
+  if (typeof raw?.action === "string" && raw.action.startsWith("board-") && !["board-status", "board-pull", "board-push", "board-adopt"].includes(raw.action)) {
     const managed = boardSchema.safeParse(raw);
     if (!managed.success) return NextResponse.json({ error: managed.error.issues[0].message }, { status: 400 });
     try {
@@ -485,7 +485,11 @@ async function handlePost(request: Request) {
       if (who.role !== "manager") {
         return NextResponse.json({ error: "Only a project admin can turn automatic sync on or off.", forbidden: true }, { status: 403 });
       }
-      setAutoSync(body.autoSync);
+      try {
+        setAutoSync(body.autoSync);
+      } catch (error) {
+        return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+      }
       return NextResponse.json(body.autoSync ? await syncBoards() : { pulled: 0, pushed: 0, syncedAt: null });
     case "item-done":
       return NextResponse.json({ checklist: setItemDone(body.taskId, body.itemId, body.done) });

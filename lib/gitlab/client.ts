@@ -263,7 +263,8 @@ export class GitLabClient {
       this.req<{ iid: number; updated_at: string }[]>("GET", "/merge_requests", { query: { order_by: "updated_at", sort: "desc", per_page: 1, state: "all" } }).catch(() => []),
       this.req<{ iid: number; updated_at: string }[]>("GET", "/issues", { query: { order_by: "updated_at", sort: "desc", per_page: 1, state: "all" } }).catch(() => []),
     ]);
-    const heads = branches.map((b) => `${b.name}@${b.commit.id}`).sort().join(",");
+    // RepoBoard's own branch moves with every board sync: not news about the code.
+    const heads = branches.filter((b) => b.name !== "repoboard").map((b) => `${b.name}@${b.commit.id}`).sort().join(",");
     return `${heads}|${mrs[0] ? `!${mrs[0].iid}@${mrs[0].updated_at}` : "-"}|${issues[0] ? `#${issues[0].iid}@${issues[0].updated_at}` : "-"}`;
   }
 
@@ -280,7 +281,7 @@ export class GitLabClient {
         .then((r) => r.commits.length)
         .catch(() => 0);
     return Promise.all(
-      branches.map(async (b) => ({
+      branches.filter((b) => b.name !== "repoboard").map(async (b) => ({
         name: b.name,
         protected: b.protected,
         lastCommit: { sha: b.commit.id, message: b.commit.title, author: b.commit.author_name, date: b.commit.committed_date },
@@ -429,7 +430,7 @@ export class GitLabClient {
   async commitGraph(limitPerBranch = 40, maxBranches = 12, mainLimit = limitPerBranch): Promise<GraphCommit[]> {
     const main = await this.branch();
     const branches = await this.list<{ name: string; commit: GLCommit }>("/repository/branches", {}, 2).catch(() => []);
-    const ordered = [...branches.filter((b) => b.name === main), ...branches.filter((b) => b.name !== main)].slice(0, maxBranches);
+    const ordered = [...branches.filter((b) => b.name === main), ...branches.filter((b) => b.name !== main && b.name !== "repoboard")].slice(0, maxBranches);
     const bySha = new Map<string, GraphCommit>();
     await Promise.all(
       ordered.map(async (b) => {
@@ -486,12 +487,22 @@ export class GitLabClient {
       });
   }
 
+  /** Every file's blob SHA on a branch: what changed, without reading any file. */
+  async fileShas(branch?: string): Promise<Map<string, string>> {
+    const ref = branch ?? (await this.branch());
+    const tree = await this.list<{ path: string; type: string; id: string }>("/repository/tree", { recursive: true, ref }, 50).catch((error) => {
+      if ((error as GitLabError).status === 404) return [];
+      throw error;
+    });
+    return new Map(tree.filter((n) => n.type === "blob").map((n) => [n.path, n.id]));
+  }
+
   async listMarkdownFiles(branch?: string): Promise<string[]> {
     return (await this.tree(branch)).filter((p) => p.endsWith(".md"));
   }
 
-  async listFiles(): Promise<string[]> {
-    return this.tree();
+  async listFiles(branch?: string): Promise<string[]> {
+    return this.tree(branch);
   }
 
   private async file(path: string, ref?: string) {
@@ -539,28 +550,42 @@ export class GitLabClient {
 
   async commitChanges(args: {
     message: string;
-    edits: { path: string; content: string; expectedSha: string }[];
+    edits: { path: string; content: string; expectedSha: string; base64?: string }[];
     adds: { path: string; base64: string }[];
+    deletes?: { path: string; expectedSha: string }[];
     branch?: string;
   }): Promise<{ commitSha: string }> {
     const branch = args.branch ?? (await this.branch());
+    const checked = async (path: string, expectedSha: string) => {
+      const current = await this.file(path, branch).catch(() => null);
+      if (!current || current.blob_id !== expectedSha) {
+        const error = new Error(`${path} changed on GitLab meanwhile`);
+        (error as Error & { code?: string }).code = "CONFLICT";
+        throw error;
+      }
+      return current;
+    };
     const edits = await Promise.all(
       args.edits.map(async (e) => {
-        const current = await this.file(e.path, branch);
-        if (current.blob_id !== e.expectedSha) {
-          const error = new Error(`${e.path} changed on GitLab meanwhile`);
-          (error as Error & { code?: string }).code = "CONFLICT";
-          throw error;
-        }
-        return { action: "update", file_path: e.path, content: e.content, last_commit_id: current.last_commit_id };
+        const current = await checked(e.path, e.expectedSha);
+        return e.base64 != null
+          ? { action: "update", file_path: e.path, content: e.base64, encoding: "base64", last_commit_id: current.last_commit_id }
+          : { action: "update", file_path: e.path, content: e.content, last_commit_id: current.last_commit_id };
       }),
+    );
+    const deletes = await Promise.all(
+      (args.deletes ?? []).map(async (d) => ({ action: "delete", file_path: d.path, last_commit_id: (await checked(d.path, d.expectedSha)).last_commit_id })),
     );
     for (const a of args.adds) if (await this.exists(a.path, branch)) throw new Error(`${a.path} already exists`);
     const commit = await this.req<{ id: string }>("POST", "/repository/commits", {
       body: {
         branch,
         commit_message: args.message,
-        actions: [...edits, ...args.adds.map((a) => ({ action: "create", file_path: a.path, content: a.base64, encoding: "base64" }))],
+        actions: [
+          ...edits,
+          ...args.adds.map((a) => ({ action: "create", file_path: a.path, content: a.base64, encoding: "base64" })),
+          ...deletes,
+        ],
       },
     });
     return { commitSha: commit.id };
@@ -579,6 +604,56 @@ export class GitLabClient {
       // Another computer made it a moment ago.
       if ((error as GitLabError).status !== 400) throw error;
     });
+  }
+
+  /**
+   * GitLab's API cannot start a branch without history, so RepoBoard's plan
+   * branch is cut from the default branch and the plan's files committed on
+   * it. Does nothing if it exists.
+   */
+  async createOrphanBranch(name: string, files: { path: string; base64: string }[], message: string): Promise<boolean> {
+    const found = await this.req("GET", `/repository/branches/${encodeURIComponent(name)}`).then(
+      () => true,
+      (error) => {
+        if ((error as GitLabError).status === 404) return false;
+        throw error;
+      },
+    );
+    if (found) return false;
+    await this.ensureBranch(name);
+    // Cut from the default branch, it carries whatever .repoboard/ was there: the plan being
+    // moved replaces it file by file, and plan files it does not have are removed.
+    const wanted = new Set(files.map((f) => f.path));
+    const there = (await this.tree(name)).filter((p) => p === ".repoboard" || p.startsWith(".repoboard/"));
+    const edits: { path: string; content: string; expectedSha: string; base64: string }[] = [];
+    const adds: { path: string; base64: string }[] = [];
+    for (const f of files) {
+      const current = await this.file(f.path, name).catch(() => null);
+      if (current) edits.push({ path: f.path, content: "", base64: f.base64, expectedSha: current.blob_id });
+      else adds.push(f);
+    }
+    const deletes: { path: string; expectedSha: string }[] = [];
+    for (const p of there.filter((p) => !wanted.has(p))) {
+      const current = await this.file(p, name).catch(() => null);
+      if (current) deletes.push({ path: p, expectedSha: current.blob_id });
+    }
+    await this.commitChanges({ message, edits, adds, deletes, branch: name });
+    return true;
+  }
+
+  /** A namespace's id from its path (a person's or a group's), for making a project in it. */
+  static async namespaceId(token: string, base: string, path: string): Promise<number | null> {
+    return call<{ id: number }>(gitlabApi(base), token, "GET", `/namespaces/${encodeURIComponent(path)}`)
+      .then((r) => r.data.id)
+      .catch(() => null);
+  }
+
+  /** A new private project for a plan, in the person's own namespace or a group's (namespace id). */
+  static async createProject(token: string, base: string, name: string, namespaceId?: number): Promise<{ slug: string }> {
+    const { data } = await call<{ path_with_namespace: string }>(gitlabApi(base), token, "POST", "/projects", {
+      body: { name, path: name, visibility: "private", initialize_with_readme: false, ...(namespaceId ? { namespace_id: namespaceId } : {}) },
+    });
+    return { slug: data.path_with_namespace };
   }
 
   /**

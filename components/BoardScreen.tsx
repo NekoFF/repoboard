@@ -120,7 +120,7 @@ export function BoardScreen({
   const manage = data.board ? canManageBoard({ role, login: viewer }, data.board) : role === "manager";
   const pending = useResource(api.pending, [], { enabled: connected && primary && Boolean(data.markdownSource) });
   // How far the boards have drifted from the copy stored in the repository.
-  const boardState = useResource(api.boardStatus, [], { enabled: connected });
+  const boardState = useResource(api.boardStatus, [], { enabled: connected, live: true });
   const refs = useResource(api.refs, [], { enabled: connected, github: true });
 
   useEffect(() => {
@@ -255,9 +255,15 @@ export function BoardScreen({
                 Import GitHub issues
               </MenuItem>
               <MenuSeparator />
-              <MenuItem icon={<CloudUpload className="size-3.5" />} disabled={!connected || role !== "manager"} onSelect={() => setDialog("autosync")}>
-                {autoSync ? "Automatic sync is on" : "Sync the boards automatically…"}
-              </MenuItem>
+              {boardState.data && boardState.data.planMode !== "main" ? (
+                <MenuItem icon={<CloudUpload className="size-3.5" />} onSelect={() => router.push("/settings")}>
+                  The boards sync on their own — where the plan is kept…
+                </MenuItem>
+              ) : (
+                <MenuItem icon={<CloudUpload className="size-3.5" />} disabled={!connected || role !== "manager"} onSelect={() => setDialog("autosync")}>
+                  {autoSync ? "Automatic sync is on" : "Sync the boards automatically…"}
+                </MenuItem>
+              )}
               {primary && <MenuSeparator />}
               {primary && <MenuItem icon={<RefreshCw className="size-3.5" />} onSelect={() => router.push("/docs")}>
                 {data.markdownSource ? `Board source: ${data.markdownSource.path}` : "Drive the board from a markdown file"}

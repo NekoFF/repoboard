@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PlanOffer } from "@/components/PlanPlace";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -222,6 +223,8 @@ export function OverviewScreen({
       <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 pb-20 pt-8 sm:px-8">
         {/* ----------------------------------------------------- header -- */}
         <ProjectBanner repo={repo} owner={owner} name={name} branch={header.defaultBranch} syncedAt={header.lastSyncAt} />
+
+        {connected && <PlanOffer />}
 
         <ProjectStory repo={repo} connected={connected} card />
 

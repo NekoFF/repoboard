@@ -12,7 +12,7 @@ export function SyncChip() {
   const tip =
     status.state === "error"
       ? `Sync failed: ${status.error ?? "unknown error"}. Press to try again.`
-      : "The boards sync on their own through the repoboard branch. Press to sync now.";
+      : "The boards sync on their own, where the plan is kept (Settings). Press to sync now.";
   return (
     <Tooltip content={tip}>
       <button

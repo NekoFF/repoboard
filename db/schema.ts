@@ -39,6 +39,16 @@ export const repositories = sqliteTable("repositories", {
   agentDocs: text("agent_docs", { enum: ["review", "direct"] }).notNull().default("review"),
   // When the Inbox was last looked at, on this computer, whichever window looked.
   inboxSeenAt: integer("inbox_seen_at", { mode: "timestamp_ms" }),
+  // Where the plan (.repoboard/: boards, documents, screenshots) is kept
+  // (lib/plan.ts): null or "main" — in this repository, as always; "branch" —
+  // on RepoBoard's own branch here; "repo" — in a separate repository,
+  // plan_repo (owner/name, on the same host, opened with the same key).
+  planMode: text("plan_mode", { enum: ["main", "branch", "repo"] }),
+  planRepo: text("plan_repo"),
+  // When the one-time "keep the plan elsewhere?" offer was answered or closed.
+  planOfferSeen: integer("plan_offer_seen", { mode: "timestamp_ms" }),
+  // When automatic sync was turned off here: boards on the sync branch older than that do not turn it back on.
+  autoSyncOffAt: integer("auto_sync_off_at", { mode: "timestamp_ms" }),
 });
 
 // A project (repository) has several boards: one per person ("Dima",
