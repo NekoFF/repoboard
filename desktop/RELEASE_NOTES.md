@@ -1,5 +1,9 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.6.15
+
+- **GitHub stays current without a restart.** New branches, commits, pull requests and issues now show up by themselves, in Project life, Code and on cards. RepoBoard checks every minute while it is open and whenever you come back to it. Before, they only appeared after reopening the page or the app.
+
 ## What's new in 0.6.14
 
 - **Fixed: documents with proofs from a work branch could not be saved.** An agent's proof can now name files that are not on the documents branch yet; they stay as the path and lines.
