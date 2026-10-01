@@ -278,7 +278,7 @@ async function handlePost(request: Request) {
   }
 
   // Managing the boards themselves.
-  if (typeof raw?.action === "string" && raw.action.startsWith("board-") && !["board-status", "board-pull", "board-push"].includes(raw.action)) {
+  if (typeof raw?.action === "string" && raw.action.startsWith("board-") && !["board-status", "board-pull", "board-push", "board-adopt"].includes(raw.action)) {
     const managed = boardSchema.safeParse(raw);
     if (!managed.success) return NextResponse.json({ error: managed.error.issues[0].message }, { status: 400 });
     try {

@@ -149,10 +149,12 @@ demo.people.set("max", "admin");
 const repos = new Map([[demo.slug.toLowerCase(), demo]]);
 const findRepo = (owner, name) => repos.get(`${owner}/${name}`.toLowerCase()) ?? null;
 
-function createRepo({ owner, name, isPrivate, description }) {
+function createRepo({ owner, name, isPrivate, description, creator }) {
   if (!name || !/^[\w.-]+$/.test(name)) return { error: [422, { message: "Repository creation failed: name is invalid" }] };
   if (findRepo(owner, name)) return { error: [422, { message: "Repository creation failed.", errors: [{ message: "name already exists on this account" }] }] };
   const repo = new Repo({ owner, name, isPrivate, description });
+  // Whoever creates it is its admin (in an organisation, as its owners are).
+  if (creator) repo.people.set(creator, "admin");
   repos.set(repo.slug.toLowerCase(), repo);
   console.log(`[demo-github] created ${isPrivate ? "private" : "public"} repository ${repo.slug}`);
   return { repo };
@@ -524,7 +526,7 @@ const server = http.createServer(async (req, res) => {
     if (who.nothing || who.only) return send(res, 403, { message: "Resource not accessible by integration" });
     const body = await readBody(req);
     const owner = p.startsWith("/orgs/") ? p.split("/")[2] : who.login;
-    const made = createRepo({ owner, name: body.name, isPrivate: body.private !== false, description: body.description });
+    const made = createRepo({ owner, name: body.name, isPrivate: body.private !== false, description: body.description, creator: who.login });
     return made.error ? send(res, ...made.error) : send(res, 201, repoJson(made.repo, "admin"));
   }
 
