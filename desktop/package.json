@@ -11,7 +11,8 @@
     "prepare-server": "node prepare.mjs",
     "start": "electron .",
     "dist:mac": "electron-builder --mac --publish never",
-    "dist:win": "electron-builder --win --publish never"
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
   },
   "build": {
     "appId": "com.nekoff.repoboard",
@@ -27,7 +28,8 @@
       "updates.cjs",
       "version.cjs",
       "mcp-home.cjs",
-      "package.json"
+      "package.json",
+      "build/icon.png"
     ],
     "extraResources": [
       {
@@ -72,7 +74,31 @@
         "releaseType": "release"
       }
     ],
-    "afterPack": "./after-pack.cjs"
+    "afterPack": "./after-pack.cjs",
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "build/icon.png",
+      "executableName": "repoboard",
+      "synopsis": "Plan your project inside its repository",
+      "maintainer": "NekoFF <NekoFF@users.noreply.github.com>",
+      "desktop": {
+        "entry": {
+          "Name": "RepoBoard",
+          "Comment": "Plan your project inside its repository",
+          "StartupWMClass": "RepoBoard"
+        }
+      }
+    },
+    "appImage": {
+      "artifactName": "RepoBoard-${version}-linux-${arch}.${ext}"
+    },
+    "deb": {
+      "artifactName": "RepoBoard-${version}-linux-${arch}.${ext}"
+    }
   },
   "devDependencies": {
     "electron": "^44.4.5",

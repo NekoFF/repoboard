@@ -1,5 +1,5 @@
-# The desktop app, built on GitHub for macOS (Apple silicon and Intel) and
-# Windows, and attached to a release. Runs when a version tag is pushed
+# The desktop app, built on GitHub for macOS (Apple silicon and Intel),
+# Windows and Linux (AppImage and .deb, x64 and arm64), and attached to a release. Runs when a version tag is pushed
 # (v0.2.0 …) or by hand from the Actions tab.
 name: Desktop
 
@@ -47,6 +47,12 @@ jobs:
           - os: windows-latest
             arch: x64
             builder: --win --x64
+          - os: ubuntu-latest
+            arch: x64
+            builder: --linux AppImage deb --x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            builder: --linux AppImage deb --arm64
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -74,5 +80,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           shopt -s nullglob
-          files=(desktop/dist/*.dmg desktop/dist/*.zip desktop/dist/*.exe)
+          files=(desktop/dist/*.dmg desktop/dist/*.zip desktop/dist/*.exe desktop/dist/*.AppImage desktop/dist/*.deb)
           gh release upload "$TAG" "${files[@]}" --clobber

@@ -13,6 +13,11 @@
  * else (run straight from the disk image, or moved by macOS to a read-only
  * place because it was never dragged) the new .dmg opens instead.
  *
+ * Linux, as an AppImage: the new AppImage is downloaded, and once RepoBoard
+ * has quit it takes the old one's place (same path, made executable) and
+ * starts. Installed from the .deb: the new .deb opens in the system's
+ * software installer.
+ *
  * There is only ever one RepoBoard: every version replaces the one before.
  * Downloads live in one temporary folder, emptied when the app starts.
  * Boards and keys are in ~/.repoboard and never touched.
@@ -108,14 +113,18 @@ async function newestRelease() {
 /** The release file for this system and processor: the .zip when a Mac copy can replace itself. */
 function assetFor(release) {
   const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const linuxArch = process.arch === "arm64" ? "(arm64|aarch64)" : "(x64|x86_64|amd64)";
   const suffix =
     process.platform === "darwin"
       ? `-mac-${arch}.${canReplaceItself() ? "zip" : "dmg"}`
       : process.platform === "win32"
         ? "-win-x64.exe"
-        : null;
+        : process.platform === "linux"
+          ? new RegExp(`-linux-${linuxArch}\\.${process.env.APPIMAGE ? "AppImage" : "deb"}$`)
+          : null;
   if (!suffix) return null;
-  const asset = (release.assets ?? []).find((a) => typeof a.name === "string" && a.name.endsWith(suffix));
+  const matches = (name) => (suffix instanceof RegExp ? suffix.test(name) : name.endsWith(suffix));
+  const asset = (release.assets ?? []).find((a) => typeof a.name === "string" && matches(a.name));
   if (!asset || !String(asset.browser_download_url).startsWith(DOWNLOADS)) return null;
   return { name: asset.name, url: asset.browser_download_url, size: asset.size ?? 0 };
 }
@@ -133,7 +142,7 @@ async function check(win, { manual = false } = {}) {
         notes: release.html_url,
         asset,
         // The pill says "Restart to update" when the app replaces itself.
-        inPlace: process.platform === "win32" || asset.name.endsWith(".zip"),
+        inPlace: process.platform === "win32" || asset.name.endsWith(".zip") || asset.name.endsWith(".AppImage"),
       };
       send(win);
       return;
@@ -241,6 +250,31 @@ async function install() {
     spawn("/bin/sh", [script, bundle, file], { detached: true, stdio: "ignore" }).unref();
     app.isQuitting = true;
     app.quit();
+    return;
+  }
+  if (process.platform === "linux" && process.env.APPIMAGE && file.endsWith(".AppImage")) {
+    // After this process has quit: the new AppImage takes the old one's path, then starts.
+    const script = path.join(DIR(), "install.sh");
+    fs.writeFileSync(
+      script,
+      [
+        "#!/bin/sh",
+        `while kill -0 ${process.pid} 2>/dev/null; do sleep 0.3; done`,
+        'OLD="$1"; NEW="$2"',
+        'chmod +x "$NEW"',
+        'if cp "$OLD" "$OLD.previous" && mv -f "$NEW" "$OLD"; then rm -f "$OLD.previous"; else mv -f "$OLD.previous" "$OLD"; fi',
+        'nohup "$OLD" >/dev/null 2>&1 &',
+      ].join("\n"),
+      { mode: 0o700 },
+    );
+    spawn("/bin/sh", [script, process.env.APPIMAGE, file], { detached: true, stdio: "ignore" }).unref();
+    app.isQuitting = true;
+    app.quit();
+    return;
+  }
+  if (process.platform === "linux") {
+    // Installed from the .deb: the system's installer takes it from here.
+    await shell.openPath(file);
     return;
   }
   if (process.platform === "win32") {

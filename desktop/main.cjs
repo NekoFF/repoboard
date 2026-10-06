@@ -25,6 +25,14 @@ const apiToken = crypto.randomBytes(24).toString("hex");
 
 const isMac = process.platform === "darwin";
 const isWindows = process.platform === "win32";
+const isLinux = process.platform === "linux";
+/** Linux, run as an AppImage: mounted at a new path on every start. */
+const isAppImage = isLinux && Boolean(process.env.APPIMAGE);
+
+// An AppImage cannot carry Chromium's setuid sandbox helper, and Ubuntu 24.04 and
+// later refuse the namespace sandbox to unknown programs: started as is, it would not
+// open at all. The window only ever shows RepoBoard's own pages (guardContents).
+if (isAppImage) app.commandLine.appendSwitch("no-sandbox");
 let server = null;
 let origin = null;
 let win = null;
@@ -36,7 +44,11 @@ let win = null;
  * running server keeps going.
  */
 function mcpHome() {
-  if (process.platform !== "win32" || !app.isPackaged) return null;
+  if (!app.isPackaged) return null;
+  // Linux AppImage: the app runs from a new temporary mount every start, so a command
+  // pointing into it would stop working after the next restart. A copy in the data folder stays.
+  if (isAppImage) return path.join(process.env.XDG_DATA_HOME || path.join(require("node:os").homedir(), ".local", "share"), "NekoFF", "RepoBoard", "mcp");
+  if (process.platform !== "win32") return null;
   // Not under a folder named RepoBoard…: the installer closes whatever runs from a
   // path that starts with its own (…\Local\RepoBoard would catch …\Local\RepoBoard\mcp).
   return path.join(process.env.LOCALAPPDATA || app.getPath("userData"), "NekoFF", "RepoBoard", "mcp");
@@ -207,8 +219,10 @@ function createWindow() {
     minHeight: 600,
     show: false,
     title: "RepoBoard",
-    // Transparent, so the system material shows through the desk.
-    backgroundColor: "#00000000",
+    // Transparent, so the system material shows through the desk. Linux has no such
+    // material: the window is the desk's own colour there, with the system's title bar.
+    backgroundColor: isLinux ? (nativeTheme.shouldUseDarkColors ? "#08090a" : "#f1f2f5") : "#00000000",
+    ...(isLinux ? { icon: path.join(__dirname, "build", "icon.png") } : {}),
     ...(isMac
       ? {
           titleBarStyle: "hiddenInset",
