@@ -1,5 +1,9 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.7.1
+
+- **RepoBoard for Linux.** An AppImage that runs on almost any distribution and updates itself, and a `.deb` for Ubuntu and Debian — for x64 and ARM. Agents connect to it the same way as on macOS and Windows (Settings → AI agents).
+
 ## What's new in 0.7.0
 
 - **Choose where the plan is kept.** Boards, checklists, notes and screenshots no longer have to sit in your code's main branch. Per project, when you connect it or later in Settings → Where the plan is kept:
@@ -148,6 +152,8 @@ RepoBoard as a desktop app for macOS and Windows: the same app as in the browser
 | macOS, Apple silicon (M1 and later) | `RepoBoard-…-mac-arm64.dmg` |
 | macOS, Intel | `RepoBoard-…-mac-x64.dmg` |
 | Windows 10 and 11 | `RepoBoard-…-win-x64.exe` |
+| Linux, any distribution (x64 / ARM) | `RepoBoard-…-linux-x86_64.AppImage` / `RepoBoard-…-linux-arm64.AppImage` |
+| Ubuntu, Debian (x64 / ARM) | `RepoBoard-…-linux-amd64.deb` / `RepoBoard-…-linux-arm64.deb` |
 
 ## First start
 
@@ -155,6 +161,7 @@ The app is not signed with a paid Apple or Microsoft certificate yet, so the sys
 
 - **macOS:** open the .dmg and drag RepoBoard to Applications. The first time, macOS says it cannot check the developer: open **System Settings → Privacy & Security**, scroll down and press **Open Anyway**.
 - **Windows:** if SmartScreen appears, click **More info** → **Run anyway**.
+- **Linux:** make the `.AppImage` executable (`chmod +x`) and open it, or install the `.deb` with `sudo apt install ./RepoBoard-*.deb`.
 
 ## Good to know
 

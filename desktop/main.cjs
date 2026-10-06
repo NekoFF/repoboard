@@ -222,7 +222,8 @@ function createWindow() {
     // Transparent, so the system material shows through the desk. Linux has no such
     // material: the window is the desk's own colour there, with the system's title bar.
     backgroundColor: isLinux ? (nativeTheme.shouldUseDarkColors ? "#08090a" : "#f1f2f5") : "#00000000",
-    ...(isLinux ? { icon: path.join(__dirname, "build", "icon.png") } : {}),
+    // The menu bar shows on Alt, as in other Linux apps; its shortcuts work either way.
+    ...(isLinux ? { icon: path.join(__dirname, "build", "icon.png"), autoHideMenuBar: true } : {}),
     ...(isMac
       ? {
           titleBarStyle: "hiddenInset",
