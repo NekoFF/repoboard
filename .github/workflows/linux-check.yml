@@ -85,5 +85,16 @@ jobs:
           tail -40 "$HOME/app.log"
           test "$code" != "000"
           pkill -f /opt/RepoBoard/repoboard || true
+      - name: A picture of the window, to look at
+        run: |
+          sudo apt-get install -y -qq imagemagick >/dev/null
+          export HOME=$(mktemp -d)
+          app=$(ls desktop/dist/*.AppImage | head -1)
+          xvfb-run -a --server-args="-screen 0 1440x960x24" sh -c "\"$app\" --appimage-extract-and-run >/dev/null 2>&1 & sleep 30; import -window root $PWD/linux-window.png"
+          pkill -f repoboard || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-window-${{ matrix.arch }}
+          path: linux-window.png
       - name: Agents' MCP server against the built app
         run: node desktop/test/mcp-copy.mjs desktop/dist/linux*-unpacked
