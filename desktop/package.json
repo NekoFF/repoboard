@@ -4,6 +4,7 @@
   "version": "0.7.0",
   "description": "Plan your project inside its repository \u2014 RepoBoard as a desktop app.",
   "author": "NekoFF",
+  "homepage": "https://github.com/NekoFF/repoboard",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "main": "main.cjs",
