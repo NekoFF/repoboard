@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/NekoFF/repoboard/releases/latest"><img src="https://img.shields.io/github/v/release/NekoFF/repoboard?style=flat-square&label=version&color=4b5cf0" alt="Latest version"></a>
-  <img src="https://img.shields.io/badge/macOS%20·%20Windows-desktop%20app-555?style=flat-square" alt="macOS and Windows">
+  <img src="https://img.shields.io/badge/macOS%20·%20Windows%20·%20Linux-desktop%20app-555?style=flat-square" alt="macOS, Windows and Linux">
   <img src="https://img.shields.io/badge/MCP-Claude%20·%20Codex%20·%20Cursor-555?style=flat-square" alt="Works with MCP agents">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-source--available-555?style=flat-square" alt="Source-available licence"></a>
 </p>
@@ -24,6 +24,8 @@
   <a href="https://github.com/NekoFF/repoboard/releases/latest"><b>Download for macOS</b></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/NekoFF/repoboard/releases/latest"><b>Download for Windows</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/NekoFF/repoboard/releases/latest"><b>Download for Linux</b></a>
   &nbsp;·&nbsp;
   <a href="#try-it-in-one-minute">Try the demo</a>
 </p>
@@ -138,7 +140,8 @@ the one cloud button, each file with its diff, saved together.
 
 ## The desktop app
 
-Download RepoBoard for **macOS** (Apple silicon or Intel) or **Windows** from
+Download RepoBoard for **macOS** (Apple silicon or Intel), **Windows** or
+**Linux** (x64 or ARM) from
 [Releases](https://github.com/NekoFF/repoboard/releases/latest). It is the
 whole app in its own window: no Node.js, no terminal. It keeps its data in
 `~/.repoboard`, brings its own MCP server for agents (Settings → AI agents
@@ -151,6 +154,11 @@ The app is not signed by Apple or Microsoft yet, so the first start asks once:
   macOS says it cannot check the developer — open **System Settings → Privacy
   & Security**, scroll down and press **Open Anyway**.
 - **Windows:** in the blue window press **More info → Run anyway**.
+- **Linux:** the `.AppImage` runs anywhere — make it executable
+  (`chmod +x RepoBoard-*.AppImage`, or Properties → Allow executing) and
+  open it; it updates itself. On Ubuntu or Debian you can install the `.deb`
+  instead: `sudo apt install ./RepoBoard-*.deb`, then find RepoBoard among
+  your apps. An AppImage on an older system may ask for `libfuse2`.
 
 Then press **Sign in with GitHub**: GitHub shows a short code, you approve
 RepoBoard there and pick the repositories it may open. You stay signed in;

@@ -1143,6 +1143,22 @@ html.rb-desktop .rb-desktop-titlebar {
   z-index: 60;
   -webkit-app-region: drag;
 }
+/* Linux: no system material behind the window, and the system's own title bar
+   above the page — the desk is opaque, and the strip only holds the buttons. */
+html.rb-desktop-linux,
+html.rb-desktop-linux body {
+  background: rgb(var(--desk));
+}
+html.rb-desktop-linux .rb-desk,
+html.rb-desktop-linux.dark .rb-desk {
+  background-color: rgb(var(--desk));
+}
+html.rb-desktop-linux .rb-desktop-titlebar {
+  -webkit-app-region: no-drag;
+}
+html.rb-desktop-linux .rb-desktop-nav {
+  margin-left: 10px;
+}
 /* Back / forward and the update pill, in the strip (components/shell/DesktopBar).
    The strip drags the window; the buttons in it must not. */
 .rb-desktop-bar {

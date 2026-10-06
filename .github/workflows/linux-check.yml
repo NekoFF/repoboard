@@ -1,0 +1,100 @@
+# The Linux app, built and started for real on Linux before it is released:
+# the AppImage and the .deb are built (x64 and arm64), the AppImage is
+# started without a screen and must answer on its port and make the agents'
+# copy of the MCP server, the .deb is installed and started the same way,
+# and the agents' MCP server is driven end to end against the built app
+# (desktop/test/mcp-copy.mjs). Nothing is published.
+name: Linux check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [product]
+    paths:
+      - desktop/**
+      - .github/workflows/linux-check.yml
+      - .github/workflows/desktop.yml
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: desktop
+      - run: node desktop/prepare.mjs --arch ${{ matrix.arch }}
+      - run: npx electron-builder --linux AppImage deb --${{ matrix.arch }} --publish never
+        working-directory: desktop
+      - run: ls -la desktop/dist
+      - name: What a Linux desktop has, for starting it without a screen
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgtk-3-0t64 libnss3 libasound2t64 libgbm1 >/dev/null
+      - name: The AppImage starts, answers, and makes the agents' copy
+        run: |
+          set -u
+          export HOME=$(mktemp -d)
+          app=$(ls desktop/dist/*.AppImage | head -1)
+          chmod +x "$app"
+          xvfb-run -a "$app" --appimage-extract-and-run > "$HOME/app.log" 2>&1 &
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:47821/ || true)
+            [ "$code" != "000" ] && break
+            sleep 2
+          done
+          echo "server answered: $code"
+          for i in $(seq 1 60); do [ -f "$HOME/.local/share/NekoFF/RepoBoard/mcp/ready.json" ] && break; sleep 2; done
+          cat "$HOME/.local/share/NekoFF/RepoBoard/mcp/ready.json" || true
+          tail -40 "$HOME/app.log"
+          test "$code" != "000"
+          test -f "$HOME/.local/share/NekoFF/RepoBoard/mcp/ready.json"
+          # The copy runs as Node, the way an agent's client starts it.
+          node_bin=$(node -e 'console.log(require(process.argv[1]).node)' "$HOME/.local/share/NekoFF/RepoBoard/mcp/ready.json")
+          ELECTRON_RUN_AS_NODE=1 "$node_bin" -e 'console.log("node mode ok", process.versions.node)'
+          pkill -f "$app" || true; pkill -f repoboard || true
+      - name: The .deb installs and starts
+        run: |
+          set -u
+          sudo apt-get install -y -qq "$(ls $PWD/desktop/dist/*.deb | head -1)" >/dev/null
+          ls -la /opt/RepoBoard | head -20
+          export HOME=$(mktemp -d)
+          xvfb-run -a /opt/RepoBoard/repoboard > "$HOME/app.log" 2>&1 &
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:47821/ || true)
+            [ "$code" != "000" ] && break
+            sleep 2
+          done
+          echo "server answered: $code"
+          tail -40 "$HOME/app.log"
+          test "$code" != "000"
+          pkill -f /opt/RepoBoard/repoboard || true
+      - name: A picture of the window, to look at
+        run: |
+          sudo apt-get install -y -qq imagemagick >/dev/null
+          export HOME=$(mktemp -d)
+          app=$(ls desktop/dist/*.AppImage | head -1)
+          xvfb-run -a --server-args="-screen 0 1440x960x24" sh -c "\"$app\" --appimage-extract-and-run >/dev/null 2>&1 & sleep 30; import -window root $PWD/linux-window.png"
+          pkill -f repoboard || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-window-${{ matrix.arch }}
+          path: linux-window.png
+      - name: Agents' MCP server against the built app
+        run: node desktop/test/mcp-copy.mjs desktop/dist/linux*-unpacked

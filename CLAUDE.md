@@ -355,7 +355,10 @@ runtime and the server in `%LOCALAPPDATA%\NekoFF\RepoBoard\mcp`
 (`desktop/mcp-home.cjs`, refreshed at every start, in-use files moved aside)
 and Settings points agents there (`REPOBOARD_MCP_HOME`, `ready.json`).
 `desktop/test/mcp-copy.mjs` proves it on a Windows runner
-(`.github/workflows/windows-mcp.yml`); `whoami` tells an agent still on the
+(`.github/workflows/windows-mcp.yml`). A Linux AppImage mounts at a new path
+every start, so it keeps the same copy in `~/.local/share/NekoFF/RepoBoard/mcp`;
+`.github/workflows/linux-check.yml` builds the AppImage and the .deb (x64 and
+arm64), starts both without a screen, and runs the same test on Linux; `whoami` tells an agent still on the
 old path to be set up again. `whoami` says where the plan is kept (`plan`), and
 `read_document` reads `.repoboard/` files from there. `whoami` and `get_overview` carry `tidyUp`:
 what is already in the wrong place (a plan kept as a checklist document,
