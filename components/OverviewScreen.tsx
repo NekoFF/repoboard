@@ -178,6 +178,15 @@ export function OverviewScreen({
   const all = groups.flatMap((g) => g.cells).filter((c) => c.status !== "cancelled");
   const count = (s: Status) => all.filter((c) => c.status === s).length;
   const totals = { total: all.length, done: count("done"), review: count("review"), doing: count("doing") };
+  // Work (cards) and checks (document items) are told apart: a release gate nobody has
+  // ticked yet is not unfinished work, and finished work waiting for a person's look counts as finished.
+  const tally = (cells: { status: Status }[]) => {
+    const open = cells.filter((c) => c.status !== "cancelled");
+    const n = (s: Status) => open.filter((c) => c.status === s).length;
+    return { total: open.length, done: n("done"), review: n("review"), doing: n("doing") };
+  };
+  const work = tally(cards.map((c) => ({ status: c.status })));
+  const checks = tally(checklists.flatMap((doc) => doc.items.map((item) => ({ status: (item.state ?? (item.done ? "done" : "todo")) as Status }))));
 
   // Things waiting for a person: checklist items marked [?] and cards in review.
   const toCheck = useMemo(() => {
@@ -248,15 +257,34 @@ export function OverviewScreen({
         ) : (
           <section className="grid gap-5 lg:grid-cols-[minmax(260px,340px)_1fr]">
             <div className="rb-card flex flex-col gap-3 p-6">
-              <p className="text-[64px] font-semibold leading-none tracking-[-0.04em] text-ink tabular-nums">
-                {percent(totals.done, totals.total)}
-                <span className="text-[32px] text-faint">%</span>
-              </p>
-              <p className="text-md text-muted">
-                {totals.done} of {totals.total} things done, across {boards.length} board{boards.length === 1 ? "" : "s"} and{" "}
-                {checklists.length} checklist{checklists.length === 1 ? "" : "s"}.
-              </p>
-              <ProgressBar counts={totals} height={8} className="mt-1" />
+              {work.total > 0 && (
+                <>
+                  <p className="text-[64px] font-semibold leading-none tracking-[-0.04em] text-ink tabular-nums">
+                    {percent(work.done + work.review, work.total)}
+                    <span className="text-[32px] text-faint">%</span>
+                  </p>
+                  <p className="text-md text-muted">
+                    of the work finished: {work.done} card{work.done === 1 ? "" : "s"} done
+                    {work.review ? `, ${work.review} waiting for your check` : ""}, across {boards.length} board{boards.length === 1 ? "" : "s"}.
+                  </p>
+                  <ProgressBar counts={work} height={8} className="mt-1" />
+                </>
+              )}
+              {checks.total > 0 && (
+                <Link href="/docs" className={`group flex flex-col gap-1.5 ${work.total > 0 ? "mt-3 border-t border-border pt-4" : ""}`}>
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-md font-semibold text-ink group-hover:underline">Checks</span>
+                    <span className="tabular-nums text-sm text-muted">
+                      {checks.done} of {checks.total} ticked
+                    </span>
+                  </span>
+                  <span className="text-sm text-muted">
+                    What must hold before a release, in {checklists.length} checklist{checklists.length === 1 ? "" : "s"}
+                    {checks.review ? ` — ${checks.review} ready for your tick` : ""}.
+                  </span>
+                  <ProgressBar counts={checks} height={6} />
+                </Link>
+              )}
               <div className="mt-1 flex flex-col gap-1.5 text-sm">
                 {(
                   [
