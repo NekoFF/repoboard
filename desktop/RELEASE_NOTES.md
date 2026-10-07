@@ -1,5 +1,9 @@
 RepoBoard as a desktop app for macOS and Windows: the same app as in the browser, in its own window, with the system's translucent material behind it.
 
+## What's new in 0.7.2
+
+- **The Overview's number means what it says.** It is now the share of the work (cards) that is finished — including what waits for your check — and the checks that must hold before a release (privacy, licences, store rules) have a line of their own: how many you ticked, and how many are ready for your tick. Before, both were one number, finished work waiting for your check did not count, and every new check made it fall.
+
 ## What's new in 0.7.1
 
 - **RepoBoard for Linux.** An AppImage that runs on almost any distribution and updates itself, and a `.deb` for Ubuntu and Debian — for x64 and ARM. Agents connect to it the same way as on macOS and Windows (Settings → AI agents).
